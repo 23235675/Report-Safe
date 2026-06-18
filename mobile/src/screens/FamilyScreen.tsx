@@ -9,23 +9,25 @@ import {
   searchByName, listLovedOnes, addLovedOne, confirmLovedOne, removeLovedOne, currentUserId,
 } from '../api/apiClient';
 import type { CivilianReport, ReportStatus, LovedOne } from '../api/apiClient';
-import { C, R, SHADOW, statusColor, statusDim, STATUS_LABEL, STATUS_ICON } from '../theme';
+import { C, R, SHADOW, statusColor, statusDim, STATUS_ICON } from '../theme';
 import VisibilityChip from '../components/VisibilityChip';
+import { useTranslation, type I18n } from '../i18n';
 
 const ALERT_STATUSES = new Set<ReportStatus>([
   'need_help', 'awaiting_response', 'potentially_missing', 'missing',
 ]);
 
-function relativeTime(ts: number): string {
+function relativeTime(ts: number, t: I18n['t']): string {
   const mins = Math.round((Date.now() - ts) / 60000);
-  if (mins < 1)  return 'just now';
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1)  return t('time.justNow');
+  if (mins < 60) return t('time.minutesAgo', { m: mins });
   const hrs = Math.round(mins / 60);
-  return hrs < 24 ? `${hrs}h ago` : `${Math.round(hrs / 24)}d ago`;
+  return hrs < 24 ? t('time.hoursAgo', { h: hrs }) : t('time.daysAgo', { d: Math.round(hrs / 24) });
 }
 
 export default function FamilyScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
+  const { t, statusLabel } = useTranslation();
 
   // Account-link ("loved ones") state.
   const [hasAccount,  setHasAccount]  = useState<boolean>(!!currentUserId());
@@ -52,11 +54,11 @@ export default function FamilyScreen(): React.JSX.Element {
     try {
       setLinks(await listLovedOnes());
     } catch {
-      setLinksError('Could not load your loved ones. Pull to retry.');
+      setLinksError(t('family.errLoad'));
     } finally {
       setLinksLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // Refresh links whenever the tab regains focus (new confirmations, status changes).
   useFocusEffect(useCallback(() => { loadLinks(); }, [loadLinks]));
@@ -73,13 +75,13 @@ export default function FamilyScreen(): React.JSX.Element {
     try {
       await addLovedOne(phone);
       setAddPhone('');
-      setNotice('Request sent. They’ll appear here once they confirm.');
+      setNotice(t('family.requestSent'));
       await loadLinks();
     } catch (e: any) {
       setNotice(
-        e?.status === 404 ? 'No account found for that number. They need to register first.'
-        : e?.status === 400 ? (e.message || 'That number can’t be linked.')
-        : 'Could not send the request. Check your connection.'
+        e?.status === 404 ? t('family.addNoAccount')
+        : e?.status === 400 ? (e.message || t('family.addCantLink'))
+        : t('family.addFailed')
       );
     } finally {
       setAdding(false);
@@ -88,18 +90,18 @@ export default function FamilyScreen(): React.JSX.Element {
 
   async function onConfirm(linkId: string): Promise<void> {
     try { await confirmLovedOne(linkId); await loadLinks(); }
-    catch { setNotice('Could not confirm. Try again.'); }
+    catch { setNotice(t('family.confirmFailed')); }
   }
 
   function onRemove(link: LovedOne): void {
     const label = link.name || link.phone;
-    Alert.alert('Remove link', `Stop sharing status with ${label}?`, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('family.removeTitle'), t('family.stopSharing', { name: label }), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Remove', style: 'destructive',
+        text: t('common.remove'), style: 'destructive',
         onPress: async () => {
           try { await removeLovedOne(link.link_id); await loadLinks(); }
-          catch { setNotice('Could not remove. Try again.'); }
+          catch { setNotice(t('family.removeFailed')); }
         },
       },
     ]);
@@ -119,7 +121,7 @@ export default function FamilyScreen(): React.JSX.Element {
     try {
       setResults(await searchByName(q));
     } catch {
-      setError('Search failed. Check your connection and try again.');
+      setError(t('family.searchFailed'));
       setResults([]);
     } finally {
       setLoading(false);
@@ -132,19 +134,19 @@ export default function FamilyScreen(): React.JSX.Element {
       {/* ── Loved Ones (confirmed account links) ─────────────────────── */}
       <View style={FS.sectionHeader}>
         <Ionicons name="heart" size={14} color={C.govBlue} />
-        <Text style={FS.sectionLabel}>Loved Ones{confirmed.length ? ` (${confirmed.length})` : ''}</Text>
+        <Text style={FS.sectionLabel}>{t('family.lovedOnes')}{confirmed.length ? ` (${confirmed.length})` : ''}</Text>
       </View>
 
       {!hasAccount ? (
         <View style={FS.gateBox}>
           <Ionicons name="person-circle-outline" size={36} color={C.borderStrong} />
-          <Text style={FS.gateTitle}>Set up your account first</Text>
+          <Text style={FS.gateTitle}>{t('family.setupAccount')}</Text>
           <Text style={FS.gateText}>
-            Loved ones are linked by phone number, so we need your account before you can add them.
+            {t('family.setupAccountSub')}
           </Text>
           <TouchableOpacity style={FS.gateBtn} onPress={() => navigation.navigate('Account')} activeOpacity={0.85}>
             <Ionicons name="arrow-forward" size={16} color={C.textInv} />
-            <Text style={FS.gateBtnText}>Go to Account</Text>
+            <Text style={FS.gateBtnText}>{t('family.goToAccount')}</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -164,7 +166,7 @@ export default function FamilyScreen(): React.JSX.Element {
                 style={FS.addInput}
                 value={addPhone}
                 onChangeText={setAddPhone}
-                placeholder="Add a loved one by phone…"
+                placeholder={t('family.addPlaceholder')}
                 placeholderTextColor={C.textLo}
                 keyboardType="phone-pad"
                 autoCorrect={false}
@@ -191,7 +193,7 @@ export default function FamilyScreen(): React.JSX.Element {
               </View>
               <TouchableOpacity style={FS.retryBtn} onPress={loadLinks}>
                 <Ionicons name="refresh" size={15} color={C.critical} />
-                <Text style={FS.retryBtnText}>Try again</Text>
+                <Text style={FS.retryBtnText}>{t('common.tryAgain')}</Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -212,17 +214,17 @@ export default function FamilyScreen(): React.JSX.Element {
                     <Text style={FS.cardName} numberOfLines={1}>{l.name || l.phone}</Text>
                     <Text style={FS.cardMeta} numberOfLines={1}>
                       {has
-                        ? `${l.status_updated_at ? relativeTime(Number(l.status_updated_at)) : 'updated'}`
-                        : 'No status reported yet'}
+                        ? `${l.status_updated_at ? relativeTime(Number(l.status_updated_at), t) : t('time.updated')}`
+                        : t('family.noStatusYet')}
                     </Text>
                   </View>
                   {has ? (
                     <View style={[FS.badge, { backgroundColor: dim, borderColor: col }]}>
-                      <Text style={[FS.badgeText, { color: col }]}>{STATUS_LABEL[l.report_status as string] ?? l.report_status}</Text>
+                      <Text style={[FS.badgeText, { color: col }]}>{statusLabel(l.report_status as string)}</Text>
                     </View>
                   ) : (
                     <View style={[FS.badge, { backgroundColor: C.bgRaised, borderColor: C.border }]}>
-                      <Text style={[FS.badgeText, { color: C.textLo }]}>No report</Text>
+                      <Text style={[FS.badgeText, { color: C.textLo }]}>{t('family.noReport')}</Text>
                     </View>
                   )}
                 </View>
@@ -231,7 +233,7 @@ export default function FamilyScreen(): React.JSX.Element {
                   <View style={{ flex: 1 }} />
                   <TouchableOpacity style={FS.chip} onPress={() => onProxy(l.name || '')}>
                     <Ionicons name="create-outline" size={15} color={C.amber} />
-                    <Text style={[FS.chipText, { color: C.amber }]}>Report</Text>
+                    <Text style={[FS.chipText, { color: C.amber }]}>{t('family.report')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={FS.iconBtn} onPress={() => onRemove(l)} hitSlop={8}>
                     <Ionicons name="close" size={18} color={C.textLo} />
@@ -243,8 +245,7 @@ export default function FamilyScreen(): React.JSX.Element {
 
           {confirmed.length === 0 && !linksLoading && !linksError ? (
             <Text style={FS.emptyHint}>
-              No loved ones yet. Add someone by their phone number — once they confirm, you’ll see their
-              status here and be alerted if they’re ever in a disaster zone.
+              {t('family.noLovedOnes')}
             </Text>
           ) : null}
 
@@ -253,18 +254,18 @@ export default function FamilyScreen(): React.JSX.Element {
             <>
               <View style={FS.subHeader}>
                 <Ionicons name="mail-unread-outline" size={13} color={C.amber} />
-                <Text style={FS.subLabel}>Requests for you ({incoming.length})</Text>
+                <Text style={FS.subLabel}>{t('family.requestsForYou', { n: incoming.length })}</Text>
               </View>
               {incoming.map((l) => (
                 <View key={l.link_id} style={FS.reqRow}>
                   <View style={FS.reqAvatar}><Text style={FS.reqAvatarText}>{(l.name || l.phone).charAt(0).toUpperCase()}</Text></View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={FS.cardName} numberOfLines={1}>{l.name || l.phone}</Text>
-                    <Text style={FS.cardMeta}>wants to connect</Text>
+                    <Text style={FS.cardMeta}>{t('family.wantsToConnect')}</Text>
                   </View>
                   <TouchableOpacity style={FS.confirmBtn} onPress={() => onConfirm(l.link_id)}>
                     <Ionicons name="checkmark" size={15} color={C.textInv} />
-                    <Text style={FS.confirmBtnText}>Confirm</Text>
+                    <Text style={FS.confirmBtnText}>{t('family.confirm')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={FS.iconBtn} onPress={() => onRemove(l)} hitSlop={8}>
                     <Ionicons name="close" size={18} color={C.textLo} />
@@ -279,17 +280,17 @@ export default function FamilyScreen(): React.JSX.Element {
             <>
               <View style={FS.subHeader}>
                 <Ionicons name="time-outline" size={13} color={C.textLo} />
-                <Text style={FS.subLabel}>Awaiting confirmation ({outgoing.length})</Text>
+                <Text style={FS.subLabel}>{t('family.awaitingConfirmation', { n: outgoing.length })}</Text>
               </View>
               {outgoing.map((l) => (
                 <View key={l.link_id} style={FS.reqRow}>
                   <View style={[FS.reqAvatar, { backgroundColor: C.bgRaised }]}><Text style={[FS.reqAvatarText, { color: C.textLo }]}>{(l.name || l.phone).charAt(0).toUpperCase()}</Text></View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={FS.cardName} numberOfLines={1}>{l.name || l.phone}</Text>
-                    <Text style={FS.cardMeta}>request sent</Text>
+                    <Text style={FS.cardMeta}>{t('family.requestSentLabel')}</Text>
                   </View>
                   <TouchableOpacity style={FS.iconBtn} onPress={() => onRemove(l)} hitSlop={8}>
-                    <Text style={FS.cancelText}>Cancel</Text>
+                    <Text style={FS.cancelText}>{t('common.cancel')}</Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -301,10 +302,10 @@ export default function FamilyScreen(): React.JSX.Element {
       {/* ── Search by name or phone (find any registered person) ───────── */}
       <View style={[FS.sectionHeader, { marginTop: 22 }]}>
         <Ionicons name="search" size={14} color={C.textLo} />
-        <Text style={FS.sectionLabel}>Search by name or phone</Text>
+        <Text style={FS.sectionLabel}>{t('family.searchByName')}</Text>
       </View>
       <Text style={FS.searchHint}>
-        Find any registered person by their real name (e.g. “Chan Tai Man”) or 8-digit phone number — even if they’re not linked to you — to check on them or file a report on their behalf.
+        {t('family.searchHint')}
       </Text>
 
       <View style={FS.searchRow}>
@@ -314,7 +315,7 @@ export default function FamilyScreen(): React.JSX.Element {
             style={FS.searchInput}
             value={query}
             onChangeText={setQuery}
-            placeholder="Name or phone number…"
+            placeholder={t('family.searchPlaceholder')}
             placeholderTextColor={C.textLo}
             onSubmitEditing={() => onSearch()}
             returnKeyType="search"
@@ -337,7 +338,7 @@ export default function FamilyScreen(): React.JSX.Element {
           </View>
           <TouchableOpacity style={FS.retryBtn} onPress={() => onSearch()}>
             <Ionicons name="refresh" size={15} color={C.critical} />
-            <Text style={FS.retryBtnText}>Try again</Text>
+            <Text style={FS.retryBtnText}>{t('common.tryAgain')}</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -346,11 +347,11 @@ export default function FamilyScreen(): React.JSX.Element {
         <View style={FS.emptyBox}>
           <View style={FS.rowHead}>
             <Ionicons name="search" size={16} color={C.awaiting} />
-            <Text style={FS.emptyText}>No one found for “{query}”. No registered account matches that name or phone.</Text>
+            <Text style={FS.emptyText}>{t('family.noOneFound', { q: query })}</Text>
           </View>
           <TouchableOpacity style={FS.proxyBtn} onPress={() => onProxy(query)} activeOpacity={0.85}>
             <Ionicons name="person-add" size={16} color={C.textInv} />
-            <Text style={FS.proxyBtnText}>Report {query} as missing</Text>
+            <Text style={FS.proxyBtnText}>{t('family.reportMissing', { q: query })}</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -371,18 +372,18 @@ export default function FamilyScreen(): React.JSX.Element {
                 <Text style={FS.cardMeta} numberOfLines={1}>
                   {r.phone_masked ? r.phone_masked : ''}
                   {has
-                    ? `${r.phone_masked ? ' · ' : ''}${r.updated_at ? relativeTime(r.updated_at) : 'updated'}${r.coarse_lat != null ? ` · ~${r.coarse_lat.toFixed(2)}, ${r.coarse_lng?.toFixed(2)}` : ''}`
-                    : `${r.phone_masked ? ' · ' : ''}No status reported yet`}
-                  {r.reported_by === 'family' ? `  · via ${r.reporter_name || 'family'}` : ''}
+                    ? `${r.phone_masked ? ' · ' : ''}${r.updated_at ? relativeTime(r.updated_at, t) : t('time.updated')}${r.coarse_lat != null ? ` · ~${r.coarse_lat.toFixed(2)}, ${r.coarse_lng?.toFixed(2)}` : ''}`
+                    : `${r.phone_masked ? ' · ' : ''}${t('family.noStatusYet')}`}
+                  {r.reported_by === 'family' ? `  · ${t('family.via', { name: r.reporter_name || t('family.familyMember') })}` : ''}
                 </Text>
               </View>
               {has ? (
                 <View style={[FS.badge, { backgroundColor: dim, borderColor: col }]}>
-                  <Text style={[FS.badgeText, { color: col }]}>{STATUS_LABEL[r.status as string] ?? r.status}</Text>
+                  <Text style={[FS.badgeText, { color: col }]}>{statusLabel(r.status as string)}</Text>
                 </View>
               ) : (
                 <View style={[FS.badge, { backgroundColor: C.bgRaised, borderColor: C.border }]}>
-                  <Text style={[FS.badgeText, { color: C.textLo }]}>No report</Text>
+                  <Text style={[FS.badgeText, { color: C.textLo }]}>{t('family.noReport')}</Text>
                 </View>
               )}
             </View>
@@ -392,7 +393,7 @@ export default function FamilyScreen(): React.JSX.Element {
               {alert ? (
                 <TouchableOpacity style={FS.chip} onPress={() => onProxy(r.name)}>
                   <Ionicons name="create-outline" size={15} color={C.amber} />
-                  <Text style={[FS.chipText, { color: C.amber }]}>Update status</Text>
+                  <Text style={[FS.chipText, { color: C.amber }]}>{t('family.updateStatus')}</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -403,8 +404,7 @@ export default function FamilyScreen(): React.JSX.Element {
       <View style={FS.privacyNote}>
         <Ionicons name="lock-closed" size={15} color={C.textLo} />
         <Text style={FS.privacyText}>
-          Loved ones see only approximate location (±1 km) and status — never exact GPS or medical notes.
-          Both people must confirm a link before any status is shared.
+          {t('family.privacyNote')}
         </Text>
       </View>
     </ScrollView>

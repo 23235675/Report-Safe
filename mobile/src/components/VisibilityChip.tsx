@@ -2,11 +2,12 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { R, VISIBILITY, type VisibilityTier } from '../theme';
+import { useTranslation } from '../i18n';
 
 /**
  * VisibilityChip — makes a report's data-exposure tier legible at a glance.
  * One consistent icon + colour per privacy tier, matching the web VisibilityChip
- * so both surfaces read as one system.
+ * so both surfaces read as one system. The label text is localized.
  */
 export default function VisibilityChip({
   tier,
@@ -15,11 +16,13 @@ export default function VisibilityChip({
   tier: VisibilityTier;
   short?: boolean;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   const v = VISIBILITY[tier];
+  const label = t(`visibility.${tier}${short ? 'Short' : 'Label'}`);
   return (
     <View style={[S.chip, { backgroundColor: v.dim, borderColor: v.border }]}>
       <Ionicons name={v.icon as any} size={12} color={v.color} />
-      <Text style={[S.text, { color: v.color }]}>{short ? v.short : v.label}</Text>
+      <Text style={[S.text, { color: v.color }]}>{label}</Text>
     </View>
   );
 }

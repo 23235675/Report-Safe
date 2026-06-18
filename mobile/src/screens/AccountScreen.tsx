@@ -8,6 +8,7 @@ import { userStorage } from '../db/userStorage';
 import { setAuthSession, clearAuthSession, loginUser, registerUser } from '../api/apiClient';
 import { isValidHKID, normalizeHKID, normalizePhone } from '../utils/hkid';
 import { C, R, SHADOW } from '../theme';
+import { useTranslation } from '../i18n';
 
 const USER_KEY = 'rs_user';
 
@@ -24,6 +25,7 @@ interface UserProfile {
 type Mode = 'login' | 'register' | 'profile';
 
 export default function AccountScreen(): React.JSX.Element {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>('login');
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [phone, setPhone] = useState('');
@@ -60,7 +62,7 @@ export default function AccountScreen(): React.JSX.Element {
   // ── LOGIN (phone only, real endpoint — mirrors web) ──
   async function handleLogin() {
     const digits = phone.replace(/\D/g, '');
-    if (digits.length < 8) { setError('Enter your 8-digit Hong Kong phone number.'); return; }
+    if (digits.length < 8) { setError(t('account.errPhone')); return; }
     setLoading(true);
     setError('');
     try {
@@ -68,8 +70,8 @@ export default function AccountScreen(): React.JSX.Element {
       setPhone('');
     } catch (e: any) {
       setError(e?.status === 404
-        ? 'No account found for that number. Create one below.'
-        : (e.message || 'Sign in failed.'));
+        ? t('account.noAccount')
+        : (e.message || t('account.signInFailed')));
     } finally {
       setLoading(false);
     }
@@ -78,13 +80,13 @@ export default function AccountScreen(): React.JSX.Element {
   // ── REGISTER ──
   async function handleRegister() {
     const digits = regForm.phone.replace(/\D/g, '');
-    if (digits.length < 8)        { setError('Enter your 8-digit Hong Kong phone number.'); return; }
-    if (!regForm.name.trim())     { setError('Full name is required.'); return; }
-    if (!regForm.personal_id.trim()) { setError('HKID is required (e.g. A123456).'); return; }
+    if (digits.length < 8)        { setError(t('account.errPhone')); return; }
+    if (!regForm.name.trim())     { setError(t('account.errFullName')); return; }
+    if (!regForm.personal_id.trim()) { setError(t('account.errHkidRequired')); return; }
     if (!isValidHKID(regForm.personal_id)) {
-      setError('HKID must have 1+ letter and 6+ digits, e.g. A123456.'); return;
+      setError(t('account.errHkidFormat')); return;
     }
-    if (!regForm.privacy_consent) { setError('Privacy consent is required.'); return; }
+    if (!regForm.privacy_consent) { setError(t('account.errConsent')); return; }
 
     setLoading(true);
     setError('');
@@ -108,10 +110,10 @@ export default function AccountScreen(): React.JSX.Element {
 
   // ── LOGOUT ──
   function handleLogout() {
-    Alert.alert('Sign Out', 'Remove your account from this device?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('account.signOutTitle'), t('account.signOutConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Sign Out',
+        text: t('account.signOut'),
         style: 'destructive',
         onPress: () => {
           userStorage.remove(USER_KEY);
@@ -135,8 +137,8 @@ export default function AccountScreen(): React.JSX.Element {
           <>
             <View style={S.header}>
               <Ionicons name="person-circle" size={40} color={C.govBlue} />
-              <Text style={S.headerTitle}>Sign In</Text>
-              <Text style={S.headerSub}>Enter your phone number to continue</Text>
+              <Text style={S.headerTitle}>{t('account.signIn')}</Text>
+              <Text style={S.headerSub}>{t('account.signInSub')}</Text>
             </View>
 
             {error && (
@@ -148,7 +150,7 @@ export default function AccountScreen(): React.JSX.Element {
 
             <View style={S.form}>
               <View style={S.field}>
-                <Text style={S.fieldLbl}>Hong Kong Phone Number *</Text>
+                <Text style={S.fieldLbl}>{t('account.phoneLabel')}</Text>
                 <View style={S.phoneRow}>
                   <Text style={S.phonePrefix}>+852</Text>
                   <TextInput
@@ -174,16 +176,16 @@ export default function AccountScreen(): React.JSX.Element {
                 ) : (
                   <Ionicons name="log-in" size={16} color={C.textInv} />
                 )}
-                <Text style={S.primaryBtnText}>{loading ? 'Signing in…' : 'Sign In'}</Text>
+                <Text style={S.primaryBtnText}>{loading ? t('account.signingIn') : t('account.signIn')}</Text>
               </TouchableOpacity>
             </View>
 
             <View style={S.divider} />
 
             <View style={S.registerPrompt}>
-              <Text style={S.registerPromptText}>Don't have an account?</Text>
+              <Text style={S.registerPromptText}>{t('account.noAccountQ')}</Text>
               <TouchableOpacity onPress={() => { setMode('register'); setError(''); }}>
-                <Text style={S.registerLink}>Create one now</Text>
+                <Text style={S.registerLink}>{t('account.createNow')}</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -194,8 +196,8 @@ export default function AccountScreen(): React.JSX.Element {
           <>
             <View style={S.header}>
               <Ionicons name="person-add-sharp" size={40} color={C.govBlue} />
-              <Text style={S.headerTitle}>Create Account</Text>
-              <Text style={S.headerSub}>Set up your disaster safety profile</Text>
+              <Text style={S.headerTitle}>{t('account.createAccount')}</Text>
+              <Text style={S.headerSub}>{t('account.setupProfile')}</Text>
             </View>
 
             {error && (
@@ -207,7 +209,7 @@ export default function AccountScreen(): React.JSX.Element {
 
             <View style={S.form}>
               <View style={S.field}>
-                <Text style={S.fieldLbl}>Phone (8 digits) *</Text>
+                <Text style={S.fieldLbl}>{t('account.phoneRegLabel')}</Text>
                 <View style={S.phoneRow}>
                   <Text style={S.phonePrefix}>+852</Text>
                   <TextInput
@@ -225,32 +227,32 @@ export default function AccountScreen(): React.JSX.Element {
               </View>
 
               <View style={S.field}>
-                <Text style={S.fieldLbl}>Full Name *</Text>
+                <Text style={S.fieldLbl}>{t('account.fullName')}</Text>
                 <TextInput
                   style={S.input}
                   value={regForm.name}
                   onChangeText={(v) => setRegForm((f) => ({ ...f, name: v }))}
-                  placeholder="Your full name"
+                  placeholder={t('account.phFullName')}
                   placeholderTextColor={C.textLo}
                 />
               </View>
 
               <View style={S.field}>
-                <Text style={S.fieldLbl}>HKID * (never shown publicly)</Text>
+                <Text style={S.fieldLbl}>{t('account.hkidLabel')}</Text>
                 <TextInput
                   style={[S.input, S.mono]}
                   value={regForm.personal_id}
                   onChangeText={(v) => setRegForm((f) => ({ ...f, personal_id: v }))}
-                  placeholder="e.g. A1234567"
+                  placeholder={t('account.phHkid')}
                   placeholderTextColor={C.textLo}
                   autoCapitalize="characters"
                   autoCorrect={false}
                 />
-                <Text style={S.fieldHint}>1–2 letters + 6+ digits (e.g. A123456, ABC1234567)</Text>
+                <Text style={S.fieldHint}>{t('account.hkidHint')}</Text>
               </View>
 
               <View style={S.field}>
-                <Text style={S.fieldLbl}>Email (optional)</Text>
+                <Text style={S.fieldLbl}>{t('account.emailLabel')}</Text>
                 <TextInput
                   style={S.input}
                   value={regForm.email}
@@ -270,7 +272,7 @@ export default function AccountScreen(): React.JSX.Element {
                   thumbColor={C.bgPanel}
                 />
                 <Text style={S.consentText}>
-                  I agree to allow rescue teams to see my location and medical notes during disasters (PDPO Consent).
+                  {t('account.consent')}
                 </Text>
               </View>
 
@@ -279,7 +281,7 @@ export default function AccountScreen(): React.JSX.Element {
                   onPress={() => { setMode('login'); setError(''); }}
                   style={S.ghostBtn}
                 >
-                  <Text style={S.ghostBtnText}>Back</Text>
+                  <Text style={S.ghostBtnText}>{t('common.back')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleRegister}
@@ -292,7 +294,7 @@ export default function AccountScreen(): React.JSX.Element {
                   ) : (
                     <Ionicons name="checkmark" size={16} color={C.textInv} />
                   )}
-                  <Text style={S.primaryBtnText}>{loading ? 'Creating…' : 'Create Account'}</Text>
+                  <Text style={S.primaryBtnText}>{loading ? t('account.creating') : t('account.createAccount')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -307,7 +309,7 @@ export default function AccountScreen(): React.JSX.Element {
                 <Text style={S.avatarText}>{initials}</Text>
               </View>
               <View style={S.identity}>
-                <Text style={S.identityName}>{profile.name || 'No Name'}</Text>
+                <Text style={S.identityName}>{profile.name || t('account.noName')}</Text>
                 <Text style={S.identityPhone}>{profile.phone}</Text>
               </View>
             </View>
@@ -315,32 +317,32 @@ export default function AccountScreen(): React.JSX.Element {
             {saved && (
               <View style={S.successBar}>
                 <Ionicons name="checkmark-circle" size={16} color={C.safe} />
-                <Text style={S.successText}>Account updated</Text>
+                <Text style={S.successText}>{t('account.updated')}</Text>
               </View>
             )}
 
             <View style={S.profileView}>
               <View style={S.profileRow}>
-                <Text style={S.prLbl}>Phone</Text>
+                <Text style={S.prLbl}>{t('account.phone')}</Text>
                 <Text style={[S.prVal, S.mono]}>{profile.phone}</Text>
               </View>
               {profile.email && (
                 <View style={S.profileRow}>
-                  <Text style={S.prLbl}>Email</Text>
+                  <Text style={S.prLbl}>{t('account.email')}</Text>
                   <Text style={S.prVal}>{profile.email}</Text>
                 </View>
               )}
               <View style={S.profileRow}>
-                <Text style={S.prLbl}>Privacy Consent</Text>
+                <Text style={S.prLbl}>{t('account.privacyConsent')}</Text>
                 <Text style={[S.prVal, { color: profile.privacy_consent ? C.safe : C.textLo }]}>
-                  {profile.privacy_consent ? 'Granted' : 'Not granted'}
+                  {profile.privacy_consent ? t('account.granted') : t('account.notGranted')}
                 </Text>
               </View>
             </View>
 
             <TouchableOpacity onPress={handleLogout} style={S.signOutBtn} activeOpacity={0.85}>
               <Ionicons name="log-out-outline" size={18} color={C.critical} />
-              <Text style={S.signOutText}>Sign Out</Text>
+              <Text style={S.signOutText}>{t('account.signOut')}</Text>
             </TouchableOpacity>
           </>
         ) : null}
@@ -349,10 +351,10 @@ export default function AccountScreen(): React.JSX.Element {
       <View style={S.privacyNote}>
         <View style={S.pnHead}>
           <Ionicons name="shield-checkmark" size={18} color={C.govBlue} />
-          <Text style={S.pnTitle}>Privacy by Design</Text>
+          <Text style={S.pnTitle}>{t('account.privacyTitle')}</Text>
         </View>
         <Text style={S.pnBody}>
-          Exact GPS is only visible to government rescue teams. Family searches show approximate location only. Medical notes are never public.
+          {t('account.privacyBody')}
         </Text>
       </View>
 
@@ -360,7 +362,7 @@ export default function AccountScreen(): React.JSX.Element {
         <View style={S.noAccountNote}>
           <Ionicons name="information-circle" size={18} color={C.amber} />
           <Text style={S.noAccountText}>
-            You can still use the Home tab and submit reports without an account. Create an account to track loved ones.
+            {t('account.noAccountNote')}
           </Text>
         </View>
       )}

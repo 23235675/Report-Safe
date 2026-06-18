@@ -18,6 +18,8 @@ import DisasterModeScreen from './src/screens/DisasterModeScreen';
 import { connectivityWatcher } from './src/services/connectivityWatcher';
 import { notificationService } from './src/services/notificationService';
 import { DisasterModeProvider, useDisasterMode } from './src/context/DisasterModeContext';
+import { LanguageProvider, useTranslation } from './src/i18n';
+import LangToggle from './src/components/LangToggle';
 import { C, R, SHADOW } from './src/theme';
 
 export const navigationRef = createNavigationContainerRef<RootTabParamList>();
@@ -52,9 +54,11 @@ export default function App(): React.JSX.Element {
 
   return (
     <SafeAreaProvider>
-      <DisasterModeProvider>
-        <AppContent />
-      </DisasterModeProvider>
+      <LanguageProvider>
+        <DisasterModeProvider>
+          <AppContent />
+        </DisasterModeProvider>
+      </LanguageProvider>
     </SafeAreaProvider>
   );
 }
@@ -66,6 +70,7 @@ export default function App(): React.JSX.Element {
  */
 function AppContent(): React.JSX.Element {
   const { inDisasterMode, activeDisaster, acknowledgeDisaster } = useDisasterMode();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
   if (inDisasterMode && activeDisaster) {
@@ -94,6 +99,7 @@ function AppContent(): React.JSX.Element {
               shadowOpacity: 0,
             },
             headerTintColor: C.textHi,
+            headerRight: () => <LangToggle />,
             headerTitleStyle: {
               fontWeight: '700',
               fontSize: 17,
@@ -132,27 +138,27 @@ function AppContent(): React.JSX.Element {
           <Tab.Screen
             name="Home"
             component={HomeScreen}
-            options={{ title: 'Report Safe', tabBarLabel: 'Home' }}
+            options={{ title: t('tabs.homeTitle'), tabBarLabel: t('tabs.home') }}
           />
           <Tab.Screen
             name="Report"
             component={ReportScreen}
-            options={{ title: 'Submit Report', tabBarLabel: 'Report' }}
+            options={{ title: t('tabs.reportTitle'), tabBarLabel: t('tabs.report') }}
           />
           <Tab.Screen
             name="Family"
             component={FamilyScreen}
-            options={{ title: 'Find Someone', tabBarLabel: 'Family' }}
+            options={{ title: t('tabs.familyTitle'), tabBarLabel: t('tabs.family') }}
           />
           <Tab.Screen
             name="Map"
             component={MapScreen}
-            options={{ title: 'Shelters', tabBarLabel: 'Shelters' }}
+            options={{ title: t('tabs.mapTitle'), tabBarLabel: t('tabs.shelters') }}
           />
           <Tab.Screen
             name="Account"
             component={AccountScreen}
-            options={{ title: 'Account', tabBarLabel: 'Account' }}
+            options={{ title: t('tabs.accountTitle'), tabBarLabel: t('tabs.account') }}
           />
         </Tab.Navigator>
       </NavigationContainer>
@@ -168,6 +174,7 @@ function AppContent(): React.JSX.Element {
  */
 function LovedOneBanner(): React.JSX.Element | null {
   const { lovedOneAlerts, dismissLovedOneAlert } = useDisasterMode();
+  const { t, disasterTypeLabel } = useTranslation();
   const insets = useSafeAreaInsets();
   const alert = lovedOneAlerts[0] ?? null;
   const translateY = useRef(new Animated.Value(-100)).current;
@@ -202,14 +209,14 @@ function LovedOneBanner(): React.JSX.Element | null {
         </View>
         <View style={{ flex: 1, minWidth: 0, marginHorizontal: 10 }}>
           <Text style={BN.title} numberOfLines={1}>
-            {alert.affectedName || 'A loved one'} may be affected
+            {t('lovedOne.affected', { name: alert.affectedName || t('lovedOne.aLovedOne') })}
           </Text>
           <Text style={BN.sub} numberOfLines={1}>
-            {alert.disaster.type} · Tap View to see their status
+            {t('lovedOne.sub', { type: disasterTypeLabel(alert.disaster.type) })}
           </Text>
         </View>
         <TouchableOpacity onPress={viewFamily} style={BN.viewBtn} activeOpacity={0.8}>
-          <Text style={BN.viewText}>View</Text>
+          <Text style={BN.viewText}>{t('lovedOne.view')}</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={dismiss} style={BN.closeBtn} hitSlop={10}>
           <Ionicons name="close" size={16} color={C.textLo} />

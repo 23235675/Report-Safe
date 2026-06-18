@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import { useSocket } from './socket.js';
 import AppIcon from './components/AppIcon.vue';
+import LangToggle from './components/LangToggle.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -29,30 +30,32 @@ router.afterEach(() => { mobileMenuOpen.value = false; });
         <span class="brand-mark">報</span>
         <div>
           <div class="brand-text">Report Safe</div>
-          <div class="brand-sub">報平安 · Disaster Accountability</div>
+          <div class="brand-sub">{{ $t('nav.brandSub') }}</div>
         </div>
       </RouterLink>
 
       <nav class="app-nav">
-        <RouterLink to="/">Home</RouterLink>
-        <RouterLink to="/report">File a Report</RouterLink>
-        <RouterLink to="/family">Find Someone</RouterLink>
-        <RouterLink to="/shelters">Shelters</RouterLink>
-        <RouterLink to="/account">Account</RouterLink>
+        <RouterLink to="/">{{ $t('nav.home') }}</RouterLink>
+        <RouterLink to="/report">{{ $t('nav.report') }}</RouterLink>
+        <RouterLink to="/family">{{ $t('nav.family') }}</RouterLink>
+        <RouterLink to="/shelters">{{ $t('nav.shelters') }}</RouterLink>
+        <RouterLink to="/account">{{ $t('nav.account') }}</RouterLink>
         <RouterLink to="/gov">
           <span class="gov-link">
-            Gov
+            {{ $t('nav.gov') }}
             <span class="gov-link-badge">GOV</span>
           </span>
         </RouterLink>
       </nav>
 
-      <span class="conn" :class="{ on: isConnected }" :title="isConnected ? 'Live data connection' : 'Offline'">
+      <LangToggle />
+
+      <span class="conn" :class="{ on: isConnected }" :title="isConnected ? $t('nav.live') : $t('nav.offline')">
         <AppIcon :name="isConnected ? 'wifi' : 'cloud-offline'" :size="15" />
-        <span class="conn-label">{{ isConnected ? 'Live' : 'Offline' }}</span>
+        <span class="conn-label">{{ isConnected ? $t('nav.live') : $t('nav.offline') }}</span>
       </span>
 
-      <button class="nav-hamburger" :class="{ open: mobileMenuOpen }" @click="toggleMenu" :aria-label="mobileMenuOpen ? 'Close menu' : 'Open menu'" aria-haspopup="true">
+      <button class="nav-hamburger" :class="{ open: mobileMenuOpen }" @click="toggleMenu" :aria-label="mobileMenuOpen ? $t('nav.closeMenu') : $t('nav.openMenu')" aria-haspopup="true">
         <span></span>
         <span></span>
         <span></span>
@@ -63,22 +66,22 @@ router.afterEach(() => { mobileMenuOpen.value = false; });
     <div v-if="mobileMenuOpen" class="mobile-nav-overlay" @click.self="closeMenu">
       <nav class="mobile-nav">
         <RouterLink to="/" @click="closeMenu">
-          <AppIcon name="home" :size="18" />Home
+          <AppIcon name="home" :size="18" />{{ $t('nav.home') }}
         </RouterLink>
         <RouterLink to="/report" @click="closeMenu">
-          <AppIcon name="megaphone" :size="18" />File a Report
+          <AppIcon name="megaphone" :size="18" />{{ $t('nav.report') }}
         </RouterLink>
         <RouterLink to="/family" @click="closeMenu">
-          <AppIcon name="people" :size="18" />Find Someone
+          <AppIcon name="people" :size="18" />{{ $t('nav.family') }}
         </RouterLink>
         <RouterLink to="/shelters" @click="closeMenu">
-          <AppIcon name="shield-checkmark" :size="18" />Shelters
+          <AppIcon name="shield-checkmark" :size="18" />{{ $t('nav.shelters') }}
         </RouterLink>
         <RouterLink to="/account" @click="closeMenu">
-          <AppIcon name="person-circle" :size="18" />Account
+          <AppIcon name="person-circle" :size="18" />{{ $t('nav.account') }}
         </RouterLink>
         <RouterLink to="/gov" @click="closeMenu" class="mobile-nav-gov">
-          <AppIcon name="shield" :size="18" />Gov Dashboard
+          <AppIcon name="shield" :size="18" />{{ $t('nav.govDashboard') }}
           <span class="gov-link-badge">GOV</span>
         </RouterLink>
       </nav>
@@ -89,7 +92,7 @@ router.afterEach(() => { mobileMenuOpen.value = false; });
     </main>
 
     <footer v-if="!isGovRoute" class="app-footer">
-      Report Safe 報平安 &mdash; Disaster Accountability &amp; Rescue Coordination
+      {{ $t('nav.footer') }}
     </footer>
   </div>
 </template>

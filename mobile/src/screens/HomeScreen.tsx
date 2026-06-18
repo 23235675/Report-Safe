@@ -7,16 +7,18 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { C, R, SHADOW, DISASTER_ICON } from '../theme';
 import { useDisasterMode } from '../context/DisasterModeContext';
+import { useTranslation } from '../i18n';
 
-function severityInfo(s: number | null | undefined): { label: string; color: string; dim: string } {
-  if (!s || s < 3) return { label: 'Minor',    color: C.safe,     dim: C.safeDim };
-  if (s < 4)       return { label: 'Moderate', color: C.injured,  dim: C.injuredDim };
-  if (s < 5)       return { label: 'Severe',   color: C.awaiting, dim: C.awaitingDim };
-  return             { label: 'Extreme',  color: C.critical, dim: C.criticalDim };
+function severityColors(s: number | null | undefined): { color: string; dim: string } {
+  if (!s || s < 3) return { color: C.safe,     dim: C.safeDim };
+  if (s < 4)       return { color: C.injured,  dim: C.injuredDim };
+  if (s < 5)       return { color: C.awaiting, dim: C.awaitingDim };
+  return             { color: C.critical, dim: C.criticalDim };
 }
 
 export default function HomeScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
+  const { t, severityLabel, disasterTypeLabel } = useTranslation();
   // Live data + the disaster-mode gate come from the app-wide provider, which
   // owns the single Socket.IO connection (so this device is tracked once).
   const { stats, disasters, pending, loading, loaded, error, refresh } = useDisasterMode();
@@ -41,15 +43,15 @@ export default function HomeScreen(): React.JSX.Element {
       {loading && !loaded ? (
         <View style={S.loadingBox}>
           <ActivityIndicator size="large" color={C.govBlue} />
-          <Text style={S.loadingText}>Loading current status…</Text>
+          <Text style={S.loadingText}>{t('home.loading')}</Text>
         </View>
       ) : error && !loaded ? (
         <View style={S.errorBanner}>
           <Ionicons name="cloud-offline" size={18} color={C.critical} />
-          <Text style={S.errorBannerText}>Can't reach the server. You can still report your status below.</Text>
+          <Text style={S.errorBannerText}>{t('home.cantReach')}</Text>
           <TouchableOpacity onPress={onRefresh} style={S.errorRetryBtn} activeOpacity={0.85}>
             <Ionicons name="refresh" size={15} color={C.critical} />
-            <Text style={S.errorRetryText}>Retry</Text>
+            <Text style={S.errorRetryText}>{t('common.retry')}</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -65,32 +67,32 @@ export default function HomeScreen(): React.JSX.Element {
         />
         <Text style={[S.ribbonText, { flex: 1, color: isActive ? C.critical : C.safe }]}>
           {isActive
-            ? `${disasters.length} active disaster${disasters.length !== 1 ? 's' : ''}`
-            : 'All clear — no active disasters'}
+            ? t(disasters.length === 1 ? 'home.activeOne' : 'home.activeMany', { n: disasters.length })
+            : t('home.allClear')}
         </Text>
         {pending > 0 ? (
           <View style={S.pendingPill}>
             <Ionicons name="cloud-offline" size={13} color={C.awaiting} />
-            <Text style={S.pendingPillText}>{pending} pending</Text>
+            <Text style={S.pendingPillText}>{t('home.pending', { n: pending })}</Text>
           </View>
         ) : null}
       </View>
 
       {/* ── Aggregate stats bar ───────────────────────────────── */}
       <View style={S.statsBar}>
-        <StatPill label="Total"   value={stats.total}        color={C.textHi}    />
-        <StatPill label="Safe"    value={stats.safe}         color={C.safe}      />
-        <StatPill label="Injured" value={stats.injured}      color={C.injured}   />
-        <StatPill label="Help"    value={stats.need_help}    color={C.critical}  />
-        <StatPill label="Missing" value={missingSum}         color={C.potMissing}/>
+        <StatPill label={t('home.statTotal')}   value={stats.total}        color={C.textHi}    />
+        <StatPill label={t('home.statSafe')}    value={stats.safe}         color={C.safe}      />
+        <StatPill label={t('home.statInjured')} value={stats.injured}      color={C.injured}   />
+        <StatPill label={t('home.statHelp')}    value={stats.need_help}    color={C.critical}  />
+        <StatPill label={t('home.statMissing')} value={missingSum}         color={C.potMissing}/>
       </View>
 
       {/* ── Disaster cards ────────────────────────────────────── */}
       {disasters.length > 0 ? (
         <View style={S.section}>
-          <Text style={S.sectionTitle}>Active Incidents</Text>
+          <Text style={S.sectionTitle}>{t('home.activeIncidents')}</Text>
           {disasters.map((d) => {
-            const sev = severityInfo(d.severity);
+            const sev = severityColors(d.severity);
             return (
               <View key={d.id} style={S.disasterCard}>
                 <View style={S.dcHead}>
@@ -102,16 +104,16 @@ export default function HomeScreen(): React.JSX.Element {
                     />
                   </View>
                   <View style={S.dcMeta}>
-                    <Text style={S.dcName}>{d.type.charAt(0).toUpperCase() + d.type.slice(1)}</Text>
+                    <Text style={S.dcName}>{disasterTypeLabel(d.type)}</Text>
                     {d.description ? <Text style={S.dcDesc} numberOfLines={1}>{d.description}</Text> : null}
                   </View>
                   <View style={[S.dcSev, { backgroundColor: sev.dim }]}>
-                    <Text style={[S.dcSevText, { color: sev.color }]}>{sev.label}</Text>
+                    <Text style={[S.dcSevText, { color: sev.color }]}>{severityLabel(d.severity)}</Text>
                   </View>
                 </View>
                 <View style={S.dcStat}>
                   <Ionicons name="resize" size={15} color={C.textLo} />
-                  <Text style={S.dcStatVal}>{d.radius_km}<Text style={S.dcStatUnit}> km radius</Text></Text>
+                  <Text style={S.dcStatVal}>{t('home.kmRadius', { n: d.radius_km })}</Text>
                 </View>
                 <View style={S.dcActions}>
                   <TouchableOpacity
@@ -120,7 +122,7 @@ export default function HomeScreen(): React.JSX.Element {
                     activeOpacity={0.8}
                   >
                     <Ionicons name="megaphone" size={15} color={C.textInv} />
-                    <Text style={[S.dcBtnText, { color: C.textInv }]}>Report Status</Text>
+                    <Text style={[S.dcBtnText, { color: C.textInv }]}>{t('home.reportStatus')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[S.dcBtn, { backgroundColor: C.govBlueDim, borderWidth: 1, borderColor: C.govBlue }]}
@@ -128,7 +130,7 @@ export default function HomeScreen(): React.JSX.Element {
                     activeOpacity={0.8}
                   >
                     <Ionicons name="people" size={15} color={C.govBlue} />
-                    <Text style={[S.dcBtnText, { color: C.govBlue }]}>Find Someone</Text>
+                    <Text style={[S.dcBtnText, { color: C.govBlue }]}>{t('home.findSomeone')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -140,8 +142,8 @@ export default function HomeScreen(): React.JSX.Element {
           <View style={S.noDisCheck}>
             <Ionicons name="shield-checkmark" size={26} color={C.safe} />
           </View>
-          <Text style={S.noDisTitle}>No active disasters</Text>
-          <Text style={S.noDisSub}>Stay prepared. You can still report your status or find someone.</Text>
+          <Text style={S.noDisTitle}>{t('home.noActive')}</Text>
+          <Text style={S.noDisSub}>{t('home.noActiveSub')}</Text>
         </View>
       )}
       </>

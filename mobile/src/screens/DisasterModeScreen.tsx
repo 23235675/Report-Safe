@@ -9,26 +9,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { submitReport } from '../services/syncService';
 import type { PendingReport, ReportStatus, Disaster } from '../api/apiClient';
 import { userStorage } from '../db/userStorage';
+import { useTranslation } from '../i18n';
 import {
-  C, R, SHADOW, statusColor, statusDim, STATUS_LABEL, STATUS_ICON, DISASTER_ICON,
+  C, R, SHADOW, statusColor, statusDim, STATUS_ICON, DISASTER_ICON,
 } from '../theme';
 
 const DEFAULT_LOCATION = { lat: 22.3, lng: 114.1 };
 const USER_KEY = 'rs_user';
 
 /** The three first-person statuses a person can self-report to clear the gate. */
-const SAFETY_OPTIONS: { value: ReportStatus; sub: string }[] = [
-  { value: 'safe',      sub: 'I am unharmed and out of danger' },
-  { value: 'injured',   sub: 'I am hurt and need medical attention' },
-  { value: 'need_help', sub: 'Send rescuers to my location now' },
+const SAFETY_OPTIONS: { value: ReportStatus; subKey: string }[] = [
+  { value: 'safe',      subKey: 'disasterMode.subSafe' },
+  { value: 'injured',   subKey: 'disasterMode.subInjured' },
+  { value: 'need_help', subKey: 'disasterMode.subNeedHelp' },
 ];
-
-function severityLabel(s: number | null | undefined): string {
-  if (!s || s < 3) return 'Minor';
-  if (s < 4) return 'Moderate';
-  if (s < 5) return 'Severe';
-  return 'Extreme';
-}
 
 function readProfile(): { name: string; phone: string | null } {
   try {
@@ -64,16 +58,17 @@ interface Props {
  * their safety — enforcing "report your safety before using any other feature".
  */
 export default function DisasterModeScreen({ disaster, onReported }: Props): React.JSX.Element {
+  const { t, statusLabel, severityLabel, disasterTypeLabel } = useTranslation();
   const profile = readProfile();
   const [name,       setName]       = useState(profile.name);
   const [submitting, setSubmitting] = useState<ReportStatus | null>(null);
   const [error,      setError]      = useState<string | null>(null);
 
-  const disasterType = (disaster.type || 'Disaster').replace(/^\w/, (c) => c.toUpperCase());
+  const disasterType = disasterTypeLabel(disaster.type) || 'Disaster';
 
   async function report(status: ReportStatus): Promise<void> {
     if (!name.trim()) {
-      setError('Please enter your name so rescue teams and family can identify you.');
+      setError(t('disasterMode.errName'));
       return;
     }
     setError(null);
@@ -113,7 +108,7 @@ export default function DisasterModeScreen({ disaster, onReported }: Props): Rea
         {/* Alert banner */}
         <View style={S.alertBadge}>
           <Ionicons name="warning" size={16} color={C.textInv} />
-          <Text style={S.alertBadgeText}>EMERGENCY · ACTION REQUIRED</Text>
+          <Text style={S.alertBadgeText}>{t('disasterMode.emergencyBadge')}</Text>
         </View>
 
         {/* Disaster summary */}
@@ -125,14 +120,14 @@ export default function DisasterModeScreen({ disaster, onReported }: Props): Rea
               color={C.critical}
             />
           </View>
-          <Text style={S.heroTitle}>{disasterType} in your area</Text>
+          <Text style={S.heroTitle}>{t('disasterMode.inYourArea', { type: disasterType })}</Text>
           <View style={S.heroMetaRow}>
             <View style={S.heroChip}>
               <Text style={S.heroChipText}>{severityLabel(disaster.severity)}</Text>
             </View>
             <View style={S.heroChip}>
               <Ionicons name="resize" size={12} color={C.textLo} />
-              <Text style={S.heroChipText}>{disaster.radius_km} km radius</Text>
+              <Text style={S.heroChipText}>{t('disasterMode.kmRadius', { n: disaster.radius_km })}</Text>
             </View>
           </View>
           {disaster.description ? (
@@ -141,19 +136,18 @@ export default function DisasterModeScreen({ disaster, onReported }: Props): Rea
         </View>
 
         {/* Prompt */}
-        <Text style={S.prompt}>You appear to be inside the affected zone.</Text>
+        <Text style={S.prompt}>{t('disasterMode.prompt')}</Text>
         <Text style={S.promptSub}>
-          Confirm your safety to continue. This is shared with rescue teams and your family —
-          you can't use other features until you respond.
+          {t('disasterMode.promptSub')}
         </Text>
 
         {/* Name */}
-        <Text style={S.fieldLabel}>YOUR NAME</Text>
+        <Text style={S.fieldLabel}>{t('disasterMode.yourName')}</Text>
         <TextInput
           style={S.input}
           value={name}
           onChangeText={setName}
-          placeholder="e.g. Mei Wong"
+          placeholder={t('disasterMode.phName')}
           placeholderTextColor={C.textLo}
           autoComplete="name"
           editable={submitting === null}
@@ -167,7 +161,7 @@ export default function DisasterModeScreen({ disaster, onReported }: Props): Rea
         ) : null}
 
         {/* Safety actions */}
-        <Text style={[S.fieldLabel, { marginTop: 20 }]}>I AM CURRENTLY</Text>
+        <Text style={[S.fieldLabel, { marginTop: 20 }]}>{t('disasterMode.iAmCurrently')}</Text>
         {SAFETY_OPTIONS.map((opt) => {
           const col = statusColor(opt.value);
           const dim = statusDim(opt.value);
@@ -189,8 +183,8 @@ export default function DisasterModeScreen({ disaster, onReported }: Props): Rea
                 )}
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[S.actionLabel, { color: col }]}>{STATUS_LABEL[opt.value] || opt.value}</Text>
-                <Text style={S.actionSub}>{opt.sub}</Text>
+                <Text style={[S.actionLabel, { color: col }]}>{statusLabel(opt.value)}</Text>
+                <Text style={S.actionSub}>{t(opt.subKey)}</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={col} />
             </TouchableOpacity>
@@ -200,7 +194,7 @@ export default function DisasterModeScreen({ disaster, onReported }: Props): Rea
         <View style={S.reassure}>
           <Ionicons name="lock-closed" size={13} color={C.textLo} />
           <Text style={S.reassureText}>
-            Exact location and medical details are visible to authorized rescue teams only.
+            {t('disasterMode.reassure')}
           </Text>
         </View>
       </ScrollView>

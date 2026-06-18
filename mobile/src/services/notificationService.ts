@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import type { Disaster } from '../api/apiClient';
 import { registerDeviceToken } from '../api/apiClient';
+import { translateStandalone, disasterTypeLabelStandalone } from '../i18n';
 
 /**
  * Local disaster notifications (in-app + OS banner).
@@ -163,12 +164,12 @@ export function addDisasterTapListener(
  */
 export async function notifyLovedOne(affectedName: string, disaster: Disaster): Promise<void> {
   try {
-    const who = affectedName || 'A loved one';
-    const type = (disaster.type || 'disaster').toLowerCase();
+    const who = affectedName || translateStandalone('lovedOne.aLovedOne');
+    const type = disasterTypeLabelStandalone(disaster.type);
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: `⚠️ ${who} may be in an affected area`,
-        body: `A ${type} alert covers ${who}'s area. Open Report Safe to see their status.`,
+        title: translateStandalone('notify.lovedOneTitle', { who }),
+        body: translateStandalone('notify.lovedOneBody', { type, who }),
         sound: true,
         data: { disasterId: disaster.id, type: 'loved_one_alert', affectedName: who },
         ...(Platform.OS === 'android' ? { vibrate: [0, 200, 100, 200] } : {}),
@@ -183,13 +184,13 @@ export async function notifyLovedOne(affectedName: string, disaster: Disaster): 
 /** Present an immediate local notification for an activated disaster. */
 export async function notifyDisaster(disaster: Disaster): Promise<void> {
   try {
-    const type = (disaster.type || 'Disaster').replace(/^\w/, (c) => c.toUpperCase());
+    const type = disasterTypeLabelStandalone(disaster.type) || 'Disaster';
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: `⚠️ ${type} alert — you are in the affected area`,
+        title: translateStandalone('notify.disasterTitle', { type }),
         body:
           disaster.description ||
-          'A disaster has been declared in your area. Open Report Safe and confirm your safety now.',
+          translateStandalone('notify.disasterBody'),
         sound: true,
         ...(Platform.OS === 'android' ? { vibrate: [0, 250, 250, 250] } : {}),
       },

@@ -11,7 +11,11 @@ export const SOCKET_EVENTS = Object.freeze({
 
 const DEFAULT_LOCATION = { lat: 22.3, lng: 114.1 };
 
-const socket = io({ autoConnect: true, transports: ['websocket', 'polling'] });
+// Polling-first is the Azure App Service-friendly order: HTTP long-polling
+// always works, and Socket.IO transparently upgrades to WebSocket when the
+// platform allows it. Listing 'websocket' first makes the client attempt a
+// direct WS connection that hangs/fails on tiers without WebSocket support.
+const socket = io({ autoConnect: true, transports: ['polling', 'websocket'] });
 
 export const isConnected = ref(false);
 

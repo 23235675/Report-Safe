@@ -5,6 +5,7 @@ import { getShelters, createShelter, updateShelter, deleteShelter, getDisasters,
 import { GOV_TOKEN_KEY } from '../router/index.js';
 import AppIcon from '../components/AppIcon.vue';
 import { shelterIcon, DISASTER_ICON } from '../iconography.js';
+import { t, shelterTypeLabel, sourceLabel, disasterTypeLabel } from '../i18n/index.js';
 
 const route    = useRoute();
 const govToken = ref(sessionStorage.getItem(GOV_TOKEN_KEY) || '');
@@ -37,17 +38,17 @@ function openSafePlace() {
 }
 
 function useMyLocation() {
-  if (!navigator.geolocation) { safeError.value = 'Location not available on this device.'; return; }
+  if (!navigator.geolocation) { safeError.value = t('shelters.errNoGeo'); return; }
   navigator.geolocation.getCurrentPosition(
     (pos) => { safeForm.value.lat = pos.coords.latitude.toFixed(5); safeForm.value.lng = pos.coords.longitude.toFixed(5); },
-    () => { safeError.value = 'Could not get your location — enter coordinates manually.'; },
+    () => { safeError.value = t('shelters.errGeoFailed'); },
   );
 }
 
 async function saveSafePlace() {
   safeError.value = '';
-  if (!safeForm.value.name.trim()) { safeError.value = 'Please name the safe place.'; return; }
-  if (safeForm.value.lat === '' || safeForm.value.lng === '') { safeError.value = 'Location is required — tap “Use my location” or enter coordinates.'; return; }
+  if (!safeForm.value.name.trim()) { safeError.value = t('shelters.errNameRequired'); return; }
+  if (safeForm.value.lat === '' || safeForm.value.lng === '') { safeError.value = t('shelters.errLocationRequired'); return; }
   safeSaving.value = true;
   try {
     await createSafePlace({
@@ -59,11 +60,11 @@ async function saveSafePlace() {
       disaster_id: filterDisaster.value || null,
     });
     showSafeForm.value = false;
-    safeSuccess.value = 'Thank you — your safe place has been submitted for review by an official. It will appear once approved.';
+    safeSuccess.value = t('shelters.safeSuccess');
   } catch (e) {
     safeError.value = e?.status === 401
-      ? 'Please sign in (Account tab) before suggesting a safe place.'
-      : (e?.details?.[0]?.message || e.message || 'Could not submit. Please try again.');
+      ? t('shelters.errSignIn')
+      : (e?.details?.[0]?.message || e.message || t('shelters.errSubmit'));
   } finally {
     safeSaving.value = false;
   }
@@ -210,7 +211,7 @@ async function saveCapacity() {
 }
 
 async function remove(id) {
-  if (!confirm('Remove this shelter?')) return;
+  if (!confirm(t('shelters.confirmRemove'))) return;
   try {
     await deleteShelter(id, token.value);
     await load();
@@ -226,8 +227,8 @@ watch([filterSource, filterDisaster], load);
 <template>
   <div class="shelters-page">
     <div class="page-header">
-      <h1>Shelters &amp; Safe Places</h1>
-      <p class="subtitle">Government shelters, hospitals, volunteer sites, and assembly points near active disasters.</p>
+      <h1>{{ $t('shelters.title') }}</h1>
+      <p class="subtitle">{{ $t('shelters.subtitle') }}</p>
     </div>
 
     <div v-if="error" class="msg msg-error msg-row">
@@ -239,20 +240,20 @@ watch([filterSource, filterDisaster], load);
       <span class="filter-ico"><AppIcon name="funnel" :size="16" /></span>
       <div class="filters">
         <select v-model="filterSource" class="filter-sel">
-          <option value="">All Sources</option>
-          <option value="government">Government</option>
-          <option value="volunteer">Volunteer</option>
-          <option value="citizen">Citizen</option>
+          <option value="">{{ $t('shelters.allSources') }}</option>
+          <option value="government">{{ $t('source.government') }}</option>
+          <option value="volunteer">{{ $t('source.volunteer') }}</option>
+          <option value="citizen">{{ $t('source.citizen') }}</option>
         </select>
         <select v-model="filterDisaster" class="filter-sel">
-          <option value="">All Disasters</option>
+          <option value="">{{ $t('shelters.allDisasters') }}</option>
           <option v-for="d in disasters" :key="d.id" :value="d.id">
-            {{ d.type }} — {{ d.description?.slice(0, 40) ?? d.id }}
+            {{ disasterTypeLabel(d.type) }} — {{ d.description?.slice(0, 40) ?? d.id }}
           </option>
         </select>
       </div>
-      <button v-if="canManage" @click="openCreate" class="btn btn-primary"><AppIcon name="add" :size="16" /> Add Shelter</button>
-      <button v-if="!canManage" @click="openSafePlace" class="btn btn-outline"><AppIcon name="add" :size="16" /> Suggest a Safe Place</button>
+      <button v-if="canManage" @click="openCreate" class="btn btn-primary"><AppIcon name="add" :size="16" /> {{ $t('shelters.addShelter') }}</button>
+      <button v-if="!canManage" @click="openSafePlace" class="btn btn-outline"><AppIcon name="add" :size="16" /> {{ $t('shelters.suggestSafePlace') }}</button>
     </div>
 
     <div v-if="safeSuccess" class="msg msg-success msg-row"><AppIcon name="checkmark-circle" :size="16" /><span>{{ safeSuccess }}</span></div>
@@ -261,21 +262,21 @@ watch([filterSource, filterDisaster], load);
     <div v-if="canManage && pendingPlaces.length" class="pending-panel">
       <div class="pending-head">
         <AppIcon name="alert-circle" :size="16" style="color: var(--awaiting);" />
-        <span>Citizen safe-place suggestions awaiting review ({{ pendingPlaces.length }})</span>
+        <span>{{ $t('shelters.pendingReview', { n: pendingPlaces.length }) }}</span>
       </div>
       <div v-for="p in pendingPlaces" :key="p.id" class="pending-row">
         <div class="pending-info">
           <div class="pending-name">{{ p.name }}</div>
           <div class="pending-meta">
             <span class="font-mono">{{ Number(p.lat).toFixed(4) }}, {{ Number(p.lng).toFixed(4) }}</span>
-            <span v-if="p.capacity"> · cap {{ p.capacity }}</span>
-            <span v-if="p.submitter_name"> · by {{ p.submitter_name }}</span>
+            <span v-if="p.capacity"> · {{ $t('shelters.cap', { n: p.capacity }) }}</span>
+            <span v-if="p.submitter_name"> · {{ $t('shelters.by', { name: p.submitter_name }) }}</span>
           </div>
           <div v-if="p.description" class="pending-desc">{{ p.description }}</div>
         </div>
         <div class="pending-actions">
-          <button class="btn btn-sm approve-btn" @click="reviewPlace(p.id, 'approved')"><AppIcon name="checkmark" :size="14" /> Approve</button>
-          <button class="btn btn-sm btn-ghost" style="color: var(--need-help);" @click="reviewPlace(p.id, 'rejected')"><AppIcon name="close" :size="14" /> Decline</button>
+          <button class="btn btn-sm approve-btn" @click="reviewPlace(p.id, 'approved')"><AppIcon name="checkmark" :size="14" /> {{ $t('shelters.approve') }}</button>
+          <button class="btn btn-sm btn-ghost" style="color: var(--need-help);" @click="reviewPlace(p.id, 'rejected')"><AppIcon name="close" :size="14" /> {{ $t('shelters.decline') }}</button>
         </div>
       </div>
     </div>
@@ -285,13 +286,13 @@ watch([filterSource, filterDisaster], load);
       <table class="data-table" v-if="filtered.length">
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Source</th>
-            <th>Capacity</th>
-            <th>Phone</th>
-            <th>Hours</th>
-            <th v-if="canManage">Actions</th>
+            <th>{{ $t('shelters.thName') }}</th>
+            <th>{{ $t('shelters.thType') }}</th>
+            <th>{{ $t('shelters.thSource') }}</th>
+            <th>{{ $t('shelters.thCapacity') }}</th>
+            <th>{{ $t('shelters.thPhone') }}</th>
+            <th>{{ $t('shelters.thHours') }}</th>
+            <th v-if="canManage">{{ $t('shelters.thActions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -300,8 +301,8 @@ watch([filterSource, filterDisaster], load);
               <span class="shelter-name">{{ s.name }}</span>
               <span v-if="s.address" class="shelter-addr">{{ s.address }}</span>
             </td>
-            <td><span class="type-badge inline-ico" :class="`type-${s.type}`"><AppIcon :name="shelterIcon(s.type)" :size="13" /> {{ s.type }}</span></td>
-            <td><span class="source-badge" :class="`src-${s.source || 'government'}`">{{ s.source || 'gov' }}</span></td>
+            <td><span class="type-badge inline-ico" :class="`type-${s.type}`"><AppIcon :name="shelterIcon(s.type)" :size="13" /> {{ shelterTypeLabel(s.type) }}</span></td>
+            <td><span class="source-badge" :class="`src-${s.source || 'government'}`">{{ sourceLabel(s.source) }}</span></td>
             <td>
               <div v-if="s.capacity" class="cap-cell" :class="capacityClass(s)">
                 <span class="cap-nums">{{ s.current_count }}/{{ s.capacity }}</span>
@@ -315,97 +316,97 @@ watch([filterSource, filterDisaster], load);
             <td><span class="text-mono text-sm">{{ s.phone || '—' }}</span></td>
             <td><span class="text-sm text-lo">{{ s.hours_open || '—' }}</span></td>
             <td v-if="canManage" class="actions-cell">
-              <button @click="openCapacity(s)" class="btn-sm btn-outline"><AppIcon name="people" :size="13" /> Capacity</button>
-              <button @click="openEdit(s)" class="btn-sm btn-outline"><AppIcon name="create" :size="13" /> Edit</button>
-              <button @click="remove(s.id)" class="btn-sm btn-danger" aria-label="Remove shelter"><AppIcon name="close" :size="13" /></button>
+              <button @click="openCapacity(s)" class="btn-sm btn-outline"><AppIcon name="people" :size="13" /> {{ $t('shelters.capacity') }}</button>
+              <button @click="openEdit(s)" class="btn-sm btn-outline"><AppIcon name="create" :size="13" /> {{ $t('common.edit') }}</button>
+              <button @click="remove(s.id)" class="btn-sm btn-danger" :aria-label="$t('common.remove')"><AppIcon name="close" :size="13" /></button>
             </td>
           </tr>
         </tbody>
       </table>
       <div v-else class="state-block">
         <div class="state-icon"><AppIcon name="home" :size="26" /></div>
-        <p class="state-title">No shelters found</p>
-        <p class="state-sub">No facilities match the selected filters.<template v-if="canManage"> Add one to get started.</template></p>
-        <button v-if="canManage" @click="openCreate" class="btn-secondary btn-sm" style="margin-top: var(--sp-2);"><AppIcon name="add" :size="14" /> Add Shelter</button>
+        <p class="state-title">{{ $t('shelters.noShelters') }}</p>
+        <p class="state-sub">{{ $t('shelters.noSheltersSub') }}<template v-if="canManage"> {{ $t('shelters.addOneToStart') }}</template></p>
+        <button v-if="canManage" @click="openCreate" class="btn-secondary btn-sm" style="margin-top: var(--sp-2);"><AppIcon name="add" :size="14" /> {{ $t('shelters.addShelter') }}</button>
       </div>
     </div>
-    <div v-else class="state-loading"><span class="spinner"></span> Loading shelters…</div>
+    <div v-else class="state-loading"><span class="spinner"></span> {{ $t('shelters.loadingShelters') }}</div>
 
     <!-- ── Create / Edit form modal ──────────────────────────────── -->
     <div v-if="showForm" class="modal-overlay" @click.self="showForm = false">
       <div class="modal">
         <div class="modal-head">
-          <h3>{{ editTarget ? 'Edit Shelter' : 'Add Shelter' }}</h3>
-          <button @click="showForm = false" class="modal-close" aria-label="Close"><AppIcon name="close" :size="16" /></button>
+          <h3>{{ editTarget ? $t('shelters.editShelter') : $t('shelters.addShelter') }}</h3>
+          <button @click="showForm = false" class="modal-close" :aria-label="$t('common.close')"><AppIcon name="close" :size="16" /></button>
         </div>
         <div class="modal-body">
           <div v-if="formError" class="msg msg-error" style="margin-bottom: var(--sp-3);">{{ formError }}</div>
           <div class="form-grid">
             <label class="field field-wide">
-              <span class="field-lbl">Name *</span>
-              <input v-model="form.name" class="field-input" placeholder="Shelter name" />
+              <span class="field-lbl">{{ $t('shelters.fName') }}</span>
+              <input v-model="form.name" class="field-input" :placeholder="$t('shelters.phShelterName')" />
             </label>
             <label class="field">
-              <span class="field-lbl">Latitude *</span>
+              <span class="field-lbl">{{ $t('shelters.fLat') }}</span>
               <input v-model="form.lat" class="field-input font-mono" placeholder="22.302" type="number" step="any" />
             </label>
             <label class="field">
-              <span class="field-lbl">Longitude *</span>
+              <span class="field-lbl">{{ $t('shelters.fLng') }}</span>
               <input v-model="form.lng" class="field-input font-mono" placeholder="114.177" type="number" step="any" />
             </label>
             <label class="field">
-              <span class="field-lbl">Type</span>
+              <span class="field-lbl">{{ $t('shelters.fType') }}</span>
               <select v-model="form.type" class="field-input">
-                <option value="shelter">Shelter</option>
-                <option value="hospital">Hospital</option>
-                <option value="clinic">Clinic</option>
-                <option value="assembly">Assembly Point</option>
+                <option value="shelter">{{ $t('shelterType.shelter') }}</option>
+                <option value="hospital">{{ $t('shelterType.hospital') }}</option>
+                <option value="clinic">{{ $t('shelterType.clinic') }}</option>
+                <option value="assembly">{{ $t('shelterType.assembly') }}</option>
               </select>
             </label>
             <label class="field">
-              <span class="field-lbl">Source</span>
+              <span class="field-lbl">{{ $t('shelters.fSource') }}</span>
               <select v-model="form.source" class="field-input">
-                <option value="government">Government</option>
-                <option value="volunteer">Volunteer</option>
-                <option value="citizen">Citizen</option>
+                <option value="government">{{ $t('source.government') }}</option>
+                <option value="volunteer">{{ $t('source.volunteer') }}</option>
+                <option value="citizen">{{ $t('source.citizen') }}</option>
               </select>
             </label>
             <label class="field">
-              <span class="field-lbl">Max Capacity</span>
+              <span class="field-lbl">{{ $t('shelters.fMaxCapacity') }}</span>
               <input v-model="form.capacity" class="field-input" type="number" min="0" placeholder="500" />
             </label>
             <label class="field">
-              <span class="field-lbl">Current Count</span>
+              <span class="field-lbl">{{ $t('shelters.fCurrentCount') }}</span>
               <input v-model="form.current_count" class="field-input" type="number" min="0" placeholder="0" />
             </label>
             <label class="field">
-              <span class="field-lbl">Phone</span>
+              <span class="field-lbl">{{ $t('shelters.fPhone') }}</span>
               <input v-model="form.phone" class="field-input font-mono" placeholder="+886-2-1234-5678" />
             </label>
             <label class="field">
-              <span class="field-lbl">Contact Name</span>
-              <input v-model="form.contact_name" class="field-input" placeholder="Site coordinator" />
+              <span class="field-lbl">{{ $t('shelters.fContactName') }}</span>
+              <input v-model="form.contact_name" class="field-input" :placeholder="$t('shelters.phCoordinator')" />
             </label>
             <label class="field field-wide">
-              <span class="field-lbl">Address</span>
-              <input v-model="form.address" class="field-input" placeholder="Street address" />
+              <span class="field-lbl">{{ $t('shelters.fAddress') }}</span>
+              <input v-model="form.address" class="field-input" :placeholder="$t('shelters.phAddress')" />
             </label>
             <label class="field field-wide">
-              <span class="field-lbl">Hours Open</span>
-              <input v-model="form.hours_open" class="field-input" placeholder="24/7 or Mon–Fri 08:00–20:00" />
+              <span class="field-lbl">{{ $t('shelters.fHours') }}</span>
+              <input v-model="form.hours_open" class="field-input" :placeholder="$t('shelters.phHours')" />
             </label>
             <label class="field field-wide">
-              <span class="field-lbl">Disaster</span>
+              <span class="field-lbl">{{ $t('shelters.fDisaster') }}</span>
               <select v-model="form.disaster_id" class="field-input">
-                <option value="">Any / Not specific</option>
-                <option v-for="d in disasters" :key="d.id" :value="d.id">{{ d.type }} — {{ d.description?.slice(0, 50) ?? d.id }}</option>
+                <option value="">{{ $t('shelters.anyNotSpecific') }}</option>
+                <option v-for="d in disasters" :key="d.id" :value="d.id">{{ disasterTypeLabel(d.type) }} — {{ d.description?.slice(0, 50) ?? d.id }}</option>
               </select>
             </label>
           </div>
         </div>
         <div class="modal-foot">
-          <button @click="showForm = false" class="btn btn-ghost">Cancel</button>
-          <button @click="save" :disabled="saving" class="btn btn-primary">{{ saving ? 'Saving…' : (editTarget ? 'Save Changes' : 'Create Shelter') }}</button>
+          <button @click="showForm = false" class="btn btn-ghost">{{ $t('common.cancel') }}</button>
+          <button @click="save" :disabled="saving" class="btn btn-primary">{{ saving ? $t('shelters.saving') : (editTarget ? $t('shelters.saveChanges') : $t('shelters.createShelter')) }}</button>
         </div>
       </div>
     </div>
@@ -414,20 +415,20 @@ watch([filterSource, filterDisaster], load);
     <div v-if="showCapModal" class="modal-overlay" @click.self="showCapModal = false">
       <div class="modal modal-sm">
         <div class="modal-head">
-          <h3>Update Capacity</h3>
-          <button @click="showCapModal = false" class="modal-close" aria-label="Close"><AppIcon name="close" :size="16" /></button>
+          <h3>{{ $t('shelters.updateCapacity') }}</h3>
+          <button @click="showCapModal = false" class="modal-close" :aria-label="$t('common.close')"><AppIcon name="close" :size="16" /></button>
         </div>
         <div class="modal-body">
           <p class="cap-modal-name">{{ capTarget?.name }}</p>
           <label class="field">
-            <span class="field-lbl">Current Occupancy</span>
+            <span class="field-lbl">{{ $t('shelters.currentOccupancy') }}</span>
             <input v-model="capValue" class="field-input font-mono" type="number" min="0" :max="capTarget?.capacity" />
           </label>
-          <p v-if="capTarget?.capacity" class="cap-modal-max">Max capacity: {{ capTarget.capacity }}</p>
+          <p v-if="capTarget?.capacity" class="cap-modal-max">{{ $t('shelters.maxCapacity', { n: capTarget.capacity }) }}</p>
         </div>
         <div class="modal-foot">
-          <button @click="showCapModal = false" class="btn btn-ghost">Cancel</button>
-          <button @click="saveCapacity" class="btn btn-primary">Update</button>
+          <button @click="showCapModal = false" class="btn btn-ghost">{{ $t('common.cancel') }}</button>
+          <button @click="saveCapacity" class="btn btn-primary">{{ $t('common.update') }}</button>
         </div>
       </div>
     </div>
@@ -436,47 +437,47 @@ watch([filterSource, filterDisaster], load);
     <div v-if="showSafeForm" class="modal-overlay" @click.self="showSafeForm = false">
       <div class="modal">
         <div class="modal-head">
-          <h3>Suggest a Safe Place</h3>
-          <button @click="showSafeForm = false" class="modal-close" aria-label="Close"><AppIcon name="close" :size="16" /></button>
+          <h3>{{ $t('shelters.suggestSafePlace') }}</h3>
+          <button @click="showSafeForm = false" class="modal-close" :aria-label="$t('common.close')"><AppIcon name="close" :size="16" /></button>
         </div>
         <div class="modal-body">
-          <p class="subtitle" style="margin-top:0;">Share a refuge location you know about (a community hall, a covered car park, higher ground). Authorities and neighbours can see it on the map.</p>
+          <p class="subtitle" style="margin-top:0;">{{ $t('shelters.safeShareDesc') }}</p>
           <div v-if="!isLoggedIn" class="msg msg-warn msg-row" style="margin-bottom:var(--sp-3);">
-            <AppIcon name="alert-circle" :size="16" /><span>Sign in on the Account tab first — submissions are tied to your account.</span>
+            <AppIcon name="alert-circle" :size="16" /><span>{{ $t('shelters.safeSignInWarn') }}</span>
           </div>
           <div v-if="safeError" class="msg msg-error msg-row" style="margin-bottom:var(--sp-3);">
             <AppIcon name="alert-circle" :size="16" /><span>{{ safeError }}</span>
           </div>
           <label class="field">
-            <span class="field-lbl">Name *</span>
-            <input v-model="safeForm.name" class="field-input" placeholder="e.g. Kowloon Park covered area" />
+            <span class="field-lbl">{{ $t('shelters.fName') }}</span>
+            <input v-model="safeForm.name" class="field-input" :placeholder="$t('shelters.phSafeName')" />
           </label>
           <div class="form-grid-2">
             <label class="field">
-              <span class="field-lbl">Latitude *</span>
+              <span class="field-lbl">{{ $t('shelters.fLat') }}</span>
               <input v-model="safeForm.lat" class="field-input font-mono" placeholder="22.30" />
             </label>
             <label class="field">
-              <span class="field-lbl">Longitude *</span>
+              <span class="field-lbl">{{ $t('shelters.fLng') }}</span>
               <input v-model="safeForm.lng" class="field-input font-mono" placeholder="114.17" />
             </label>
           </div>
           <button type="button" class="btn btn-ghost btn-sm" @click="useMyLocation" style="margin-bottom:var(--sp-2);">
-            <AppIcon name="locate" :size="14" /> Use my location
+            <AppIcon name="locate" :size="14" /> {{ $t('shelters.useMyLocation') }}
           </button>
           <label class="field">
-            <span class="field-lbl">Approx. capacity <span class="field-hint">(optional)</span></span>
+            <span class="field-lbl">{{ $t('shelters.approxCapacity') }} <span class="field-hint">{{ $t('common.optional') }}</span></span>
             <input v-model="safeForm.capacity" class="field-input font-mono" type="number" min="1" placeholder="e.g. 50" />
           </label>
           <label class="field">
-            <span class="field-lbl">Description <span class="field-hint">(optional)</span></span>
-            <textarea v-model="safeForm.description" class="field-input" rows="2" placeholder="Anything useful — entrance, shelter type, hazards…"></textarea>
+            <span class="field-lbl">{{ $t('shelters.description') }} <span class="field-hint">{{ $t('common.optional') }}</span></span>
+            <textarea v-model="safeForm.description" class="field-input" rows="2" :placeholder="$t('shelters.phSafeDesc')"></textarea>
           </label>
         </div>
         <div class="modal-foot">
-          <button @click="showSafeForm = false" class="btn btn-ghost">Cancel</button>
+          <button @click="showSafeForm = false" class="btn btn-ghost">{{ $t('common.cancel') }}</button>
           <button @click="saveSafePlace" :disabled="safeSaving || !isLoggedIn" class="btn btn-primary">
-            {{ safeSaving ? 'Submitting…' : 'Submit' }}
+            {{ safeSaving ? $t('shelters.submitting') : $t('common.submit') }}
           </button>
         </div>
       </div>

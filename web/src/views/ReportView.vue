@@ -7,6 +7,7 @@ import { isValidHKID, normalizeHKID } from '../hkid.js';
 import AppIcon from '../components/AppIcon.vue';
 import VisibilityChip from '../components/VisibilityChip.vue';
 import { statusIcon } from '../iconography.js';
+import { t } from '../i18n/index.js';
 
 const route = useRoute();
 
@@ -35,12 +36,20 @@ const { enqueue, markSent, retryAll, pendingCount, storageUnavailable } = useOut
 const proxyStatuses = ['injured', 'need_help', 'awaiting_response', 'missing'];
 const availableStatuses = computed(() => proxyStatuses);
 
+// Colour + active-class per status (text labels come from i18n via metaText).
 const STATUS_META = {
-  injured:           { label: 'Injured',             sub: 'Needs medical attention',                    color: 'var(--injured)',    cls: 'active-injured'   },
-  need_help:         { label: 'Needs Help',           sub: 'Please send rescuers to their location',     color: 'var(--need-help)',  cls: 'active-need-help' },
-  awaiting_response: { label: 'Awaiting Response',   sub: 'In the disaster zone, status unconfirmed',   color: 'var(--awaiting)',   cls: 'active-awaiting'  },
-  missing:           { label: 'Missing',             sub: 'Last known location was in the affected area',color: 'var(--missing)',    cls: 'active-missing'   },
+  injured:           { color: 'var(--injured)',    cls: 'active-injured'   },
+  need_help:         { color: 'var(--need-help)',  cls: 'active-need-help' },
+  awaiting_response: { color: 'var(--awaiting)',   cls: 'active-awaiting'  },
+  missing:           { color: 'var(--missing)',    cls: 'active-missing'   },
 };
+
+// Status → i18n key fragment for its proxy-form label/sub-label.
+const META_KEY = { injured: 'Injured', need_help: 'NeedHelp', awaiting_response: 'Awaiting', missing: 'Missing' };
+function metaText(s) {
+  const k = META_KEY[s] || 'Injured';
+  return { label: t(`report.meta${k}Label`), sub: t(`report.meta${k}Sub`) };
+}
 
 const showNotes = computed(() => status.value === 'injured' || status.value === 'need_help');
 
@@ -57,15 +66,15 @@ function resetForm() {
 async function onSubmit() {
   const name = subjectName.value.trim();
   if (!name) {
-    message.value = { type: 'error', text: 'Please enter the name of the person you are reporting.' };
+    message.value = { type: 'error', text: t('report.errName') };
     return;
   }
   if (!reporterName.value.trim()) {
-    message.value = { type: 'error', text: 'Please enter your name as the person submitting this report.' };
+    message.value = { type: 'error', text: t('report.errReporter') };
     return;
   }
   if (personalId.value.trim() && !isValidHKID(personalId.value)) {
-    message.value = { type: 'error', text: 'HKID looks invalid — check the format A123456(7).' };
+    message.value = { type: 'error', text: t('report.errHkid') };
     return;
   }
 
@@ -108,17 +117,17 @@ async function onSubmit() {
         markSent(id); // remove from outbox — retrying won't help
         message.value = {
           type: 'error',
-          text: err?.message || 'The server rejected this report. Please check the details and try again.',
+          text: err?.message || t('report.errRejected'),
         };
       } else {
         message.value = {
           type: 'warn',
-          text: 'No connection to the server — saved offline and will be delivered when connectivity returns.',
+          text: t('report.warnOffline'),
         };
       }
     }
   } catch {
-    message.value = { type: 'error', text: 'Something went wrong. Your report has been saved locally.' };
+    message.value = { type: 'error', text: t('report.errGeneric') };
   } finally {
     submitting.value = false;
   }
@@ -131,21 +140,20 @@ onMounted(async () => { try { await retryAll(); } catch {} });
   <div style="max-width: 600px; margin: 0 auto;">
 
     <div class="page-header">
-      <h1>Submit a Report</h1>
+      <h1>{{ $t('report.title') }}</h1>
       <p class="subtitle">
-        File a report on behalf of a family member or neighbor in the affected area.
-        The web portal is for proxy reports only — if you are personally affected, use the mobile app to report your own status.
+        {{ $t('report.subtitle') }}
       </p>
     </div>
 
     <!-- ── Success State ─────────────────────────────────────────── -->
     <div v-if="success" class="state-block" style="border: none; background: transparent;">
       <div class="state-icon is-safe" style="width: 84px; height: 84px;"><AppIcon name="checkmark-circle" :size="44" /></div>
-      <h2 style="margin-bottom: var(--sp-1);">Report Submitted</h2>
-      <p class="state-sub">The report has been filed and shared with rescue coordination teams.</p>
-      <div class="ref-pill"><AppIcon name="shield-checkmark" :size="13" /> Ref {{ (lastRefId || '').slice(0, 8) }}</div>
+      <h2 style="margin-bottom: var(--sp-1);">{{ $t('report.submitted') }}</h2>
+      <p class="state-sub">{{ $t('report.submittedSub') }}</p>
+      <div class="ref-pill"><AppIcon name="shield-checkmark" :size="13" /> {{ $t('report.ref') }} {{ (lastRefId || '').slice(0, 8) }}</div>
       <button class="btn-secondary" @click="success = false" style="margin-top: var(--sp-5);">
-        <AppIcon name="add" :size="16" /> Submit Another Report
+        <AppIcon name="add" :size="16" /> {{ $t('report.submitAnother') }}
       </button>
     </div>
 
@@ -153,11 +161,11 @@ onMounted(async () => { try { await retryAll(); } catch {} });
       <!-- Warnings -->
       <div v-if="storageUnavailable()" class="msg msg-warn msg-row">
         <AppIcon name="warning" :size="16" />
-        <span>Local storage is unavailable — your report is held in memory only.</span>
+        <span>{{ $t('report.storageUnavailable') }}</span>
       </div>
       <div v-if="pendingCount > 0" class="outbox-badge">
         <AppIcon name="cloud-offline" :size="14" />
-        {{ pendingCount }} unsent {{ pendingCount === 1 ? 'report' : 'reports' }} queued — will send when connected
+        {{ $t(pendingCount === 1 ? 'report.queuedOne' : 'report.queuedMany', { n: pendingCount }) }}
       </div>
 
       <!-- Web is proxy-only: every web report is filed on behalf of a relative. -->
@@ -165,10 +173,9 @@ onMounted(async () => { try { await retryAll(); } catch {} });
         <div style="display: flex; align-items: flex-start; gap: var(--sp-3); font-size: 15px; font-weight: 600; color: var(--text-hi);">
           <span class="proxy-ico"><AppIcon name="people" :size="20" /></span>
           <div>
-            Proxy report — filing on someone else's behalf
+            {{ $t('report.proxyTitle') }}
             <div style="font-size: 13px; font-weight: 400; color: var(--text-lo); margin-top: 2px;">
-              Use this form to report the status of a family member or neighbor in the affected area.
-              If they are safe, they should confirm it themselves via the mobile app.
+              {{ $t('report.proxyBody') }}
             </div>
           </div>
         </div>
@@ -178,31 +185,31 @@ onMounted(async () => { try { await retryAll(); } catch {} });
 
         <!-- Subject name -->
         <div class="field">
-          <label for="subject-name">Name of the person you are reporting</label>
+          <label for="subject-name">{{ $t('report.subjectName') }}</label>
           <input
             id="subject-name"
             v-model="subjectName"
             type="text"
-            placeholder="e.g. Wei Chen"
+            :placeholder="$t('report.subjectPlaceholder')"
             autocomplete="name"
           />
         </div>
 
         <!-- Reporter name -->
         <div class="field">
-          <label for="reporter-name">Your name (the person submitting this report)</label>
+          <label for="reporter-name">{{ $t('report.reporterName') }}</label>
           <input
             id="reporter-name"
             v-model="reporterName"
             type="text"
-            placeholder="e.g. David Lin (brother)"
+            :placeholder="$t('report.reporterPlaceholder')"
             autocomplete="off"
           />
         </div>
 
         <!-- Status selection -->
         <div class="field">
-          <label style="margin-bottom: var(--sp-3);">Their current status</label>
+          <label style="margin-bottom: var(--sp-3);">{{ $t('report.currentStatus') }}</label>
           <div class="status-group">
             <label
               v-for="s in availableStatuses"
@@ -220,8 +227,8 @@ onMounted(async () => { try { await retryAll(); } catch {} });
                 <AppIcon :name="statusIcon(s)" :size="22" />
               </span>
               <div style="flex: 1;">
-                <div style="font-size: 16px; font-weight: 700; line-height: 1.2;">{{ STATUS_META[s].label }}</div>
-                <div style="font-size: 13px; font-weight: 400; margin-top: 3px; opacity: 0.8;">{{ STATUS_META[s].sub }}</div>
+                <div style="font-size: 16px; font-weight: 700; line-height: 1.2;">{{ metaText(s).label }}</div>
+                <div style="font-size: 13px; font-weight: 400; margin-top: 3px; opacity: 0.8;">{{ metaText(s).sub }}</div>
               </div>
               <AppIcon
                 :name="status === s ? 'radio-on' : 'radio-off'"
@@ -234,20 +241,20 @@ onMounted(async () => { try { await retryAll(); } catch {} });
 
         <!-- Medical notes -->
         <div v-show="showNotes" class="field">
-          <label for="notes">Medical Notes / Situation Details</label>
+          <label for="notes">{{ $t('report.notesLabel') }}</label>
           <textarea
             id="notes"
             v-model="medicalNotes"
             rows="3"
-            placeholder="Describe injuries, what help is needed, number of people..."
+            :placeholder="$t('report.notesPlaceholder')"
           ></textarea>
         </div>
 
         <!-- Personal ID (HKID) -->
         <div class="field">
           <label for="personal-id">
-            Their HKID
-            <span style="font-weight: 400; color: var(--text-lo);">(if known — helps rescue teams confirm identity)</span>
+            {{ $t('report.hkidLabel') }}
+            <span style="font-weight: 400; color: var(--text-lo);">{{ $t('report.hkidHint') }}</span>
           </label>
           <input id="personal-id" v-model="personalId" type="text" placeholder="A123456(7)" autocomplete="off" style="text-transform: uppercase;" />
         </div>
@@ -255,8 +262,8 @@ onMounted(async () => { try { await retryAll(); } catch {} });
         <!-- Phone -->
         <div class="field">
           <label for="phone">
-            Their phone number
-            <span style="font-weight: 400; color: var(--text-lo);">(if known)</span>
+            {{ $t('report.phoneLabel') }}
+            <span style="font-weight: 400; color: var(--text-lo);">{{ $t('report.phoneHint') }}</span>
           </label>
           <input id="phone" v-model="phone" type="tel" placeholder="+852 ..." autocomplete="tel" />
         </div>
@@ -267,8 +274,8 @@ onMounted(async () => { try { await retryAll(); } catch {} });
           :disabled="submitting"
           :class="['btn-xl', 'submit-btn', status === 'need_help' ? 'btn-danger' : '']"
         >
-          <template v-if="submitting"><span class="spinner" style="border-top-color: #fff;"></span> Submitting…</template>
-          <template v-else><AppIcon name="send" :size="18" /> Submit This Report</template>
+          <template v-if="submitting"><span class="spinner" style="border-top-color: #fff;"></span> {{ $t('report.submitting') }}</template>
+          <template v-else><AppIcon name="send" :size="18" /> {{ $t('report.submitReport') }}</template>
         </button>
       </form>
 
@@ -279,14 +286,13 @@ onMounted(async () => { try { await retryAll(); } catch {} });
 
       <!-- Privacy note: the two tiers this report will be visible under -->
       <div class="report-privacy">
-        <div class="rp-head inline-ico"><AppIcon name="lock-closed" :size="15" /> Who can see this report</div>
+        <div class="rp-head inline-ico"><AppIcon name="lock-closed" :size="15" /> {{ $t('report.whoCanSee') }}</div>
         <div class="rp-tiers">
           <VisibilityChip tier="coarse" />
           <VisibilityChip tier="rescue" />
         </div>
         <p class="rp-note">
-          Family &amp; public search shows approximate location only (±1 km). Exact GPS and medical
-          notes are visible to authorised rescue teams only.
+          {{ $t('report.privacyNote') }}
         </p>
       </div>
     </template>

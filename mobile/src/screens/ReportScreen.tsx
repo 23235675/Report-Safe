@@ -9,28 +9,29 @@ import { Ionicons } from '@expo/vector-icons';
 import { submitReport } from '../services/syncService';
 import type { PendingReport, ReportStatus } from '../api/apiClient';
 import { isValidHKID, normalizeHKID } from '../utils/hkid';
-import { C, R, SHADOW, statusColor, statusDim, STATUS_LABEL, STATUS_ICON } from '../theme';
+import { C, R, SHADOW, statusColor, statusDim, STATUS_ICON } from '../theme';
 import VisibilityChip from '../components/VisibilityChip';
+import { useTranslation } from '../i18n';
 
 const DEFAULT_LOCATION = { lat: 22.3, lng: 114.1 };
 
 type StatusOption = {
-  value: ReportStatus;
-  sub:   string;
+  value:  ReportStatus;
+  subKey: string;
 };
 
 const SELF_STATUSES: StatusOption[] = [
-  { value: 'safe',      sub: 'I am unharmed' },
-  { value: 'injured',   sub: 'I need medical attention' },
-  { value: 'need_help', sub: 'Send rescuers to my location' },
+  { value: 'safe',      subKey: 'report.subSelfSafe' },
+  { value: 'injured',   subKey: 'report.subSelfInjured' },
+  { value: 'need_help', subKey: 'report.subSelfNeedHelp' },
 ];
 
 const PROXY_STATUSES: StatusOption[] = [
-  { value: 'safe',              sub: 'They are unharmed' },
-  { value: 'injured',           sub: 'Needs medical attention' },
-  { value: 'need_help',         sub: 'Needs rescuers' },
-  { value: 'awaiting_response', sub: 'In disaster zone, not confirmed' },
-  { value: 'missing',           sub: 'Last seen in affected area' },
+  { value: 'safe',              subKey: 'report.subProxySafe' },
+  { value: 'injured',           subKey: 'report.subProxyInjured' },
+  { value: 'need_help',         subKey: 'report.subProxyNeedHelp' },
+  { value: 'awaiting_response', subKey: 'report.subProxyAwaiting' },
+  { value: 'missing',           subKey: 'report.subProxyMissing' },
 ];
 
 function msgColors(kind: string) {
@@ -47,6 +48,7 @@ interface Props {
 }
 
 export default function ReportScreen({ route }: Props): React.JSX.Element {
+  const { t, statusLabel } = useTranslation();
   const params        = route?.params;
   const [isProxy,     setIsProxy]     = useState(params?.proxy === true);
   const [subjectName, setSubjectName] = useState(params?.prefilledName ?? '');
@@ -96,12 +98,12 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
   async function onSubmit(): Promise<void> {
     if (!subjectName.trim()) {
       setMessage({ kind: 'error', text: isProxy
-        ? 'Please enter the name of the person being reported.'
-        : 'Please enter your name.' });
+        ? t('report.errSubjectProxy')
+        : t('report.errSubjectSelf') });
       return;
     }
     if (isProxy && !reporterName.trim()) {
-      setMessage({ kind: 'error', text: 'Please enter your name as the reporter.' });
+      setMessage({ kind: 'error', text: t('report.errReporter') });
       return;
     }
     // Phone + HKID are required basic data for self-reports. For proxy
@@ -109,21 +111,21 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
     // know the subject's HKID, and a missing ID must never stop a rescue.
     if (!isProxy) {
       if (!phone.trim()) {
-        setMessage({ kind: 'error', text: 'Please enter your phone number.' });
+        setMessage({ kind: 'error', text: t('report.errPhone') });
         return;
       }
       if (!personalId.trim()) {
-        setMessage({ kind: 'error', text: 'Please enter your HKID number, e.g. A123456(7).' });
+        setMessage({ kind: 'error', text: t('report.errHkidRequired') });
         return;
       }
     }
     if (personalId.trim() && !isValidHKID(personalId)) {
-      setMessage({ kind: 'error', text: 'HKID looks invalid — check the format A123456(7).' });
+      setMessage({ kind: 'error', text: t('report.errHkidInvalid') });
       return;
     }
 
     setSubmitting(true);
-    setMessage({ kind: 'info', text: 'Getting your location...' });
+    setMessage({ kind: 'info', text: t('report.gettingLocation') });
 
     try {
       const id     = randomUUID();
@@ -143,7 +145,7 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
         user_type:     'mobile',
       };
 
-      setMessage({ kind: 'info', text: 'Submitting...' });
+      setMessage({ kind: 'info', text: t('report.submittingProgress') });
       const result = await submitReport(report);
 
       if (result.delivered > 0 || result.relayed > 0) {
@@ -153,12 +155,12 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
       } else if (result.rejected && result.rejected > 0) {
         // The server permanently refused it (e.g. bad data) — show the real
         // reason instead of pretending it's queued.
-        setMessage({ kind: 'error', text: result.error || 'The server rejected this report. Please check the details and try again.' });
+        setMessage({ kind: 'error', text: result.error || t('report.errRejected') });
       } else {
-        setMessage({ kind: 'warn', text: 'No connection — saved offline and will send when connected.' });
+        setMessage({ kind: 'warn', text: t('report.warnOffline') });
       }
     } catch {
-      setMessage({ kind: 'error', text: 'Report saved locally. Will retry automatically.' });
+      setMessage({ kind: 'error', text: t('report.errSavedLocally') });
     } finally {
       setSubmitting(false);
     }
@@ -170,11 +172,11 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
         <View style={S.successCircle}>
           <Ionicons name="checkmark-circle" size={72} color={C.safe} />
         </View>
-        <Text style={S.successTitle}>Report Delivered</Text>
-        <Text style={S.successSub}>Your status has been sent to rescue teams and family.</Text>
+        <Text style={S.successTitle}>{t('report.delivered')}</Text>
+        <Text style={S.successSub}>{t('report.deliveredSub')}</Text>
         <View style={S.refPill}>
           <Ionicons name="receipt-outline" size={13} color={C.textLo} />
-          <Text style={S.refText}>Ref {lastRefId?.slice(0, 8)}</Text>
+          <Text style={S.refText}>{t('report.ref')} {lastRefId?.slice(0, 8)}</Text>
         </View>
         <TouchableOpacity
           style={[S.submitBtn, { width: '100%', marginTop: 28 }]}
@@ -182,7 +184,7 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
           activeOpacity={0.85}
         >
           <Ionicons name="add-circle-outline" size={18} color={C.textInv} />
-          <Text style={S.submitText}>Submit Another Report</Text>
+          <Text style={S.submitText}>{t('report.submitAnother')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -198,8 +200,8 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
       <View style={S.proxyToggle}>
         <Ionicons name={isProxy ? 'people' : 'person'} size={20} color={C.govBlue} />
         <View style={{ flex: 1 }}>
-          <Text style={S.proxyLabel}>Reporting for someone else</Text>
-          <Text style={S.proxySub}>Submit on behalf of a family member</Text>
+          <Text style={S.proxyLabel}>{t('report.proxyLabel')}</Text>
+          <Text style={S.proxySub}>{t('report.proxySub')}</Text>
         </View>
         <Switch
           value={isProxy}
@@ -212,7 +214,7 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
       {/* Status selection */}
       <View style={S.sectionHeader}>
         <Text style={S.sectionLabel}>
-          {isProxy ? 'Their current status' : 'I am currently'}
+          {isProxy ? t('report.theirStatus') : t('report.iAmCurrently')}
         </Text>
       </View>
 
@@ -236,9 +238,9 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[S.statusLabel, { color: active ? col : C.textHi }]}>
-                {STATUS_LABEL[opt.value] || opt.value}
+                {statusLabel(opt.value)}
               </Text>
-              <Text style={S.statusSub}>{opt.sub}</Text>
+              <Text style={S.statusSub}>{t(opt.subKey)}</Text>
             </View>
             <Ionicons
               name={active ? 'radio-button-on' : 'radio-button-off'}
@@ -253,13 +255,13 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
       <View style={S.formPad}>
         {/* Subject name */}
         <Text style={S.fieldLabel}>
-          {isProxy ? 'THEIR NAME (PERSON BEING REPORTED)' : 'YOUR NAME'}
+          {isProxy ? t('report.nameProxy') : t('report.nameSelf')}
         </Text>
         <TextInput
           style={S.input}
           value={subjectName}
           onChangeText={setSubjectName}
-          placeholder={isProxy ? 'e.g. Wei Chen' : 'e.g. Mei Wong'}
+          placeholder={isProxy ? t('report.phSubjectProxy') : t('report.phSubjectSelf')}
           placeholderTextColor={C.textLo}
           autoComplete="name"
           returnKeyType="next"
@@ -268,12 +270,12 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
         {/* Reporter name (proxy only) */}
         {isProxy ? (
           <>
-            <Text style={S.fieldLabel}>YOUR NAME (SUBMITTER)</Text>
+            <Text style={S.fieldLabel}>{t('report.nameSubmitter')}</Text>
             <TextInput
               style={S.input}
               value={reporterName}
               onChangeText={setReporterName}
-              placeholder="e.g. David Lin (brother)"
+              placeholder={t('report.phReporter')}
               placeholderTextColor={C.textLo}
               autoComplete="off"
             />
@@ -283,13 +285,13 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
         {/* Medical notes */}
         {showNotes ? (
           <>
-            <Text style={S.fieldLabel}>MEDICAL NOTES / SITUATION</Text>
+            <Text style={S.fieldLabel}>{t('report.notes')}</Text>
             <TextInput
               style={[S.input, S.textarea]}
               value={notes}
               onChangeText={setNotes}
               multiline
-              placeholder="Describe injuries or what help is needed"
+              placeholder={t('report.phNotes')}
               placeholderTextColor={C.textLo}
               textAlignVertical="top"
             />
@@ -297,7 +299,7 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
         ) : null}
 
         <Text style={S.fieldLabel}>
-          {isProxy ? 'THEIR HKID (IF KNOWN)' : 'YOUR HKID *'}
+          {isProxy ? t('report.hkidProxy') : t('report.hkidSelf')}
         </Text>
         <TextInput
           style={S.input}
@@ -310,7 +312,7 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
         />
 
         <Text style={S.fieldLabel}>
-          {isProxy ? 'THEIR PHONE (IF KNOWN)' : 'YOUR PHONE *'}
+          {isProxy ? t('report.phoneProxy') : t('report.phoneSelf')}
         </Text>
         <TextInput
           style={S.input}
@@ -334,7 +336,7 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
             <>
               <Ionicons name="send" size={17} color={C.textInv} />
               <Text style={S.submitText}>
-                {isProxy ? 'Submit Report for Someone Else' : 'Submit My Report'}
+                {isProxy ? t('report.submitProxy') : t('report.submitSelf')}
               </Text>
             </>
           )}
@@ -362,15 +364,14 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
         <View style={S.privacyBox}>
           <View style={S.privacyHead}>
             <Ionicons name="lock-closed" size={14} color={C.textMd} />
-            <Text style={S.privacyHeadText}>Who can see this report</Text>
+            <Text style={S.privacyHeadText}>{t('report.whoCanSee')}</Text>
           </View>
           <View style={S.privacyChips}>
             <VisibilityChip tier="coarse" />
             <VisibilityChip tier="rescue" />
           </View>
           <Text style={S.privacyText}>
-            Family &amp; public search shows approximate location only (±1 km). Exact GPS and medical
-            notes are visible to authorized rescue teams only.
+            {t('report.privacyText')}
           </Text>
         </View>
       </View>

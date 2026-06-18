@@ -11,6 +11,7 @@ import {
   createSafePlace, listPendingSafePlaces, moderateSafePlace,
 } from '../api/apiClient';
 import type { Disaster, SafePlace } from '../api/apiClient';
+import { useTranslation } from '../i18n';
 
 interface Shelter {
   id: string;
@@ -41,6 +42,13 @@ function capPct(s: Shelter): number | null {
 }
 
 export default function MapScreen(): React.JSX.Element {
+  const { t, disasterTypeLabel } = useTranslation();
+  /** Localized facility-type label, falling back to the raw type. */
+  const typeLabel = (ty: string) => {
+    const key = `shelterType.${ty}`;
+    const v = t(key);
+    return v === key ? ty : v;
+  };
   const [shelters,   setShelters]   = useState<Shelter[]>([]);
   const [disasters,  setDisasters]  = useState<Disaster[]>([]);
   const [filterDis,  setFilterDis]  = useState<string>('');
@@ -66,16 +74,16 @@ export default function MapScreen(): React.JSX.Element {
   async function useMyLocation() {
     try {
       const perm = await Location.requestForegroundPermissionsAsync();
-      if (perm.status !== 'granted') { setSpErr('Location permission denied — enter coordinates manually.'); return; }
+      if (perm.status !== 'granted') { setSpErr(t('map.errPermDenied')); return; }
       const pos = await Location.getCurrentPositionAsync({});
       setSpForm((f) => ({ ...f, lat: pos.coords.latitude.toFixed(5), lng: pos.coords.longitude.toFixed(5) }));
-    } catch { setSpErr('Could not get your location — enter coordinates manually.'); }
+    } catch { setSpErr(t('map.errGeoFailed')); }
   }
 
   async function submitSafePlace() {
     setSpErr('');
-    if (!spForm.name.trim()) { setSpErr('Please name the safe place.'); return; }
-    if (spForm.lat === '' || spForm.lng === '') { setSpErr('Location is required — tap “Use my location” or enter coordinates.'); return; }
+    if (!spForm.name.trim()) { setSpErr(t('map.errNameRequired')); return; }
+    if (spForm.lat === '' || spForm.lng === '') { setSpErr(t('map.errLocationRequired')); return; }
     setSpBusy(true);
     try {
       await createSafePlace({
@@ -88,10 +96,10 @@ export default function MapScreen(): React.JSX.Element {
       });
       setShowForm(false);
       setSpForm({ name: '', lat: '', lng: '', description: '', capacity: '' });
-      setSpOk('Thank you — submitted for review by an official. It will appear once approved.');
+      setSpOk(t('map.submittedOk'));
       setTimeout(() => setSpOk(''), 4000);
     } catch (e: any) {
-      setSpErr(e?.status === 401 ? 'Please sign in (Account tab) first.' : (e.message || 'Could not submit.'));
+      setSpErr(e?.status === 401 ? t('map.errSignIn') : (e.message || t('map.errSubmit')));
     } finally {
       setSpBusy(false);
     }
@@ -154,8 +162,8 @@ export default function MapScreen(): React.JSX.Element {
           <Ionicons name="navigate" size={20} color={C.govBlue} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={S.headerTitle}>Shelters &amp; Safe Places</Text>
-          <Text style={S.headerSub}>Pull to refresh. Tap a card for directions.</Text>
+          <Text style={S.headerTitle}>{t('map.title')}</Text>
+          <Text style={S.headerSub}>{t('map.subtitle')}</Text>
         </View>
       </View>
 
@@ -166,7 +174,7 @@ export default function MapScreen(): React.JSX.Element {
             onPress={() => setFilterDis('')}
             style={[S.filterChip, !filterDis && S.filterActive]}
           >
-            <Text style={[S.filterChipText, !filterDis && { color: C.govBlue }]}>All</Text>
+            <Text style={[S.filterChipText, !filterDis && { color: C.govBlue }]}>{t('map.all')}</Text>
           </TouchableOpacity>
           {disasters.map((d) => (
             <TouchableOpacity
@@ -175,7 +183,7 @@ export default function MapScreen(): React.JSX.Element {
               style={[S.filterChip, filterDis === d.id && S.filterActive]}
             >
               <Text style={[S.filterChipText, filterDis === d.id && { color: C.govBlue }]}>
-                {d.type.charAt(0).toUpperCase() + d.type.slice(1)}
+                {disasterTypeLabel(d.type)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -186,7 +194,7 @@ export default function MapScreen(): React.JSX.Element {
       <View style={S.suggestRow}>
         <TouchableOpacity style={S.suggestBtn} onPress={() => { setSpErr(''); setShowForm(true); }} activeOpacity={0.85}>
           <Ionicons name="add-circle-outline" size={16} color={C.govBlue} />
-          <Text style={S.suggestBtnText}>Suggest a Safe Place</Text>
+          <Text style={S.suggestBtnText}>{t('map.suggestSafePlace')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -202,7 +210,7 @@ export default function MapScreen(): React.JSX.Element {
         <View style={S.pendingPanel}>
           <View style={S.pendingHead}>
             <Ionicons name="alert-circle" size={15} color={C.amber} />
-            <Text style={S.pendingHeadText}>Suggestions awaiting review ({pending.length})</Text>
+            <Text style={S.pendingHeadText}>{t('map.pendingReview', { n: pending.length })}</Text>
           </View>
           {pending.map((p) => (
             <View key={p.id} style={S.pendingRow}>
@@ -210,8 +218,8 @@ export default function MapScreen(): React.JSX.Element {
                 <Text style={S.pendingName} numberOfLines={1}>{p.name}</Text>
                 <Text style={S.pendingMeta} numberOfLines={1}>
                   {p.lat.toFixed(4)}, {p.lng.toFixed(4)}
-                  {p.capacity ? ` · cap ${p.capacity}` : ''}
-                  {p.submitter_name ? ` · by ${p.submitter_name}` : ''}
+                  {p.capacity ? ` · ${t('map.cap', { n: p.capacity })}` : ''}
+                  {p.submitter_name ? ` · ${t('map.by', { name: p.submitter_name })}` : ''}
                 </Text>
                 {p.description ? <Text style={S.pendingDesc} numberOfLines={2}>{p.description}</Text> : null}
               </View>
@@ -239,8 +247,8 @@ export default function MapScreen(): React.JSX.Element {
       ) : shelters.length === 0 ? (
         <View style={S.empty}>
           <Ionicons name="map-outline" size={48} color={C.borderStrong} />
-          <Text style={S.emptyText}>No shelters found</Text>
-          <Text style={S.emptyHint}>Try removing the disaster filter or pull to refresh.</Text>
+          <Text style={S.emptyText}>{t('map.noShelters')}</Text>
+          <Text style={S.emptyHint}>{t('map.noSheltersHint')}</Text>
         </View>
       ) : (
         <View style={S.list}>
@@ -260,7 +268,7 @@ export default function MapScreen(): React.JSX.Element {
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={S.scName} numberOfLines={1}>{s.name}</Text>
-                    <Text style={[S.typeBadgeText, { color: tc.fg }]}>{s.type}</Text>
+                    <Text style={[S.typeBadgeText, { color: tc.fg }]}>{typeLabel(s.type)}</Text>
                   </View>
                   {s.distance_km != null ? (
                     <View style={S.distancePill}>
@@ -295,12 +303,12 @@ export default function MapScreen(): React.JSX.Element {
                 <View style={S.scActions}>
                   <TouchableOpacity style={S.scBtn} onPress={() => openDirections(s)} activeOpacity={0.85}>
                     <Ionicons name="navigate" size={16} color={C.textInv} />
-                    <Text style={S.scBtnText}>Directions</Text>
+                    <Text style={S.scBtnText}>{t('map.directions')}</Text>
                   </TouchableOpacity>
                   {s.phone ? (
                     <TouchableOpacity style={[S.scBtn, S.scBtnAlt]} onPress={() => callPhone(s.phone!)} activeOpacity={0.85}>
                       <Ionicons name="call" size={16} color={C.govBlue} />
-                      <Text style={[S.scBtnText, { color: C.govBlue }]}>Call</Text>
+                      <Text style={[S.scBtnText, { color: C.govBlue }]}>{t('map.call')}</Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -315,19 +323,19 @@ export default function MapScreen(): React.JSX.Element {
         <View style={S.modalOverlay}>
           <View style={S.modalCard}>
             <View style={S.modalHead}>
-              <Text style={S.modalTitle}>Suggest a Safe Place</Text>
+              <Text style={S.modalTitle}>{t('map.suggestSafePlace')}</Text>
               <TouchableOpacity onPress={() => setShowForm(false)} hitSlop={10}>
                 <Ionicons name="close" size={20} color={C.textLo} />
               </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
               <Text style={S.modalSub}>
-                Share a refuge location you know about (a community hall, covered car park, higher ground). It’s reviewed by an official before going public.
+                {t('map.safeShareDesc')}
               </Text>
               {!isLoggedIn ? (
                 <View style={S.warnBox}>
                   <Ionicons name="alert-circle" size={15} color={C.amber} />
-                  <Text style={S.warnText}>Sign in on the Account tab first — submissions are tied to your account.</Text>
+                  <Text style={S.warnText}>{t('map.safeSignInWarn')}</Text>
                 </View>
               ) : null}
               {spErr ? (
@@ -337,30 +345,30 @@ export default function MapScreen(): React.JSX.Element {
                 </View>
               ) : null}
               <View style={S.field}>
-                <Text style={S.fieldLbl}>Name *</Text>
-                <TextInput style={S.input} value={spForm.name} onChangeText={(v) => setSpForm((f) => ({ ...f, name: v }))} placeholder="e.g. Kowloon Park covered area" placeholderTextColor={C.textLo} />
+                <Text style={S.fieldLbl}>{t('map.fName')}</Text>
+                <TextInput style={S.input} value={spForm.name} onChangeText={(v) => setSpForm((f) => ({ ...f, name: v }))} placeholder={t('map.phSafeName')} placeholderTextColor={C.textLo} />
               </View>
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <View style={[S.field, { flex: 1 }]}>
-                  <Text style={S.fieldLbl}>Latitude *</Text>
+                  <Text style={S.fieldLbl}>{t('map.fLat')}</Text>
                   <TextInput style={S.input} value={spForm.lat} onChangeText={(v) => setSpForm((f) => ({ ...f, lat: v }))} placeholder="22.30" placeholderTextColor={C.textLo} keyboardType="numbers-and-punctuation" />
                 </View>
                 <View style={[S.field, { flex: 1 }]}>
-                  <Text style={S.fieldLbl}>Longitude *</Text>
+                  <Text style={S.fieldLbl}>{t('map.fLng')}</Text>
                   <TextInput style={S.input} value={spForm.lng} onChangeText={(v) => setSpForm((f) => ({ ...f, lng: v }))} placeholder="114.17" placeholderTextColor={C.textLo} keyboardType="numbers-and-punctuation" />
                 </View>
               </View>
               <TouchableOpacity style={S.locBtn} onPress={useMyLocation} activeOpacity={0.85}>
                 <Ionicons name="locate" size={15} color={C.govBlue} />
-                <Text style={S.locBtnText}>Use my location</Text>
+                <Text style={S.locBtnText}>{t('map.useMyLocation')}</Text>
               </TouchableOpacity>
               <View style={S.field}>
-                <Text style={S.fieldLbl}>Approx. capacity (optional)</Text>
+                <Text style={S.fieldLbl}>{t('map.fCapacity')}</Text>
                 <TextInput style={S.input} value={spForm.capacity} onChangeText={(v) => setSpForm((f) => ({ ...f, capacity: v }))} placeholder="e.g. 50" placeholderTextColor={C.textLo} keyboardType="number-pad" />
               </View>
               <View style={S.field}>
-                <Text style={S.fieldLbl}>Description (optional)</Text>
-                <TextInput style={[S.input, { height: 64, textAlignVertical: 'top' }]} value={spForm.description} onChangeText={(v) => setSpForm((f) => ({ ...f, description: v }))} placeholder="Entrance, shelter type, hazards…" placeholderTextColor={C.textLo} multiline />
+                <Text style={S.fieldLbl}>{t('map.fDescription')}</Text>
+                <TextInput style={[S.input, { height: 64, textAlignVertical: 'top' }]} value={spForm.description} onChangeText={(v) => setSpForm((f) => ({ ...f, description: v }))} placeholder={t('map.phSafeDesc')} placeholderTextColor={C.textLo} multiline />
               </View>
               <TouchableOpacity
                 style={[S.submitBtn, (spBusy || !isLoggedIn) && { opacity: 0.5 }]}
@@ -369,7 +377,7 @@ export default function MapScreen(): React.JSX.Element {
                 activeOpacity={0.85}
               >
                 {spBusy ? <ActivityIndicator color={C.textInv} size="small" /> : <Ionicons name="checkmark" size={16} color={C.textInv} />}
-                <Text style={S.submitBtnText}>{spBusy ? 'Submitting…' : 'Submit'}</Text>
+                <Text style={S.submitBtnText}>{spBusy ? t('map.submitting') : t('common.submit')}</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>

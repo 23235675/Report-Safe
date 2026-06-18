@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue';
 import { registerUser, loginUser, setAuthSession, clearAuthToken } from '../api.js';
 import { isValidHKID, normalizeHKID, normalizePhone } from '../hkid.js';
 import AppIcon from '../components/AppIcon.vue';
+import { t } from '../i18n/index.js';
 
 const USER_KEY = 'rs_user';
 
@@ -28,15 +29,15 @@ function applySession(res) {
 async function login() {
   error.value = ''; success.value = '';
   const digits = loginPhone.value.replace(/\D/g, '');
-  if (digits.length < 8) { error.value = 'Enter your 8-digit Hong Kong phone number.'; return; }
+  if (digits.length < 8) { error.value = t('account.errPhone'); return; }
   loading.value = true;
   try {
     applySession(await loginUser(normalizePhone(digits)));
-    success.value = 'Signed in.';
+    success.value = t('account.signedIn');
   } catch (e) {
     error.value = e?.status === 404
-      ? 'No account found for that number. Create one below.'
-      : (e.message || 'Sign in failed.');
+      ? t('account.noAccount')
+      : (e.message || t('account.signInFailed'));
   } finally {
     loading.value = false;
   }
@@ -45,13 +46,13 @@ async function login() {
 async function register() {
   error.value = ''; success.value = '';
   const digits = form.value.phone.replace(/\D/g, '');
-  if (digits.length < 8)        { error.value = 'Enter your 8-digit Hong Kong phone number.'; return; }
-  if (!form.value.name.trim())  { error.value = 'Full name is required.'; return; }
-  if (!form.value.personal_id.trim()) { error.value = 'HKID is required, e.g. A123456.'; return; }
+  if (digits.length < 8)        { error.value = t('account.errPhone'); return; }
+  if (!form.value.name.trim())  { error.value = t('account.errFullName'); return; }
+  if (!form.value.personal_id.trim()) { error.value = t('account.errHkidRequired'); return; }
   if (!isValidHKID(form.value.personal_id)) {
-    error.value = 'HKID must have 1+ letter and 6+ digits, e.g. A123456.'; return;
+    error.value = t('account.errHkidFormat'); return;
   }
-  if (!form.value.privacy_consent) { error.value = 'Privacy consent is required to register.'; return; }
+  if (!form.value.privacy_consent) { error.value = t('account.errConsent'); return; }
   loading.value = true;
   try {
     applySession(await registerUser({
@@ -62,7 +63,7 @@ async function register() {
       privacy_consent: form.value.privacy_consent,
       user_type:       'web',
     }));
-    success.value = 'Account created.';
+    success.value = t('account.created');
   } catch (e) {
     error.value = e?.details?.[0]?.message || e.message;
   } finally {
@@ -89,8 +90,8 @@ onMounted(() => {});
 <template>
   <div class="account-page">
     <div class="page-header">
-      <h1>Account</h1>
-      <p class="subtitle">Sign in with your phone number, or create an account to track loved ones.</p>
+      <h1>{{ $t('account.title') }}</h1>
+      <p class="subtitle">{{ $t('account.subtitle') }}</p>
     </div>
 
     <div v-if="error"   class="msg msg-error msg-row"><AppIcon name="alert-circle" :size="16" /><span>{{ error }}</span></div>
@@ -101,24 +102,24 @@ onMounted(() => {});
       <div class="ac-head">
         <div class="ac-avatar">{{ (savedUser.name || savedUser.phone || '?').charAt(0).toUpperCase() }}</div>
         <div class="ac-identity">
-          <span class="ac-name">{{ savedUser.name || 'Unnamed Account' }}</span>
+          <span class="ac-name">{{ savedUser.name || $t('account.unnamed') }}</span>
           <span class="ac-phone">{{ savedUser.phone }}</span>
         </div>
         <div class="ac-actions">
-          <button @click="logout" class="btn btn-ghost" style="color: var(--need-help);"><AppIcon name="log-out" :size="14" /> Sign Out</button>
+          <button @click="logout" class="btn btn-ghost" style="color: var(--need-help);"><AppIcon name="log-out" :size="14" /> {{ $t('account.signOut') }}</button>
         </div>
       </div>
       <div class="ac-profile">
-        <div class="profile-row"><span class="pr-lbl">Phone</span><span class="pr-val font-mono">{{ savedUser.phone }}</span></div>
-        <div class="profile-row" v-if="savedUser.email"><span class="pr-lbl">Email</span><span class="pr-val">{{ savedUser.email }}</span></div>
-        <div class="profile-row" v-if="savedUser.personal_id"><span class="pr-lbl">HKID</span><span class="pr-val font-mono">{{ savedUser.personal_id }}</span></div>
+        <div class="profile-row"><span class="pr-lbl">{{ $t('account.phone') }}</span><span class="pr-val font-mono">{{ savedUser.phone }}</span></div>
+        <div class="profile-row" v-if="savedUser.email"><span class="pr-lbl">{{ $t('account.email') }}</span><span class="pr-val">{{ savedUser.email }}</span></div>
+        <div class="profile-row" v-if="savedUser.personal_id"><span class="pr-lbl">{{ $t('account.hkid') }}</span><span class="pr-val font-mono">{{ savedUser.personal_id }}</span></div>
         <div class="profile-row">
-          <span class="pr-lbl">Privacy Consent</span>
+          <span class="pr-lbl">{{ $t('account.privacyConsent') }}</span>
           <span class="pr-val" :style="{ color: savedUser.privacy_consent ? 'var(--safe)' : 'var(--text-lo)' }">
-            {{ savedUser.privacy_consent ? 'Granted' : 'Not granted' }}
+            {{ savedUser.privacy_consent ? $t('account.granted') : $t('account.notGranted') }}
           </span>
         </div>
-        <div class="profile-row"><span class="pr-lbl">Account Type</span><span class="pr-val">{{ savedUser.user_type || 'web' }}</span></div>
+        <div class="profile-row"><span class="pr-lbl">{{ $t('account.accountType') }}</span><span class="pr-val">{{ savedUser.user_type || 'web' }}</span></div>
       </div>
     </div>
 
@@ -126,24 +127,24 @@ onMounted(() => {});
     <div v-else-if="mode === 'login'" class="auth-card">
       <div class="auth-head">
         <AppIcon name="person-circle" :size="32" style="color: var(--gov-blue);" />
-        <h2 class="auth-title">Sign In</h2>
-        <p class="auth-sub">Enter your Hong Kong phone number</p>
+        <h2 class="auth-title">{{ $t('account.signIn') }}</h2>
+        <p class="auth-sub">{{ $t('account.enterPhone') }}</p>
       </div>
       <form @submit.prevent="login" class="auth-form">
         <label class="field">
-          <span class="field-lbl">Phone number</span>
+          <span class="field-lbl">{{ $t('account.phoneNumber') }}</span>
           <div class="phone-row">
             <span class="phone-prefix">+852</span>
             <input :value="loginPhone" @input="onLoginPhoneInput" class="field-input font-mono phone-input" placeholder="98765432" inputmode="numeric" maxlength="8" autofocus />
           </div>
         </label>
         <button type="submit" :disabled="loading" class="btn btn-primary btn-block">
-          <AppIcon v-if="!loading" name="log-in" :size="16" /> {{ loading ? 'Signing in…' : 'Sign In' }}
+          <AppIcon v-if="!loading" name="log-in" :size="16" /> {{ loading ? $t('account.signingIn') : $t('account.signIn') }}
         </button>
       </form>
       <div class="auth-switch">
-        <span>Don't have an account?</span>
-        <button class="link-btn" @click="switchMode('register')">Create one now</button>
+        <span>{{ $t('account.noAccountQ') }}</span>
+        <button class="link-btn" @click="switchMode('register')">{{ $t('account.createNow') }}</button>
       </div>
     </div>
 
@@ -151,51 +152,50 @@ onMounted(() => {});
     <div v-else class="auth-card">
       <div class="auth-head">
         <AppIcon name="person-circle" :size="32" style="color: var(--gov-blue);" />
-        <h2 class="auth-title">Create Account</h2>
-        <p class="auth-sub">Set up your disaster-safety profile</p>
+        <h2 class="auth-title">{{ $t('account.createAccount') }}</h2>
+        <p class="auth-sub">{{ $t('account.setupProfile') }}</p>
       </div>
       <form @submit.prevent="register" class="auth-form">
         <label class="field">
-          <span class="field-lbl">Phone * <span class="field-hint">(8 digits, +852 added automatically)</span></span>
+          <span class="field-lbl">{{ $t('account.phoneStar') }} <span class="field-hint">{{ $t('account.phoneHint') }}</span></span>
           <div class="phone-row">
             <span class="phone-prefix">+852</span>
             <input :value="form.phone" @input="onPhoneInput" class="field-input font-mono phone-input" placeholder="98765432" inputmode="numeric" maxlength="8" />
           </div>
         </label>
         <label class="field">
-          <span class="field-lbl">Full Name *</span>
-          <input v-model="form.name" class="field-input" placeholder="Your full name" />
+          <span class="field-lbl">{{ $t('account.fullNameStar') }}</span>
+          <input v-model="form.name" class="field-input" :placeholder="$t('account.fullNamePlaceholder')" />
         </label>
         <label class="field">
-          <span class="field-lbl">HKID * <span class="field-hint">(1+ letter, 6+ digits — never shown publicly)</span></span>
+          <span class="field-lbl">{{ $t('account.hkidStar') }} <span class="field-hint">{{ $t('account.hkidHint') }}</span></span>
           <input v-model="form.personal_id" class="field-input font-mono" placeholder="A123456" autocomplete="off" style="text-transform: uppercase;" />
         </label>
         <label class="field">
-          <span class="field-lbl">Email <span class="field-hint">(optional)</span></span>
+          <span class="field-lbl">{{ $t('account.email') }} <span class="field-hint">{{ $t('account.emailHint') }}</span></span>
           <input v-model="form.email" class="field-input" type="email" placeholder="name@example.com" />
         </label>
         <label class="field consent-field">
           <input v-model="form.privacy_consent" type="checkbox" class="consent-check" />
           <span class="consent-text">
-            I consent to authorized rescue teams viewing my location and medical notes during active disasters.
+            {{ $t('account.consent') }}
           </span>
         </label>
         <button type="submit" :disabled="loading" class="btn btn-primary btn-block">
-          <AppIcon v-if="!loading" name="checkmark" :size="15" /> {{ loading ? 'Creating…' : 'Create Account' }}
+          <AppIcon v-if="!loading" name="checkmark" :size="15" /> {{ loading ? $t('account.creating') : $t('account.createAccount') }}
         </button>
       </form>
       <div class="auth-switch">
-        <span>Already have an account?</span>
-        <button class="link-btn" @click="switchMode('login')">Sign in</button>
+        <span>{{ $t('account.haveAccountQ') }}</span>
+        <button class="link-btn" @click="switchMode('login')">{{ $t('account.signIn') }}</button>
       </div>
     </div>
 
     <!-- Privacy note -->
     <div class="privacy-note">
-      <span class="pn-title inline-ico"><AppIcon name="shield-checkmark" :size="15" style="color: var(--gov-blue);" /> Privacy by Design</span>
+      <span class="pn-title inline-ico"><AppIcon name="shield-checkmark" :size="15" style="color: var(--gov-blue);" /> {{ $t('account.privacyTitle') }}</span>
       <p class="pn-body">
-        Exact GPS coordinates are only visible to authorized government rescue teams with a valid Bearer token.
-        Public and family searches show approximate location only. Medical notes are never shown publicly.
+        {{ $t('account.privacyBody') }}
       </p>
     </div>
   </div>

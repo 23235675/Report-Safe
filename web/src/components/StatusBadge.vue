@@ -1,7 +1,8 @@
 <script setup>
 import { computed } from 'vue';
 import AppIcon from './AppIcon.vue';
-import { STATUS_LABEL, STATUS_SHORT, STATUS_BADGE_CLASS, statusIcon } from '../iconography.js';
+import { STATUS_BADGE_CLASS, statusIcon } from '../iconography.js';
+import { t } from '../i18n/index.js';
 
 const props = defineProps({
   status: { type: String, required: true },
@@ -9,10 +10,11 @@ const props = defineProps({
   icon:   { type: Boolean, default: true },     // show the leading status icon
 });
 
-const label = computed(() =>
-  (props.short ? STATUS_SHORT[props.status] : STATUS_LABEL[props.status])
-  || (props.status || '').replace(/_/g, ' ').toUpperCase()
-);
+const label = computed(() => {
+  const key = `${props.short ? 'statusShort' : 'status'}.${props.status}`;
+  const translated = t(key);
+  return translated === key ? (props.status || '').replace(/_/g, ' ').toUpperCase() : translated;
+});
 const cls = computed(() => STATUS_BADGE_CLASS[props.status] || 'badge-missing');
 </script>
 

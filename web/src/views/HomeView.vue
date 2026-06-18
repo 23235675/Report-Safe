@@ -6,6 +6,7 @@ import { useSocket } from '../socket.js';
 import DisasterBanner from '../components/DisasterBanner.vue';
 import AppIcon from '../components/AppIcon.vue';
 import { DISASTER_ICON, severityInfo } from '../iconography.js';
+import { t, severityKey, disasterTypeLabel } from '../i18n/index.js';
 
 const route      = useRoute();
 const authNotice = ref(route.query.authRequired === 'true');
@@ -24,9 +25,14 @@ const isActive       = computed(() => stats.value.active_disasters > 0 || disast
 const latestDisaster = computed(() => disasters.value[0] ?? null);
 const missingTotal   = computed(() => (stats.value.potentially_missing || 0) + (stats.value.missing || 0));
 
+const ribbonText = computed(() => {
+  if (!isActive.value) return t('home.ribbonClear');
+  const n = disasters.value.length;
+  return t(n === 1 ? 'home.ribbonActiveOne' : 'home.ribbonActiveMany', { n });
+});
+
 function severityLabel(d) {
-  const s = severityInfo(d.severity);
-  return { text: s.label, cls: s.cls };
+  return { text: t(`severity.${severityKey(d.severity)}`), cls: severityInfo(d.severity).cls };
 }
 
 function typeIcon(type) {
@@ -62,55 +68,55 @@ onUnmounted(() => { offStats?.(); offAlert?.(); });
 <template>
   <div class="home">
     <div v-if="authNotice" class="msg msg-info" style="margin-bottom: var(--sp-5);">
-      Government access requires a valid token. Use the Gov Dashboard page to authenticate.
+      {{ $t('home.authNotice') }}
     </div>
 
     <DisasterBanner v-if="latestDisaster && !dismissed" :disaster="latestDisaster" @close="dismissed = true" />
 
     <!-- ── Loading (first load) ──────────────────────────────────── -->
-    <div v-if="loading && !loaded" class="state-loading"><span class="spinner"></span> Loading current status…</div>
+    <div v-if="loading && !loaded" class="state-loading"><span class="spinner"></span> {{ $t('home.loading') }}</div>
 
     <!-- ── Error (couldn't reach the server) ─────────────────────── -->
     <div v-else-if="error" class="state-block">
       <div class="state-icon is-error"><AppIcon name="cloud-offline" :size="26" /></div>
-      <p class="state-title">Can't reach the server</p>
-      <p class="state-sub">Live status is unavailable right now. You can still submit a report below — it will be delivered when the connection returns.</p>
-      <button class="btn-secondary btn-sm" @click="load" style="margin-top: var(--sp-2);"><AppIcon name="refresh" :size="14" /> Retry</button>
+      <p class="state-title">{{ $t('home.cantReach') }}</p>
+      <p class="state-sub">{{ $t('home.cantReachSub') }}</p>
+      <button class="btn-secondary btn-sm" @click="load" style="margin-top: var(--sp-2);"><AppIcon name="refresh" :size="14" /> {{ $t('common.retry') }}</button>
     </div>
 
     <!-- ── Status ribbon ─────────────────────────────────────────── -->
     <template v-else>
     <div class="status-ribbon" :class="isActive ? 'ribbon-active' : 'ribbon-clear'">
       <AppIcon :name="isActive ? 'warning' : 'shield-checkmark'" :size="18" />
-      <span class="ribbon-text">{{ isActive ? `${disasters.length} Active Disaster${disasters.length !== 1 ? 's' : ''} — Report your status` : 'All Clear — No active disasters' }}</span>
-      <RouterLink to="/report" class="ribbon-cta inline-ico"><AppIcon name="megaphone" :size="14" /> Report Status</RouterLink>
+      <span class="ribbon-text">{{ ribbonText }}</span>
+      <RouterLink to="/report" class="ribbon-cta inline-ico"><AppIcon name="megaphone" :size="14" /> {{ $t('home.reportStatus') }}</RouterLink>
     </div>
 
     <!-- ── Global aggregate stats (clickable → /status) ─────────── -->
     <RouterLink to="/status" class="global-stats" title="View full status breakdown">
       <div class="gs-item">
         <span class="gs-val" style="color: var(--text-hi);">{{ stats.total }}</span>
-        <span class="gs-lbl inline-ico"><AppIcon name="list" :size="13" style="color: var(--text-lo);" /> Reports</span>
+        <span class="gs-lbl inline-ico"><AppIcon name="list" :size="13" style="color: var(--text-lo);" /> {{ $t('home.statReports') }}</span>
       </div>
       <div class="gs-div"></div>
       <div class="gs-item">
         <span class="gs-val" style="color: var(--safe);">{{ stats.safe }}</span>
-        <span class="gs-lbl inline-ico"><AppIcon name="checkmark-circle" :size="13" style="color: var(--safe);" /> Safe</span>
+        <span class="gs-lbl inline-ico"><AppIcon name="checkmark-circle" :size="13" style="color: var(--safe);" /> {{ $t('home.statSafe') }}</span>
       </div>
       <div class="gs-div"></div>
       <div class="gs-item">
         <span class="gs-val" style="color: var(--injured);">{{ stats.injured }}</span>
-        <span class="gs-lbl inline-ico"><AppIcon name="medkit" :size="13" style="color: var(--injured);" /> Injured</span>
+        <span class="gs-lbl inline-ico"><AppIcon name="medkit" :size="13" style="color: var(--injured);" /> {{ $t('home.statInjured') }}</span>
       </div>
       <div class="gs-div"></div>
       <div class="gs-item">
         <span class="gs-val" style="color: var(--need-help);">{{ stats.need_help }}</span>
-        <span class="gs-lbl inline-ico"><AppIcon name="alert-circle" :size="13" style="color: var(--need-help);" /> Need Help</span>
+        <span class="gs-lbl inline-ico"><AppIcon name="alert-circle" :size="13" style="color: var(--need-help);" /> {{ $t('home.statNeedHelp') }}</span>
       </div>
       <div class="gs-div"></div>
       <div class="gs-item">
         <span class="gs-val" style="color: var(--pot-missing);">{{ missingTotal }}</span>
-        <span class="gs-lbl inline-ico"><AppIcon name="person-remove" :size="13" style="color: var(--pot-missing);" /> Missing</span>
+        <span class="gs-lbl inline-ico"><AppIcon name="person-remove" :size="13" style="color: var(--pot-missing);" /> {{ $t('home.statMissing') }}</span>
       </div>
       <div class="gs-arrow"><AppIcon name="chevron-forward" :size="14" /></div>
     </RouterLink>
@@ -118,7 +124,7 @@ onUnmounted(() => { offStats?.(); offAlert?.(); });
     <!-- ── Active disaster cards ─────────────────────────────────── -->
     <div v-if="disasters.length > 0" class="section-block">
       <div class="section-hd">
-        <h2 class="section-title">Active Incidents</h2>
+        <h2 class="section-title">{{ $t('home.activeIncidents') }}</h2>
         <span class="section-count">{{ disasters.length }}</span>
       </div>
       <div class="disaster-grid">
@@ -126,7 +132,7 @@ onUnmounted(() => { offStats?.(); offAlert?.(); });
           <div class="dc-head">
             <span class="dc-icon"><AppIcon :name="typeIcon(d.type)" :size="20" /></span>
             <div class="dc-meta">
-              <span class="dc-name">{{ d.type.charAt(0).toUpperCase() + d.type.slice(1) }}</span>
+              <span class="dc-name">{{ disasterTypeLabel(d.type) }}</span>
               <span v-if="d.description" class="dc-desc">{{ d.description }}</span>
             </div>
             <span class="dc-sev" :class="severityLabel(d).cls">{{ severityLabel(d).text }}</span>
@@ -134,13 +140,13 @@ onUnmounted(() => { offStats?.(); offAlert?.(); });
           <div class="dc-body">
             <div class="dc-stat dc-stat-radius">
               <span class="dc-stat-val">{{ d.radius_km }}<span class="dc-stat-unit">km</span></span>
-              <span class="dc-stat-lbl">Radius</span>
+              <span class="dc-stat-lbl">{{ $t('home.radius') }}</span>
             </div>
           </div>
           <div class="dc-actions">
-            <RouterLink :to="`/report?disaster_id=${d.id}`" class="dc-btn dc-btn-report">Report Status</RouterLink>
-            <RouterLink :to="`/family?disaster_id=${d.id}`" class="dc-btn dc-btn-find">Find Someone</RouterLink>
-            <RouterLink :to="`/shelters?disaster_id=${d.id}`" class="dc-btn dc-btn-shelter">Shelters</RouterLink>
+            <RouterLink :to="`/report?disaster_id=${d.id}`" class="dc-btn dc-btn-report">{{ $t('home.reportStatus') }}</RouterLink>
+            <RouterLink :to="`/family?disaster_id=${d.id}`" class="dc-btn dc-btn-find">{{ $t('home.findSomeone') }}</RouterLink>
+            <RouterLink :to="`/shelters?disaster_id=${d.id}`" class="dc-btn dc-btn-shelter">{{ $t('home.shelters') }}</RouterLink>
           </div>
         </div>
       </div>
@@ -149,8 +155,8 @@ onUnmounted(() => { offStats?.(); offAlert?.(); });
     <!-- ── No active disasters ───────────────────────────────────── -->
     <div v-else class="state-block">
       <div class="state-icon is-safe"><AppIcon name="shield-checkmark" :size="28" /></div>
-      <p class="state-title">No active disasters</p>
-      <p class="state-sub">Stay prepared. You can still report your status or find a family member.</p>
+      <p class="state-title">{{ $t('home.noActive') }}</p>
+      <p class="state-sub">{{ $t('home.noActiveSub') }}</p>
     </div>
     </template>
 

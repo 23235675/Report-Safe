@@ -7,6 +7,7 @@
 import { computed } from 'vue';
 import AppIcon from './AppIcon.vue';
 import { VISIBILITY } from '../iconography.js';
+import { t } from '../i18n/index.js';
 
 const props = defineProps({
   tier:  { type: String, required: true },          // 'pending' | 'synced' | 'coarse' | 'rescue'
@@ -14,16 +15,19 @@ const props = defineProps({
 });
 
 const v = computed(() => VISIBILITY[props.tier] || VISIBILITY.coarse);
+const tierKey = computed(() => (VISIBILITY[props.tier] ? props.tier : 'coarse'));
+const label  = computed(() => t(`visibility.${tierKey.value}${props.short ? 'Short' : 'Label'}`));
+const detail = computed(() => t(`visibility.${tierKey.value}Detail`));
 </script>
 
 <template>
   <span
     class="vis-chip"
-    :title="v.detail"
+    :title="detail"
     :style="{ color: v.colorVar, background: v.dimVar, borderColor: v.borderVar }"
   >
     <AppIcon :name="v.icon" :size="13" />
-    {{ short ? v.short : v.label }}
+    {{ label }}
   </span>
 </template>
 

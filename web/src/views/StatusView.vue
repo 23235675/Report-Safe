@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { getStats, getDisasters } from '../api.js';
 import { useSocket } from '../socket.js';
 import AppIcon from '../components/AppIcon.vue';
+import { t, disasterTypeLabel } from '../i18n/index.js';
 
 const stats = ref({
   total: 0, safe: 0, injured: 0, need_help: 0,
@@ -19,15 +20,15 @@ let offStats = null;
 const pct = (n) => stats.value.total ? Math.round((n / stats.value.total) * 100) : 0;
 
 const categories = computed(() => [
-  { key: 'safe',               label: 'Safe',               icon: 'checkmark-circle', color: 'var(--safe)',        dim: 'var(--safe-dim)',        border: 'var(--safe-border)',        val: stats.value.safe },
-  { key: 'injured',            label: 'Injured',            icon: 'medkit',           color: 'var(--injured)',     dim: 'var(--injured-dim)',     border: 'var(--injured-border)',     val: stats.value.injured },
-  { key: 'need_help',          label: 'Need Help',          icon: 'alert-circle',     color: 'var(--need-help)',   dim: 'var(--need-help-dim)',   border: 'var(--need-help-border)',   val: stats.value.need_help },
-  { key: 'awaiting_response',  label: 'Awaiting Response',  icon: 'time',             color: 'var(--awaiting)',    dim: 'var(--awaiting-dim)',    border: 'var(--awaiting-border)',    val: stats.value.awaiting_response },
-  { key: 'potentially_missing',label: 'Potentially Missing',icon: 'person-remove',    color: 'var(--pot-missing)', dim: 'var(--pot-missing-dim)', border: 'var(--pot-missing-border)', val: stats.value.potentially_missing },
-  { key: 'missing',            label: 'Missing',            icon: 'search',           color: 'var(--missing)',     dim: 'var(--missing-dim)',     border: 'var(--missing-border)',     val: stats.value.missing },
-  { key: 'verified_missing',   label: 'Verified Missing',   icon: 'warning',          color: 'var(--pot-missing)', dim: 'var(--pot-missing-dim)', border: 'var(--pot-missing-border)', val: stats.value.verified_missing },
-  { key: 'rescued',            label: 'Rescued',            icon: 'shield-checkmark', color: 'var(--rescued)',     dim: 'var(--rescued-dim)',     border: 'var(--rescued-border)',     val: stats.value.rescued },
-  { key: 'deceased',           label: 'Deceased',           icon: 'remove-circle',    color: 'var(--deceased)',    dim: 'var(--deceased-dim)',    border: 'var(--deceased-border)',    val: stats.value.deceased },
+  { key: 'safe',               label: t('status.safe'),               icon: 'checkmark-circle', color: 'var(--safe)',        dim: 'var(--safe-dim)',        border: 'var(--safe-border)',        val: stats.value.safe },
+  { key: 'injured',            label: t('status.injured'),            icon: 'medkit',           color: 'var(--injured)',     dim: 'var(--injured-dim)',     border: 'var(--injured-border)',     val: stats.value.injured },
+  { key: 'need_help',          label: t('status.need_help'),          icon: 'alert-circle',     color: 'var(--need-help)',   dim: 'var(--need-help-dim)',   border: 'var(--need-help-border)',   val: stats.value.need_help },
+  { key: 'awaiting_response',  label: t('status.awaiting_response'),  icon: 'time',             color: 'var(--awaiting)',    dim: 'var(--awaiting-dim)',    border: 'var(--awaiting-border)',    val: stats.value.awaiting_response },
+  { key: 'potentially_missing',label: t('status.potentially_missing'),icon: 'person-remove',    color: 'var(--pot-missing)', dim: 'var(--pot-missing-dim)', border: 'var(--pot-missing-border)', val: stats.value.potentially_missing },
+  { key: 'missing',            label: t('status.missing'),            icon: 'search',           color: 'var(--missing)',     dim: 'var(--missing-dim)',     border: 'var(--missing-border)',     val: stats.value.missing },
+  { key: 'verified_missing',   label: t('status.verified_missing'),   icon: 'warning',          color: 'var(--pot-missing)', dim: 'var(--pot-missing-dim)', border: 'var(--pot-missing-border)', val: stats.value.verified_missing },
+  { key: 'rescued',            label: t('status.rescued'),            icon: 'shield-checkmark', color: 'var(--rescued)',     dim: 'var(--rescued-dim)',     border: 'var(--rescued-border)',     val: stats.value.rescued },
+  { key: 'deceased',           label: t('status.deceased'),           icon: 'remove-circle',    color: 'var(--deceased)',    dim: 'var(--deceased-dim)',    border: 'var(--deceased-border)',    val: stats.value.deceased },
 ]);
 
 const stackSegments = computed(() => categories.value
@@ -63,28 +64,28 @@ onUnmounted(() => { offStats?.(); });
     <div class="sv-header">
       <div class="sv-title-row">
         <div>
-          <h1 class="sv-title">Status Overview</h1>
-          <p class="sv-sub">Live breakdown of all reported statuses across active incidents</p>
+          <h1 class="sv-title">{{ $t('statusView.title') }}</h1>
+          <p class="sv-sub">{{ $t('statusView.subtitle') }}</p>
         </div>
         <button class="btn-secondary btn-sm" @click="load" :disabled="loading">
           <AppIcon name="refresh" :size="14" />
-          Refresh
+          {{ $t('common.refresh') }}
         </button>
       </div>
     </div>
 
     <!-- Loading -->
     <div v-if="loading && !stats.total && !error" class="state-loading">
-      <span class="spinner"></span> Loading status data…
+      <span class="spinner"></span> {{ $t('statusView.loading') }}
     </div>
 
     <!-- Error -->
     <div v-else-if="error" class="state-block">
       <div class="state-icon is-error"><AppIcon name="cloud-offline" :size="26" /></div>
-      <p class="state-title">Can't reach the server</p>
-      <p class="state-sub">Status data is unavailable. Check your connection and retry.</p>
+      <p class="state-title">{{ $t('statusView.cantReach') }}</p>
+      <p class="state-sub">{{ $t('statusView.cantReachSub') }}</p>
       <button class="btn-secondary btn-sm" @click="load" style="margin-top: var(--sp-2);">
-        <AppIcon name="refresh" :size="14" /> Retry
+        <AppIcon name="refresh" :size="14" /> {{ $t('common.retry') }}
       </button>
     </div>
 
@@ -96,21 +97,21 @@ onUnmounted(() => { offStats?.(); });
           <AppIcon name="list" :size="22" style="color: var(--text-lo);" />
           <div class="callout-body">
             <span class="callout-val">{{ stats.total }}</span>
-            <span class="callout-lbl">Total Reports</span>
+            <span class="callout-lbl">{{ $t('statusView.totalReports') }}</span>
           </div>
         </div>
         <div class="callout-card callout-disasters">
           <AppIcon name="warning" :size="22" style="color: var(--need-help);" />
           <div class="callout-body">
             <span class="callout-val" style="color: var(--need-help);">{{ stats.active_disasters }}</span>
-            <span class="callout-lbl">Active Disasters</span>
+            <span class="callout-lbl">{{ $t('statusView.activeDisasters') }}</span>
           </div>
         </div>
       </div>
 
       <!-- Stacked proportion bar -->
       <div v-if="stats.total > 0" class="prop-section">
-        <div class="prop-label">Report breakdown by status</div>
+        <div class="prop-label">{{ $t('statusView.breakdown') }}</div>
         <div class="prop-bar">
           <div
             v-for="seg in stackSegments" :key="seg.key"
@@ -152,15 +153,15 @@ onUnmounted(() => { offStats?.(); });
       <!-- Active disasters reference -->
       <div v-if="disasters.length > 0" class="section-block">
         <div class="section-hd">
-          <h2 class="section-title">Active Incidents</h2>
+          <h2 class="section-title">{{ $t('statusView.activeIncidents') }}</h2>
           <span class="section-count">{{ disasters.length }}</span>
         </div>
         <div class="disaster-list">
           <div v-for="d in disasters" :key="d.id" class="dl-row">
             <AppIcon name="warning" :size="16" style="color: var(--need-help); flex-shrink: 0;" />
-            <span class="dl-name">{{ d.type.charAt(0).toUpperCase() + d.type.slice(1) }}</span>
+            <span class="dl-name">{{ disasterTypeLabel(d.type) }}</span>
             <span v-if="d.description" class="dl-desc">{{ d.description }}</span>
-            <span class="dl-radius">{{ d.radius_km }} km radius</span>
+            <span class="dl-radius">{{ $t('statusView.kmRadius', { n: d.radius_km }) }}</span>
           </div>
         </div>
       </div>

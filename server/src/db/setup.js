@@ -51,6 +51,26 @@ async function setup() {
     await ensureCollection(db, name);
   }
 
+  // ── Cosmos order-by guard ────────────────────────────────────────
+  // Azure Cosmos DB for MongoDB (RU-based) only allows `.sort()` on an INDEXED
+  // path — an unindexed sort throws "The index path corresponding to the
+  // specified order-by item is excluded." (400). Routes sort on assorted fields
+  // (started_at, created_at, updated_at, name, …), so a per-field index list is
+  // easy to fall out of sync. A wildcard index makes every field sortable and
+  // covers all current + future sorts. createIndex is idempotent; on a plain
+  // local mongod this is simply a (harmless) wildcard index.
+  for (const name of COLLECTIONS) {
+    try {
+      await db.collection(name).createIndex({ '$**': 1 }, { name: 'idx_wildcard' });
+    } catch (err) {
+      // Non-fatal: specific per-field indexes below still cover the hot paths.
+      if (!/already exists|same name/i.test(err.message || '')) {
+        // eslint-disable-next-line no-console
+        console.warn(`[db/setup] wildcard index on ${name} skipped:`, err.message);
+      }
+    }
+  }
+
   // ── reports ──────────────────────────────────────────────────────
   // name_lower is a denormalised lowercase copy of name; the query layer keeps
   // it in sync on write so case-insensitive search uses an index instead of a

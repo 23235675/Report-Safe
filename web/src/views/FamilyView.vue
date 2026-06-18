@@ -9,6 +9,7 @@ import StatusIcon from '../components/StatusIcon.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 import VisibilityChip from '../components/VisibilityChip.vue';
 import { statusColor } from '../iconography.js';
+import { t } from '../i18n/index.js';
 
 const router = useRouter();
 
@@ -35,7 +36,7 @@ async function loadLinks() {
     const res = await listLovedOnes();
     links.value = res.links || [];
   } catch {
-    linksError.value = 'Could not load your loved ones.';
+    linksError.value = t('family.errLoad');
   } finally {
     linksLoading.value = false;
   }
@@ -49,15 +50,15 @@ async function onAdd() {
   try {
     await addLovedOne(phone);
     addPhone.value = '';
-    notice.value = 'Request sent. They’ll appear here once they confirm.';
+    notice.value = t('family.requestSent');
     await loadLinks();
   } catch (e) {
     const detail = e?.details?.[0]?.message;
     notice.value =
-      e?.status === 404 ? 'No account found for that number. They need to register first.'
-      : e?.status === 400 ? (detail || e.message || 'That number can’t be linked.')
-      : e?.status === 429 ? 'Too many link requests — please wait a bit and try again.'
-      : 'Could not send the request. Please try again.';
+      e?.status === 404 ? t('family.addNoAccount')
+      : e?.status === 400 ? (detail || e.message || t('family.addCantLink'))
+      : e?.status === 429 ? t('family.addTooMany')
+      : t('family.addFailed');
   } finally {
     adding.value = false;
   }
@@ -65,13 +66,13 @@ async function onAdd() {
 
 async function onConfirm(linkId) {
   try { await confirmLovedOne(linkId); await loadLinks(); }
-  catch { notice.value = 'Could not confirm. Try again.'; }
+  catch { notice.value = t('family.confirmFailed'); }
 }
 
 async function onRemoveLink(link) {
-  if (!confirm(`Stop sharing status with ${link.name || link.phone}?`)) return;
+  if (!confirm(t('family.stopSharing', { name: link.name || link.phone }))) return;
   try { await removeLovedOne(link.link_id); await loadLinks(); }
-  catch { notice.value = 'Could not remove. Try again.'; }
+  catch { notice.value = t('family.removeFailed'); }
 }
 
 /* ── Name search ─────────────────────────────────────────────────── */
@@ -92,7 +93,7 @@ async function onSearch(nameOverride) {
     const res     = await searchByName(q);
     results.value = res.results || [];
   } catch {
-    error.value   = 'Search failed. Please try again.';
+    error.value   = t('family.searchFailed');
     results.value = [];
   } finally {
     loading.value = false;
@@ -105,10 +106,10 @@ function reportOnBehalf(name) {
 
 function relativeTime(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
-  if (m < 1)  return 'just now';
-  if (m < 60) return `${m}m ago`;
+  if (m < 1)  return t('time.justNow');
+  if (m < 60) return t('time.minutesAgo', { m });
   const h = Math.round(m / 60);
-  return h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
+  return h < 24 ? t('time.hoursAgo', { h }) : t('time.daysAgo', { d: Math.round(h / 24) });
 }
 
 const ALERT_STATUSES = new Set(['need_help', 'awaiting_response', 'potentially_missing', 'missing']);
@@ -133,23 +134,22 @@ onUnmounted(() => {
   <div style="max-width: 720px; margin: 0 auto;">
 
     <div class="page-header">
-      <h1>Find a Loved One</h1>
+      <h1>{{ $t('family.title') }}</h1>
       <p class="subtitle">
-        Link the people you care about by phone. Once they confirm, you’ll see their status here and be
-        alerted if they’re ever in a disaster zone.
+        {{ $t('family.subtitle') }}
       </p>
     </div>
 
     <!-- ── Loved Ones ─────────────────────────────────────────────── -->
-    <div class="section-label inline-ico"><AppIcon name="heart" :size="13" style="color: var(--gov-blue);" /> Loved Ones{{ confirmed.length ? ` (${confirmed.length})` : '' }}</div>
+    <div class="section-label inline-ico"><AppIcon name="heart" :size="13" style="color: var(--gov-blue);" /> {{ $t('family.lovedOnes') }}{{ confirmed.length ? ` (${confirmed.length})` : '' }}</div>
 
     <!-- Account gate -->
     <div v-if="!hasAccount" class="state-block">
       <div class="state-icon is-info"><AppIcon name="person-circle" :size="26" /></div>
-      <p class="state-title">Set up your account first</p>
-      <p class="state-sub">Loved ones are linked by phone number, so we need your account before you can add them.</p>
+      <p class="state-title">{{ $t('family.setupAccount') }}</p>
+      <p class="state-sub">{{ $t('family.setupAccountSub') }}</p>
       <button class="btn-primary btn-sm" style="margin-top: var(--sp-2);" @click="router.push('/account')">
-        <AppIcon name="arrow-forward" :size="14" /> Go to Account
+        <AppIcon name="arrow-forward" :size="14" /> {{ $t('family.goToAccount') }}
       </button>
     </div>
 
@@ -162,15 +162,15 @@ onUnmounted(() => {
       <form class="search-form" @submit.prevent="onAdd">
         <div class="search-field">
           <AppIcon name="call" :size="16" style="color: var(--text-lo);" />
-          <input v-model="addPhone" type="tel" placeholder="Add a loved one by phone…" autocomplete="off" />
+          <input v-model="addPhone" type="tel" :placeholder="$t('family.addPlaceholder')" autocomplete="off" />
         </div>
         <button type="submit" :disabled="adding" class="search-btn">
           <span v-if="adding" class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span>
-          <template v-else><AppIcon name="person-add" :size="16" /> Add</template>
+          <template v-else><AppIcon name="person-add" :size="16" /> {{ $t('common.add') }}</template>
         </button>
       </form>
 
-      <div v-if="linksLoading && links.length === 0" class="state-loading"><span class="spinner"></span> Loading…</div>
+      <div v-if="linksLoading && links.length === 0" class="state-loading"><span class="spinner"></span> {{ $t('common.loading') }}</div>
       <div v-else-if="linksError" class="msg msg-error msg-row"><AppIcon name="alert-circle" :size="16" /><span>{{ linksError }}</span></div>
 
       <!-- Confirmed loved ones -->
@@ -188,95 +188,95 @@ onUnmounted(() => {
             <div style="flex: 1; min-width: 0;">
               <div style="font-size: 16px; font-weight: 700; color: var(--text-hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ l.name || l.phone }}</div>
               <div style="font-size: 12px; color: var(--text-lo); margin-top: 3px;">
-                <span v-if="l.report_status" class="inline-ico"><AppIcon name="time" :size="13" /> {{ l.status_updated_at ? relativeTime(l.status_updated_at) : 'updated' }}</span>
-                <span v-else>No status reported yet</span>
+                <span v-if="l.report_status" class="inline-ico"><AppIcon name="time" :size="13" /> {{ l.status_updated_at ? relativeTime(l.status_updated_at) : $t('time.updated') }}</span>
+                <span v-else>{{ $t('family.noStatusYet') }}</span>
               </div>
             </div>
             <StatusBadge v-if="l.report_status" :status="l.report_status" />
-            <span v-else class="no-report-chip">No report</span>
+            <span v-else class="no-report-chip">{{ $t('family.noReport') }}</span>
           </div>
           <div style="display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;">
             <VisibilityChip tier="coarse" :short="true" />
             <span style="flex: 1;"></span>
-            <button class="btn-ghost btn-sm" style="color: var(--gov-blue);" @click="reportOnBehalf(l.name)"><AppIcon name="create" :size="14" /> Report</button>
-            <button class="btn-ghost btn-sm" aria-label="Remove loved one" @click="onRemoveLink(l)"><AppIcon name="close" :size="14" /></button>
+            <button class="btn-ghost btn-sm" style="color: var(--gov-blue);" @click="reportOnBehalf(l.name)"><AppIcon name="create" :size="14" /> {{ $t('family.report') }}</button>
+            <button class="btn-ghost btn-sm" :aria-label="$t('common.remove')" @click="onRemoveLink(l)"><AppIcon name="close" :size="14" /></button>
           </div>
         </div>
       </div>
 
       <p v-else-if="!linksLoading && !linksError" class="empty-hint">
-        No loved ones yet. Add someone by their phone number above — once they confirm, you’ll see their status here.
+        {{ $t('family.noLovedOnes') }}
       </p>
 
       <!-- Incoming requests -->
       <template v-if="incoming.length > 0">
-        <div class="section-label inline-ico" style="margin-top: var(--sp-4);"><AppIcon name="mail-unread" :size="13" style="color: var(--awaiting);" /> Requests for you ({{ incoming.length }})</div>
+        <div class="section-label inline-ico" style="margin-top: var(--sp-4);"><AppIcon name="mail-unread" :size="13" style="color: var(--awaiting);" /> {{ $t('family.requestsForYou', { n: incoming.length }) }}</div>
         <div class="list">
           <div v-for="l in incoming" :key="l.link_id" class="card req-row">
             <span class="watch-avatar">{{ (l.name || l.phone).charAt(0).toUpperCase() }}</span>
             <div style="flex: 1; min-width: 0;">
               <div style="font-weight: 700; color: var(--text-hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ l.name || l.phone }}</div>
-              <div style="font-size: 12px; color: var(--text-lo);">wants to connect</div>
+              <div style="font-size: 12px; color: var(--text-lo);">{{ $t('family.wantsToConnect') }}</div>
             </div>
-            <button class="btn-sm confirm-btn" @click="onConfirm(l.link_id)"><AppIcon name="checkmark" :size="14" /> Confirm</button>
-            <button class="btn-ghost btn-sm" aria-label="Decline" @click="onRemoveLink(l)"><AppIcon name="close" :size="14" /></button>
+            <button class="btn-sm confirm-btn" @click="onConfirm(l.link_id)"><AppIcon name="checkmark" :size="14" /> {{ $t('family.confirm') }}</button>
+            <button class="btn-ghost btn-sm" :aria-label="$t('shelters.decline')" @click="onRemoveLink(l)"><AppIcon name="close" :size="14" /></button>
           </div>
         </div>
       </template>
 
       <!-- Outgoing pending -->
       <template v-if="outgoing.length > 0">
-        <div class="section-label inline-ico" style="margin-top: var(--sp-4);"><AppIcon name="time" :size="13" /> Awaiting confirmation ({{ outgoing.length }})</div>
+        <div class="section-label inline-ico" style="margin-top: var(--sp-4);"><AppIcon name="time" :size="13" /> {{ $t('family.awaitingConfirmation', { n: outgoing.length }) }}</div>
         <div class="list">
           <div v-for="l in outgoing" :key="l.link_id" class="card req-row">
             <span class="watch-avatar" style="background: var(--bg-raised); color: var(--text-lo);">{{ (l.name || l.phone).charAt(0).toUpperCase() }}</span>
             <div style="flex: 1; min-width: 0;">
               <div style="font-weight: 700; color: var(--text-hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ l.name || l.phone }}</div>
-              <div style="font-size: 12px; color: var(--text-lo);">request sent</div>
+              <div style="font-size: 12px; color: var(--text-lo);">{{ $t('family.requestSentLabel') }}</div>
             </div>
-            <button class="btn-ghost btn-sm" @click="onRemoveLink(l)">Cancel</button>
+            <button class="btn-ghost btn-sm" @click="onRemoveLink(l)">{{ $t('common.cancel') }}</button>
           </div>
         </div>
       </template>
     </template>
 
     <!-- ── Name / phone search ────────────────────────────────────── -->
-    <div class="section-label inline-ico" style="margin-top: var(--sp-6);"><AppIcon name="search" :size="13" /> Search by name or phone</div>
+    <div class="section-label inline-ico" style="margin-top: var(--sp-6);"><AppIcon name="search" :size="13" /> {{ $t('family.searchByName') }}</div>
     <p class="subtitle" style="margin: 0 0 var(--sp-3);">
-      Find any registered person by their real name (e.g. “Chan Tai Man”) or their 8-digit phone number — even if they’re not linked to you — to check on them or file a report on their behalf.
+      {{ $t('family.searchSubtitle') }}
     </p>
 
     <form class="search-form" @submit.prevent="() => onSearch()">
       <div class="search-field">
         <AppIcon name="search" :size="18" style="color: var(--text-lo);" />
-        <input v-model="query" type="search" placeholder="Name or phone number…" autocomplete="off" />
+        <input v-model="query" type="search" :placeholder="$t('family.searchPlaceholder')" autocomplete="off" />
       </div>
       <button type="submit" :disabled="loading" class="search-btn">
         <span v-if="loading" class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span>
-        <template v-else><AppIcon name="arrow-forward" :size="18" /> Search</template>
+        <template v-else><AppIcon name="arrow-forward" :size="18" /> {{ $t('common.search') }}</template>
       </button>
     </form>
 
-    <div v-if="loading" class="state-loading"><span class="spinner"></span> Searching…</div>
+    <div v-if="loading" class="state-loading"><span class="spinner"></span> {{ $t('family.searching') }}</div>
 
     <div v-else-if="error" class="state-block">
       <div class="state-icon is-error"><AppIcon name="alert-circle" :size="26" /></div>
-      <p class="state-title">Search failed</p>
+      <p class="state-title">{{ $t('family.searchFailedTitle') }}</p>
       <p class="state-sub">{{ error }}</p>
-      <button class="btn-secondary btn-sm" @click="onSearch()" style="margin-top: var(--sp-2);"><AppIcon name="refresh" :size="14" /> Try again</button>
+      <button class="btn-secondary btn-sm" @click="onSearch()" style="margin-top: var(--sp-2);"><AppIcon name="refresh" :size="14" /> {{ $t('family.tryAgain') }}</button>
     </div>
 
     <div v-else-if="searched && results.length === 0" class="state-block">
       <div class="state-icon is-warn"><AppIcon name="search" :size="26" /></div>
-      <p class="state-title">No one found for “{{ query }}”</p>
-      <p class="state-sub">No registered account matches that name or phone number. You can file a report on their behalf so rescue teams know to look.</p>
+      <p class="state-title">{{ $t('family.noOneFound', { q: query }) }}</p>
+      <p class="state-sub">{{ $t('family.noOneFoundSub') }}</p>
       <button class="btn-secondary btn-sm" @click="reportOnBehalf(query)" style="margin-top: var(--sp-2);">
-        <AppIcon name="person-add" :size="14" /> Report {{ query }} as Missing
+        <AppIcon name="person-add" :size="14" /> {{ $t('family.reportMissing', { q: query }) }}
       </button>
     </div>
 
     <div v-else-if="results.length > 0">
-      <div class="section-label inline-ico"><AppIcon name="list" :size="13" /> Search Results ({{ results.length }})</div>
+      <div class="section-label inline-ico"><AppIcon name="list" :size="13" /> {{ $t('family.searchResults', { n: results.length }) }}</div>
       <div class="list">
         <div
           v-for="r in results"
@@ -298,20 +298,20 @@ onUnmounted(() => {
                   <span v-if="r.coarse_lat != null">·</span>
                   <span v-if="r.coarse_lat != null" class="inline-ico"><AppIcon name="globe" :size="13" /> ~{{ r.coarse_lat }}, {{ r.coarse_lng }}</span>
                   <span v-if="r.reported_by === 'family'" class="inline-ico" style="color: var(--awaiting);">
-                    · <AppIcon name="people" :size="13" /> via {{ r.reporter_name || 'family member' }}
+                    · <AppIcon name="people" :size="13" /> {{ $t('family.via', { name: r.reporter_name || $t('family.familyMember') }) }}
                   </span>
                 </template>
-                <span v-else>· No status reported yet</span>
+                <span v-else>· {{ $t('family.noStatusYet') }}</span>
               </div>
             </div>
             <StatusBadge v-if="r.status" :status="r.status" />
-            <span v-else class="no-report-chip">No report</span>
+            <span v-else class="no-report-chip">{{ $t('family.noReport') }}</span>
           </div>
           <div style="display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;">
             <VisibilityChip tier="coarse" :short="true" />
             <span style="flex: 1;"></span>
             <button v-if="isAlert(r.status)" class="btn-sm update-btn" @click="reportOnBehalf(r.name)">
-              <AppIcon name="create" :size="14" /> Update Status
+              <AppIcon name="create" :size="14" /> {{ $t('family.updateStatus') }}
             </button>
           </div>
         </div>
@@ -322,8 +322,7 @@ onUnmounted(() => {
     <div class="privacy-note msg-row">
       <AppIcon name="lock-closed" :size="16" style="color: var(--text-lo);" />
       <span>
-        Loved ones see only approximate location (±1 km) and status — never exact GPS or medical notes.
-        Both people must confirm a link before any status is shared.
+        {{ $t('family.privacyNote') }}
       </span>
     </div>
   </div>

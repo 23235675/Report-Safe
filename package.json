@@ -9,6 +9,7 @@
     "mobile"
   ],
   "scripts": {
+    "start": "node server/src/index.js",
     "dev:server": "cd server && node src/index.js",
     "dev:web": "cd web && npx vite",
     "dev": "concurrently -n server,web -c blue,green \"npm:dev:server\" \"npm:dev:web\"",
