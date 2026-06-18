@@ -1,0 +1,39 @@
+version: '3.9'
+
+services:
+  mongo:
+    # MongoDB 7 matches the Azure Cosmos DB for MongoDB API version (v7.0) used
+    # in production, so local behaviour mirrors the deployed database.
+    image: mongo:7
+    container_name: report-safe-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ping:1}).ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: report-safe-redis
+    ports:
+      - "6379:6379"
+    # No persistence needed for ephemeral socket/rate state; use appendonly if
+    # you want rate-limit state to survive a restart.
+    command: redis-server --save "" --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+    driver: local

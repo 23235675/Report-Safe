@@ -1,0 +1,74 @@
+# ============================================================================
+# Report Safe — production stack (Azure-friendly)
+#
+#   Caddy (HTTPS) ──► server-1 ─┐
+#                  └► server-2 ─┴► Azure PostgreSQL (managed, external)
+#                                  Redis (cross-instance Socket.IO + rate limit)
+#
+# PostgreSQL is NOT in this file: use your managed Azure Database for
+# PostgreSQL. Provide its connection details via the .env file referenced below
+# (DATABASE_URL + PGSSL=true).
+#
+# Bring up:   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+# Scale note: server-1 / server-2 are explicit so Caddy can name them as
+#             upstreams. Add server-3 etc. the same way and list them in Caddyfile.
+# ============================================================================
+
+services:
+  server-1:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: report-safe-server:latest
+    env_file: .env.prod
+    environment:
+      INSTANCE_ID: server-1
+    depends_on:
+      - redis
+    restart: unless-stopped
+    expose:
+      - "3001"
+
+  server-2:
+    # Reuse the image built by server-1 (no second build).
+    image: report-safe-server:latest
+    env_file: .env.prod
+    environment:
+      INSTANCE_ID: server-2
+    depends_on:
+      - server-1
+      - redis
+    restart: unless-stopped
+    expose:
+      - "3001"
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save "" --loglevel warning
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - server-1
+      - server-2
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      TLS_EMAIL: ${TLS_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

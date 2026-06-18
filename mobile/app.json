@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "Report Safe",
+    "slug": "report-safe",
+    "version": "1.0.0",
+    "sdkVersion": "56.0.0",
+    "orientation": "portrait",
+    "scheme": "reportsafe",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
+    "splash": {
+      "backgroundColor": "#dc2626"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.reportsafe.mobile",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Report Safe uses your location to attach coordinates to status reports so rescuers can find you.",
+        "NSLocalNetworkUsageDescription": "This app uses local network to connect with rescue services.",
+        "NSBonjourServiceTypes": [
+          "_report-safe._tcp",
+          "_report-safe._tcp"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "aps-environment": "production"
+      }
+    },
+    "android": {
+      "package": "com.reportsafe.mobile",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "POST_NOTIFICATIONS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "googleServicesFile": "./google-services.json"
+    },
+    "plugins": [
+      "expo-location",
+      [
+        "expo-notifications",
+        {
+          "color": "#dc2626"
+        }
+      ],
+      "expo-font",
+      "expo-sqlite",
+      "expo-status-bar"
+    ],
+    "extra": {
+      "apiUrl": "http://localhost:3001",
+      "eas": {
+        "projectId": "a14e58fa-6927-40b9-87ff-7fcfa7155db1"
+      }
+    }
+  }
+}

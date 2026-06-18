@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(nc -zv -w 5 23235675postgresql.postgres.database.azure.com 5432)",
+      "Bash(curl -s ifconfig.me)",
+      "Bash(az account *)",
+      "Bash(brew install *)",
+      "Bash(az postgres *)",
+      "Bash(code --list-extensions)",
+      "Bash(xcodebuild -version)",
+      "Bash(xcrun simctl *)",
+      "Read(//Users/patricklee0106/Library/Android/sdk/platform-tools/**)",
+      "Read(//Users/patricklee0106/Library/Android/sdk/emulator/**)",
+      "Read(//Users/patricklee0106/.android/avd/**)",
+      "Read(//Users/patricklee0106/Library/Android/sdk/**)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb version *)",
+      "Bash(/usr/libexec/java_home -V)",
+      "Bash(ps -o pid,pcpu,etime,command -p 33346 33577)",
+      "Bash(find /Users/patricklee0106/Desktop/23235675_Report_Safe-main/mobile/android -newer /tmp -type f -mmin -2 2>/dev/null | head -10; echo \"---all java procs---\"; ps aux | grep java | grep -v grep)",
+      "Read(//private/tmp/**)",
+      "Bash(ps -o pid,pcpu,etime,rss -p 33346)",
+      "Bash(ps -o pid,pcpu,etime,stat -p 33346 33577)",
+      "Bash(ps -o pid,pcpu,etime -p 33346)",
+      "Bash(/Users/patricklee0106/Library/Android/sdk/platform-tools/adb devices *)",
+      "Bash(/Users/patricklee0106/Library/Android/sdk/platform-tools/adb shell *)",
+      "Bash(npx expo *)",
+      "Bash(tee /tmp/expo_metro_final.log)",
+      "Bash(/Users/patricklee0106/Library/Android/sdk/platform-tools/adb reverse *)",
+      "Bash(/Users/patricklee0106/Library/Android/sdk/platform-tools/adb logcat *)",
+      "Bash(/Users/patricklee0106/Library/Android/sdk/platform-tools/adb pull *)",
+      "Read(//tmp/**)"
+    ]
+  }
+}

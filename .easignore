@@ -1,0 +1,17 @@
+# EAS Build ignore file - excludes files from cloud build upload
+.agents/
+.git/
+.github/
+node_modules/
+.env.local
+*.log
+.DS_Store
+.vscode/
+.idea/
+build/
+dist/
+coverage/
+*.swp
+*.swo
+*~
+.env.prod

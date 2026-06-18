@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "835049764481",
+    "project_id": "report-safe-ba385",
+    "storage_bucket": "report-safe-ba385.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:835049764481:android:190a26d2fe51a205db3f80",
+        "android_client_info": {
+          "package_name": "com.reportsafe.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBRDuBQD1m-z0hOZkBnIVYb6a25DKqL0C8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

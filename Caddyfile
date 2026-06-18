@@ -1,0 +1,37 @@
+# ============================================================================
+# Report Safe — Caddy reverse proxy (production)
+#
+# Terminates HTTPS (auto Let's Encrypt) and load-balances across the backend
+# replicas. Caddy proxies WebSocket (Socket.IO) transparently. With multiple
+# replicas we use ip_hash so a client's Socket.IO long-poll handshake sticks to
+# one instance; cross-instance fan-out still works via the Redis adapter.
+#
+# Usage: set DOMAIN + TLS_EMAIL in the environment (docker-compose.prod.yml),
+# then `docker compose -f docker-compose.prod.yml up -d`.
+# ============================================================================
+
+{
+	email {$TLS_EMAIL}
+	# For staging/testing without burning Let's Encrypt rate limits, uncomment:
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+{$DOMAIN} {
+	encode gzip zstd
+
+	# Security headers (defence-in-depth; the app also sets its own).
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	reverse_proxy server-1:3001 server-2:3001 {
+		lb_policy ip_hash
+		health_uri /api/health
+		health_interval 10s
+		health_timeout 5s
+	}
+}
