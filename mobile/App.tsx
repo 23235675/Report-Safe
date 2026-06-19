@@ -76,7 +76,7 @@ function AppContent(): React.JSX.Element {
   if (inDisasterMode && activeDisaster) {
     return (
       <>
-        <StatusBar style="light" backgroundColor={C.bgPanel} />
+        <StatusBar style="light" />
         <DisasterModeScreen
           disaster={activeDisaster}
           onReported={() => acknowledgeDisaster(activeDisaster.id)}
@@ -88,7 +88,7 @@ function AppContent(): React.JSX.Element {
   return (
     <View style={{ flex: 1 }}>
       <NavigationContainer ref={navigationRef}>
-        <StatusBar style="light" backgroundColor={C.bgPanel} />
+        <StatusBar style="light" />
         <Tab.Navigator
           screenOptions={({ route }) => ({
             headerStyle: {

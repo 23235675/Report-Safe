@@ -1,14 +1,18 @@
 import { initializeApp } from 'firebase/app';
 import { getMessaging, getToken } from 'firebase/messaging';
 
-// This config comes from google-services.json
+// Firebase web config — values injected from EXPO_PUBLIC_* env vars (see .env.example).
+// A Firebase Web API key is a project *identifier*, not a secret: access is gated by
+// Firebase Security Rules + API key restrictions in Google Cloud Console, not by the key
+// staying private. We still keep it out of source so secret scanners don't flag it and so
+// the project can be reconfigured without a code change.
 const firebaseConfig = {
-  apiKey: "AIzaSyBRDuBQD1m-z0hOZkBnIVYb6a25DKqL0C8",
-  authDomain: "report-safe-ba385.firebaseapp.com",
-  projectId: "report-safe-ba385",
-  storageBucket: "report-safe-ba385.firebasestorage.app",
-  messagingSenderId: "835049764481",
-  appId: "1:835049764481:android:190a26d2fe51a205db3f80"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
 const app = initializeApp(firebaseConfig);

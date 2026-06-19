@@ -17,8 +17,9 @@ web-build/
 
 # Mobile push credentials — secrets/project files, never commit.
 # google-services.json: drop it in mobile/ before an Android build (or store as
-# an EAS secret file). AuthKey_*.p8 / GoogleService-Info.plist likewise.
-mobile/google-services.json
+# an EAS secret file). Ignored everywhere so the prebuild copy under
+# android/app/ is never committed either. AuthKey_*.p8 / GoogleService-Info.plist likewise.
+**/google-services.json
 mobile/GoogleService-Info.plist
 **/AuthKey_*.p8
 *.p8

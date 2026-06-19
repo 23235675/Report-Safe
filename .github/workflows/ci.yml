@@ -10,16 +10,12 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: reportsafe
-          POSTGRES_PASSWORD: reportsafe
-          POSTGRES_DB: reportsafe
+      mongo:
+        image: mongo:7
         ports:
-          - 5432:5432
+          - 27017:27017
         options: >-
-          --health-cmd "pg_isready -U reportsafe -d reportsafe"
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
           --health-interval 5s --health-timeout 5s --health-retries 10
 
       redis:
@@ -31,12 +27,9 @@ jobs:
           --health-interval 5s --health-timeout 3s --health-retries 5
 
     env:
-      # The test harness strips DATABASE_URL and targets these (5432 in CI).
-      TEST_PGHOST: localhost
-      TEST_PGPORT: "5432"
-      TEST_PGUSER: reportsafe
-      TEST_PGPASSWORD: reportsafe
-      TEST_PGDATABASE: reportsafe
+      # The test harness (tests/_global.setup.js, _env.setup.js) connects here.
+      TEST_MONGODB_URI: mongodb://localhost:27017
+      TEST_MONGODB_DB: reportsafe_test
       # Redis available in CI for integration testing.
       REDIS_HOST: localhost
       REDIS_PORT: "6379"
