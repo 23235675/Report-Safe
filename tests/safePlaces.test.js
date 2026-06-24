@@ -64,7 +64,7 @@ describe('public visibility', () => {
     await addPlace('p-approved', 'approved');
     await addPlace('p-pending', 'pending');
     await addPlace('p-rejected', 'rejected');
-    const { safe_places } = await (await call('/api/safe-places')).json();
+    const { data: safe_places } = await (await call('/api/safe-places')).json();
     const ids = safe_places.map((p) => p.id);
     expect(ids).toContain('p-approved');
     expect(ids).not.toContain('p-pending');
@@ -85,10 +85,10 @@ describe('citizen submission', () => {
       method: 'POST', body: JSON.stringify({ name: 'Kowloon Park', lat: 22.30, lng: 114.17 }),
     });
     expect(res.status).toBe(201);
-    const { safe_place } = await res.json();
+    const { data: safe_place } = await res.json();
     expect(safe_place.status).toBe('pending');
     // absent from the public list
-    const { safe_places } = await (await call('/api/safe-places')).json();
+    const { data: safe_places } = await (await call('/api/safe-places')).json();
     expect(safe_places.map((p) => p.id)).not.toContain(safe_place.id);
   });
 });
@@ -103,7 +103,7 @@ describe('moderation queue', () => {
     await addPlace('p1', 'pending');
     const res = await call('/api/safe-places/pending', VOL_TOK);
     expect(res.status).toBe(200);
-    const { safe_places } = await res.json();
+    const { data: safe_places } = await res.json();
     expect(safe_places.map((p) => p.id)).toContain('p1');
   });
 
@@ -113,7 +113,7 @@ describe('moderation queue', () => {
       method: 'PUT', body: JSON.stringify({ status: 'approved' }),
     });
     expect(res.status).toBe(200);
-    const { safe_places } = await (await call('/api/safe-places')).json();
+    const { data: safe_places } = await (await call('/api/safe-places')).json();
     expect(safe_places.map((p) => p.id)).toContain('p2');
   });
 
@@ -124,8 +124,8 @@ describe('moderation queue', () => {
     });
     const pub = await (await call('/api/safe-places')).json();
     const q = await (await call('/api/safe-places/pending', VOL_TOK)).json();
-    expect(pub.safe_places.map((p) => p.id)).not.toContain('p3');
-    expect(q.safe_places.map((p) => p.id)).not.toContain('p3');
+    expect(pub.data.map((p) => p.id)).not.toContain('p3');
+    expect(q.data.map((p) => p.id)).not.toContain('p3');
   });
 
   it('re-reviewing an already-decided place returns 404', async () => {

@@ -19,6 +19,8 @@ const MAGNITUDE_THRESHOLD = 6.0;
 const SEVERITY_THRESHOLD = 3;
 /** Two active disasters within this distance + same type are considered duplicates. */
 const DUPLICATE_RADIUS_KM = 30;
+/** Scan ceiling for geo bounding-box queries (C2) — see reportStore GEO_SCAN_CAP. */
+const GEO_SCAN_CAP = Number(process.env.GEO_SCAN_CAP) || 5000;
 
 /**
  * Hong Kong Observatory (HKO) warning alignment (A5 / R9).
@@ -129,7 +131,8 @@ async function findDevicesInRadius(disaster) {
   const candidates = await collection('device_push_tokens').find({
     lat: { $gte: bb.latMin, $lte: bb.latMax },
     lng: { $gte: bb.lngMin, $lte: bb.lngMax },
-  }).project({ _id: 0, token: 1, platform: 1, lat: 1, lng: 1 }).toArray();
+  }).project({ _id: 0, token: 1, platform: 1, lat: 1, lng: 1 })
+    .sort({ lat: 1 }).limit(GEO_SCAN_CAP).toArray(); // bound the scan (C2)
   return candidates
     .filter((d) => haversineKm(disaster.lat, disaster.lng, d.lat, d.lng) <= disaster.radius_km)
     .map((d) => ({ token: d.token, platform: d.platform }));
@@ -152,15 +155,18 @@ async function findAffectedUsersInRadius(disaster) {
   };
 
   // Union of user_ids from in-zone device locations and in-zone reports.
+  // Bound both scans (C2) so a city-wide radius can't pull whole collections.
   const [devs, reps] = await Promise.all([
-    collection('device_push_tokens').find({ user_id: { $ne: null }, ...box }).project({ user_id: 1, lat: 1, lng: 1 }).toArray(),
-    collection('reports').find({ user_id: { $ne: null }, ...box }).project({ user_id: 1, lat: 1, lng: 1 }).toArray(),
+    collection('device_push_tokens').find({ user_id: { $ne: null }, ...box }).project({ user_id: 1, lat: 1, lng: 1 }).sort({ lat: 1 }).limit(GEO_SCAN_CAP).toArray(),
+    collection('reports').find({ user_id: { $ne: null }, ...box }).project({ user_id: 1, lat: 1, lng: 1 }).sort({ lat: 1 }).limit(GEO_SCAN_CAP).toArray(),
   ]);
 
   const affectedIds = new Set();
-  for (const d of devs.concat(reps)) {
-    if (d.user_id && haversineKm(disaster.lat, disaster.lng, d.lat, d.lng) <= disaster.radius_km) {
-      affectedIds.add(d.user_id);
+  for (const list of [devs, reps]) {
+    for (const d of list) {
+      if (d.user_id && haversineKm(disaster.lat, disaster.lng, d.lat, d.lng) <= disaster.radius_km) {
+        affectedIds.add(d.user_id);
+      }
     }
   }
   if (affectedIds.size === 0) return [];
@@ -341,20 +347,31 @@ async function activateDisaster(signal, io) {
       active: true,
     };
 
-    // Persist the disaster (id → _id).
-    await collection('disasters').insertOne({
-      _id: disaster.id,
-      type: disaster.type,
-      magnitude: disaster.magnitude,
-      severity: disaster.severity,
-      lat: disaster.lat,
-      lng: disaster.lng,
-      radius_km: disaster.radius_km,
-      description: disaster.description,
-      started_at: disaster.started_at,
-      ended_at: disaster.ended_at,
-      active: disaster.active,
-    });
+    // Persist the disaster (id → _id). The partial-unique (type, active) index
+    // is the backstop for a race the read-then-write findDuplicateActive can't
+    // close (M4): if a concurrent insert won, we get 11000 → return the existing
+    // active disaster of this type instead of a 500 or a duplicate record.
+    try {
+      await collection('disasters').insertOne({
+        _id: disaster.id,
+        type: disaster.type,
+        magnitude: disaster.magnitude,
+        severity: disaster.severity,
+        lat: disaster.lat,
+        lng: disaster.lng,
+        radius_km: disaster.radius_km,
+        description: disaster.description,
+        started_at: disaster.started_at,
+        ended_at: disaster.ended_at,
+        active: disaster.active,
+      });
+    } catch (err) {
+      if (err.code === 11000) {
+        const existing = await collection('disasters').findOne({ type: disaster.type, active: true });
+        return existing ? fromDoc(existing) : null;
+      }
+      throw err;
+    }
 
     // 1) Real-time socket alert — reaches mobile apps currently RUNNING.
     if (io) {
@@ -427,16 +444,14 @@ function triggerManual(payload, io) {
  * @param {import('socket.io').Server} io
  */
 function startPolling(io) {
+  const { runIfLeader } = require('../lib/leaderLock');
   const interval = Number(process.env.DISASTER_POLL_INTERVAL_MS) || 30000;
-  // Run once immediately so the system feels alive on boot.
-  checkFeeds(io).catch((err) =>
-    console.error('[triggerEngine.startPolling] initial check failed:', err)
-  );
-  pollTimer = setInterval(() => {
-    checkFeeds(io).catch((err) =>
-      console.error('[triggerEngine.startPolling] poll failed:', err)
-    );
-  }, interval);
+  const ttl = Math.ceil(interval * 1.1); // hold slightly past one tick (C4)
+  // Leader-gated so two instances don't both activate the same disaster.
+  const tick = () => runIfLeader('trigger', ttl, () => checkFeeds(io))
+    .catch((err) => console.error('[triggerEngine.startPolling] poll failed:', err));
+  tick(); // run once immediately so the system feels alive on boot
+  pollTimer = setInterval(tick, interval);
   if (pollTimer.unref) pollTimer.unref();
 }
 

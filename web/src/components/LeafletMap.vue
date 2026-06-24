@@ -3,39 +3,29 @@ import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { ICONS } from './icons.js';
-import { STATUS_ICON, SHELTER_ICON } from '../iconography.js';
+import { SHELTER_ICON, STATUS_COLOR_VIVID } from '../iconography.js';
 
 const props = defineProps({
-  reports:  { type: Array,  default: () => [] },
-  disaster: { type: Object, default: null },
-  shelters: { type: Array,  default: () => [] },
-  layers:   { type: Object, default: null },
+  reports:   { type: Array, default: () => [] },
+  disasters: { type: Array, default: () => [] },
+  shelters:  { type: Array, default: () => [] },
+  layers:    { type: Object, default: null },
 });
-const emit = defineEmits(['markerClick']);
+const emit = defineEmits(['markerClick', 'move']);
 
 const mapEl = ref(null);
 
-let map            = null;
-let reportLayer    = null;
-let shelterLayer   = null;
-let disasterCircle = null;
+let map           = null;
+let reportLayer   = null;
+let shelterLayer  = null;
+let disasterLayer = null;
 
-// Design system v4 — light map, high-contrast markers.
-// Hexes mirror the --status tokens in main.css / theme.ts (Leaflet divIcon HTML
-// can't use var()); keep these in sync if the tokens change.
-const STATUS_COLORS = {
-  safe:                '#15803D',
-  injured:             '#A16207',
-  need_help:           '#DC2626',
-  awaiting_response:   '#C2410C',
-  potentially_missing: '#9F1239',
-  verified_missing:    '#9F1239',
-  missing:             '#475569',
-  rescued:             '#0E7490',
-  deceased:            '#374151',
-};
+// Gov EOC map palette — one source of truth shared with the Admin console and
+// the Gov dashboard (iconography.js STATUS_COLOR_VIVID): safe green, rescued
+// blue, every other status a red graduated by importance.
+const STATUS_COLORS = STATUS_COLOR_VIVID;
 
-const SHELTER_COLOR = '#2563EB';
+const SHELTER_COLOR = '#1B3A6B';
 
 /** Inline an AppIcon-vocabulary glyph as raw SVG markup for a Leaflet divIcon. */
 function glyph(name, color, size) {
@@ -44,25 +34,17 @@ function glyph(name, color, size) {
     stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
 }
 
+// Every report marker is a person glyph (no per-status icon shape, no gender
+// data on the report) — colour and ring size carry the urgency instead.
 function reportIcon(status, priority) {
   const color = STATUS_COLORS[status] || '#475569';
-  // Critical (P1) reports render as a real alert medallion — the same red
-  // alert icon the report shows as on mobile and in the triage list.
-  if (priority === 0) {
-    return L.divIcon({
-      className: '',
-      html: `<span class="rs-marker" style="width:26px;height:26px;background:${color};
-              border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 4px ${color}33;">
-              ${glyph(STATUS_ICON[status] || 'alert-circle', '#fff', 16)}</span>`,
-      iconSize:   [26, 26],
-      iconAnchor: [13, 13],
-    });
-  }
-  const size = priority === 1 ? 15 : 12;
+  const size  = priority === 0 ? 26 : priority === 1 ? 20 : 16;
+  const ring  = priority === 0 ? `box-shadow:0 0 0 4px ${color}33;` : '';
   return L.divIcon({
     className: '',
-    html: `<span style="display:block;width:${size}px;height:${size}px;
-            background:${color};border:2px solid #fff;border-radius:50%;"></span>`,
+    html: `<span class="rs-marker" style="width:${size}px;height:${size}px;background:${color};
+            border:2px solid #fff;border-radius:50%;${ring}">
+            ${glyph('person', '#fff', Math.round(size * 0.62))}</span>`,
     iconSize:   [size, size],
     iconAnchor: [size / 2, size / 2],
   });
@@ -93,7 +75,7 @@ function renderAll() {
       (r.reporter_name ? `<br><em>via ${r.reporter_name}</em>` : ''),
       { sticky: true }
     );
-    marker.on('click', () => emit('markerClick', r.id));
+    marker.on('click', () => { emit('markerClick', r.id); map.flyTo([r.lat, r.lng], Math.max(map.getZoom(), 14)); });
     marker.addTo(reportLayer);
   }
 
@@ -107,22 +89,24 @@ function renderAll() {
       (s.phone    ? `<br>${s.phone}`               : ''),
       { sticky: true }
     );
+    marker.on('click', () => map.flyTo([s.lat, s.lng], Math.max(map.getZoom(), 14)));
     marker.addTo(shelterLayer);
   }
 
-  if (disasterCircle) { map.removeLayer(disasterCircle); disasterCircle = null; }
-  if (props.disaster) {
-    disasterCircle = L.circle(
-      [props.disaster.lat, props.disaster.lng],
-      {
-        radius:      props.disaster.radius_km * 1000,
-        color:       '#DC2626',
-        fillColor:   '#DC2626',
-        fillOpacity: 0.05,
-        weight:      2,
-        dashArray:   '6 4',
-      }
-    ).addTo(map);
+  disasterLayer.clearLayers();
+  for (const d of props.disasters) {
+    if (typeof d.lat !== 'number' || typeof d.lng !== 'number') continue;
+    const circle = L.circle([d.lat, d.lng], {
+      radius:      (d.radius_km || 1) * 1000,
+      color:       '#16335A',
+      fillColor:   '#16335A',
+      fillOpacity: 0.05,
+      weight:      2,
+      dashArray:   '6 4',
+    });
+    circle.bindTooltip(`<strong>${d.type}</strong><br>${d.radius_km} km radius`, { sticky: true });
+    circle.on('click', () => map.fitBounds(circle.getBounds().pad(0.2)));
+    circle.addTo(disasterLayer);
   }
 
   fitToContent();
@@ -133,8 +117,8 @@ function fitToContent() {
   const pts = [
     ...props.reports.filter((r) => typeof r.lat === 'number').map((r) => [r.lat, r.lng]),
     ...props.shelters.filter((s) => typeof s.lat === 'number').map((s) => [s.lat, s.lng]),
+    ...props.disasters.filter((d) => typeof d.lat === 'number').map((d) => [d.lat, d.lng]),
   ];
-  if (props.disaster) pts.push([props.disaster.lat, props.disaster.lng]);
   if (pts.length > 0) {
     try { map.fitBounds(L.latLngBounds(pts).pad(0.2)); } catch {}
   }
@@ -148,18 +132,34 @@ onMounted(() => {
     maxZoom: 19,
   }).addTo(map);
 
-  reportLayer  = L.layerGroup().addTo(map);
-  shelterLayer = L.layerGroup().addTo(map);
+  reportLayer   = L.layerGroup().addTo(map);
+  shelterLayer  = L.layerGroup().addTo(map);
+  disasterLayer = L.layerGroup().addTo(map);
+
+  // Surface the live map centre so callers can show real, updating coordinates.
+  map.on('moveend', () => {
+    const c = map.getCenter();
+    emit('move', { lat: c.lat, lng: c.lng });
+  });
 
   renderAll();
   nextTick(() => map && map.invalidateSize());
 });
 
-watch(() => [props.reports, props.shelters, props.disaster], renderAll, { deep: true });
+watch(() => [props.reports, props.shelters, props.disasters], renderAll, { deep: true });
 
 onUnmounted(() => {
   if (map) { map.remove(); map = null; }
 });
+
+// Callable from the parent — e.g. clicking a person/facility in a side list
+// pans the map to it, same as clicking the marker itself.
+function flyTo(lat, lng) {
+  if (map && typeof lat === 'number' && typeof lng === 'number') {
+    map.flyTo([lat, lng], Math.max(map.getZoom(), 14));
+  }
+}
+defineExpose({ flyTo });
 </script>
 
 <template>

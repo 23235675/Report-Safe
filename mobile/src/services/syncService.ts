@@ -22,6 +22,15 @@ export interface DeliveryResult {
 }
 
 /**
+ * Only a real validation failure is permanent (H1). 400 = malformed,
+ * 422 = semantically rejected (e.g. web proxy "safe"). Auth (401/403),
+ * throttling (429), timeout (408) and 5xx are all transient → keep queued.
+ */
+function isPermanentRejection(status?: number): boolean {
+  return status === 400 || status === 422;
+}
+
+/**
  * Submit a report. Always persists to the local outbox first, then attempts
  * delivery through the available layers.
  */
@@ -63,14 +72,17 @@ export async function attemptDelivery(reportId?: string): Promise<DeliveryResult
         if (ok) {
           await outboxDb.markSent(report.id);
           delivered++;
-        } else if (status && status >= 400 && status < 500) {
-          // PERMANENT rejection (bad data) — drop it so it doesn't clog the
-          // queue forever; surface the real reason. Mirrors the web outbox.
+        } else if (isPermanentRejection(status)) {
+          // PERMANENT rejection (bad data — 400/422) → drop so it can't clog the
+          // queue forever. Everything else (401/403/408/429/5xx/network) is
+          // TRANSIENT and stays queued for the next attempt (H1: RFC 9110 makes
+          // 429 retriable; an expired token refreshes; a 403 may be a transient
+          // policy state). Never trade a never-lose for a 4xx drop.
           await outboxDb.markSent(report.id);
           rejected++;
           lastError = error;
         }
-        // else: transient (offline/5xx) → leave queued for the next attempt.
+        // else: transient → leave queued.
       }
       return { delivered, relayed: 0, queued: pending.length - delivered - rejected, rejected, error: lastError };
     }

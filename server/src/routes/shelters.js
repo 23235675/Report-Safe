@@ -8,17 +8,7 @@ const { logAudit }  = require('../lib/audit');
 const { boundingBox } = require('../services/reportStore');
 const { haversineKm } = require('../lib/geo');
 const { ShelterQuerySchema, ShelterCreateSchema, ShelterUpdateSchema } = require('../lib/zodSchemas');
-
-/** Map a stored doc's _id → id. */
-function mapId(doc) {
-  if (!doc) return doc;
-  const { _id, ...rest } = doc;
-  return { id: _id, ...rest };
-}
-/** Driver v6 findOneAndUpdate returns the doc directly; v5 wrapped it in {value}. */
-function unwrap(res) {
-  return res && res.value !== undefined ? res.value : res;
-}
+const { mapId, unwrap } = require('../lib/mongoMap');
 
 module.exports = function createSheltersRouter() {
   const router = express.Router();
@@ -47,11 +37,11 @@ module.exports = function createSheltersRouter() {
           if (distance_km <= radius) within.push({ ...mapId(d), distance_km });
         }
         within.sort((a, b) => a.distance_km - b.distance_km);
-        return res.json({ ok: true, shelters: within });
+        return res.json({ ok: true, data: within });
       }
 
       const docs = await collection('shelters').find(filter).sort({ name: 1 }).toArray();
-      return res.json({ ok: true, shelters: docs.map(mapId) });
+      return res.json({ ok: true, data: docs.map(mapId) });
     } catch (err) {
       console.error('[routes/shelters GET /] failed:', err);
       return res.status(500).json({ error: 'Internal server error' });
@@ -63,7 +53,7 @@ module.exports = function createSheltersRouter() {
     try {
       const doc = await collection('shelters').findOne({ _id: req.params.id });
       if (!doc) return res.status(404).json({ error: 'Shelter not found' });
-      return res.json({ ok: true, shelter: mapId(doc) });
+      return res.json({ ok: true, data: mapId(doc) });
     } catch (err) {
       console.error('[routes/shelters GET /:id] failed:', err);
       return res.status(500).json({ error: 'Internal server error' });
@@ -92,7 +82,7 @@ module.exports = function createSheltersRouter() {
       };
       await collection('shelters').insertOne(doc);
       logAudit({ action: 'shelter.create', entity: 'shelters', entityId: id, details: { name, type, source } });
-      return res.status(201).json({ ok: true, shelter: mapId(doc) });
+      return res.status(201).json({ ok: true, data: mapId(doc) });
     } catch (err) {
       console.error('[routes/shelters POST /] failed:', err);
       return res.status(500).json({ error: 'Internal server error' });
@@ -123,7 +113,7 @@ module.exports = function createSheltersRouter() {
       const doc = unwrap(result);
       if (!doc) return res.status(404).json({ error: 'Shelter not found' });
       logAudit({ action: 'shelter.update', entity: 'shelters', entityId: req.params.id, details: parsed.data });
-      return res.json({ ok: true, shelter: mapId(doc) });
+      return res.json({ ok: true, data: mapId(doc) });
     } catch (err) {
       console.error('[routes/shelters PUT /:id] failed:', err);
       return res.status(500).json({ error: 'Internal server error' });

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import {
   adminLogin, adminGetStats, adminGetAudit,
   adminListUsers, adminCreateUser, adminUpdateUser, adminDeleteUser,
@@ -27,7 +27,7 @@ async function login() {
     adminToken.value = res.access_token;
     adminUser.value  = res.user;
     loginPass.value  = '';
-    await switchTab('overview');
+    await switchTab('users');
   } catch (e) {
     loginError.value = e.message || 'Login failed';
   } finally {
@@ -46,7 +46,6 @@ function logout() {
 // ── Tab management ────────────────────────────────────────────────────────────
 // Two-letter section codes (no emoji) for a restrained government-console look.
 const TABS = [
-  { id: 'overview',  label: 'Overview',   code: 'OV' },
   { id: 'users',     label: 'Users',      code: 'US' },
   { id: 'reports',   label: 'Reports',    code: 'RP' },
   { id: 'disasters', label: 'Disasters',  code: 'DS' },
@@ -55,7 +54,7 @@ const TABS = [
   { id: 'audit',     label: 'Audit Log',  code: 'AU' },
 ];
 
-const activeTab   = ref('overview');
+const activeTab   = ref('users');
 const loading     = ref(false);
 const error       = ref(null);
 const rows        = ref({});    // { tabId: [] }
@@ -343,17 +342,16 @@ const total        = computed(() => totals.value[activeTab.value] ?? currentRows
   <!-- ════════ ADMIN PANEL ════════ -->
   <div v-else class="admin-wrap">
 
-    <!-- Header -->
+    <!-- Top toolbar -->
     <header class="admin-header">
       <div class="header-brand">
         <span class="header-crest">報</span>
         <span class="header-title">Report Safe</span>
         <span class="header-div">/</span>
-        <span class="header-sub">Administration Console</span>
+        <span class="header-sub">Admin Console</span>
       </div>
       <div class="header-right">
         <span class="header-user">{{ adminUser?.name || adminUser?.phone }}</span>
-        <span class="header-badge">SUPER ADMIN</span>
         <button class="logout-btn" @click="logout">Sign out</button>
       </div>
     </header>
@@ -367,7 +365,6 @@ const total        = computed(() => totals.value[activeTab.value] ?? currentRows
           :class="{ active: activeTab === tab.id }"
           @click="switchTab(tab.id)"
         >
-          <span class="nav-code">{{ tab.code }}</span>
           <span class="nav-label">{{ tab.label }}</span>
         </button>
       </nav>
@@ -867,63 +864,58 @@ const total        = computed(() => totals.value[activeTab.value] ?? currentRows
 
 <style scoped>
 /* ── Layout ────────────────────────────────────────────────── */
-.admin-wrap { display:flex; flex-direction:column; height:100vh; background:#f0f2f5; font-family:system-ui,sans-serif; font-size:14px; }
+.admin-wrap { display:flex; flex-direction:column; height:100vh; background:#e9f0fb; font-family:system-ui,sans-serif; font-size:14px; }
 .admin-body { display:flex; flex:1; overflow:hidden; }
 
-/* ── Header ─────────────────────────────────────────────────── */
+/* ── Top toolbar (dark) ──────────────────────────────────────── */
 .admin-header { display:flex; align-items:center; justify-content:space-between;
-  padding:0 20px; height:52px; background:#1a3a5c; color:#fff;
-  border-bottom:1px solid #0f2a48; flex-shrink:0; }
+  padding:0 22px; height:54px; background:#16335a; color:#fff; flex-shrink:0; }
 .header-brand { display:flex; align-items:center; gap:10px; }
-.header-crest { display:flex; align-items:center; justify-content:center; width:28px; height:28px;
-  background:#1a7abf; color:#fff; font-size:16px; font-weight:700; border-radius:3px; }
-.header-title  { font-size:15px; font-weight:700; letter-spacing:.3px; }
-.header-div    { color:#4a6a8c; font-weight:300; }
-.header-sub    { font-size:13px; color:#a8c7e8; font-weight:500; letter-spacing:.2px; }
-.header-right  { display:flex; align-items:center; gap:12px; }
-.header-user   { font-size:13px; color:#a8c7e8; }
-.header-badge  { font-size:10px; font-weight:800; letter-spacing:1px; padding:3px 8px;
-  background:#c0392b; border-radius:4px; }
-.logout-btn    { padding:6px 14px; background:transparent; border:1px solid #4a7aac;
-  color:#a8c7e8; border-radius:6px; cursor:pointer; font-size:13px; }
-.logout-btn:hover { background:#2a4a6c; }
+.header-crest { display:flex; align-items:center; justify-content:center; width:30px; height:30px;
+  background:#2f6fb0; color:#fff; font-size:17px; font-weight:700; border-radius:7px; }
+.header-title { font-size:15px; font-weight:700; letter-spacing:.3px; }
+.header-div   { color:#4a6a8c; font-weight:300; }
+.header-sub   { font-size:13px; color:#9fc0e4; font-weight:500; }
+.header-right { display:flex; align-items:center; gap:12px; }
+.header-user  { font-size:13px; color:#9fc0e4; }
+.logout-btn   { padding:6px 14px; background:transparent; border:1px solid #3f6694;
+  color:#9fc0e4; border-radius:7px; cursor:pointer; font-size:13px; }
+.logout-btn:hover { background:#23456e; color:#fff; }
 
-/* ── Sidebar ─────────────────────────────────────────────────── */
-.admin-sidebar { width:168px; background:#1e3a5c; display:flex; flex-direction:column;
-  padding:12px 0; flex-shrink:0; overflow-y:auto; }
-.nav-item { display:flex; align-items:center; gap:10px; padding:10px 18px;
-  background:transparent; border:none; color:#8ab4d8; cursor:pointer;
-  text-align:left; font-size:13px; font-weight:600; border-left:3px solid transparent;
-  transition:all .15s; width:100%; }
-.nav-item:hover  { color:#fff; background:rgba(255,255,255,.06); }
-.nav-item.active { color:#fff; background:rgba(255,255,255,.1); border-left-color:#4a9fff; }
-.nav-code  { display:flex; align-items:center; justify-content:center; width:24px; height:20px;
-  font-size:10px; font-weight:700; letter-spacing:.5px; color:#5e84ad;
-  border:1px solid #2e4d6e; border-radius:3px; flex-shrink:0; }
-.nav-item.active .nav-code { color:#fff; border-color:#4a9fff; background:rgba(74,159,255,.15); }
+/* ── Sidebar (dark) ──────────────────────────────────────────── */
+.admin-sidebar { width:200px; background:#1c3c63; display:flex; flex-direction:column;
+  padding:14px 10px; gap:3px; flex-shrink:0; overflow-y:auto; }
+.nav-item { display:flex; align-items:center; gap:11px; padding:10px 12px;
+  background:transparent; border:none; color:#a8c4e2; cursor:pointer;
+  text-align:left; font-size:13.5px; font-weight:600; border-radius:3px;
+  transition:background .12s, color .12s; width:100%; }
+.nav-item:hover  { background:rgba(255,255,255,.07); color:#fff; }
+.nav-item.active { background:#2f6fb0; color:#fff; }
 .nav-label { flex:1; }
 
-/* ── Main ────────────────────────────────────────────────────── */
-.admin-main { flex:1; overflow:auto; padding:20px 24px; }
+/* ── Main (light blue, no outer card) ────────────────────────── */
+.admin-main { flex:1; overflow:auto; padding:24px 26px; }
 
 /* ── Section heading ─────────────────────────────────────────── */
-.section-heading { font-size:17px; font-weight:700; color:#1a3a5c; margin:0; }
+.section-heading { font-size:19px; font-weight:700; color:#16335a; margin:0; }
 
 /* ── Toolbar ─────────────────────────────────────────────────── */
-.tbl-toolbar  { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; gap:12px; }
+.tbl-toolbar  { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; gap:12px; }
 .toolbar-right { display:flex; align-items:center; gap:10px; }
 .search-form  { display:flex; gap:6px; }
-.search-input { padding:6px 10px; border:1px solid #c5d3e0; border-radius:6px;
-  font-size:13px; width:200px; background:#fff; }
+.search-input { padding:8px 12px; border:1px solid #b6c4d6; border-radius:3px;
+  font-size:13px; width:210px; background:#fff; }
+.search-input:focus { outline:none; border-color:#1f4e87; }
 
-/* ── Table ───────────────────────────────────────────────────── */
-.tbl-wrap { overflow-x:auto; border-radius:8px; border:1px solid #d5e3f0; background:#fff; }
-.data-tbl { width:100%; border-collapse:collapse; font-size:13px; }
-.data-tbl th { background:#f5f8fb; color:#4a6280; font-weight:700; padding:9px 12px;
-  border-bottom:1px solid #d5e3f0; text-align:left; white-space:nowrap; }
-.data-tbl td { padding:8px 12px; border-bottom:1px solid #eef3f8; vertical-align:middle; }
+/* ── Data container — same shape as the Shelters table, navy header ── */
+.tbl-wrap { overflow:auto; border:1px solid #c3d2e4; background:#fff; border-radius:6px; }
+.data-tbl { width:100%; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums; }
+.data-tbl th { background:#1f4e87; color:#fff; font-weight:700; font-size:11.5px;
+  text-transform:uppercase; letter-spacing:.4px; padding:12px 15px;
+  border-bottom:1px solid #173e6c; text-align:left; white-space:nowrap; }
+.data-tbl td { padding:11px 15px; border-bottom:1px solid #eef3f9; vertical-align:middle; }
 .data-tbl tr:last-child td { border-bottom:none; }
-.data-tbl tr:hover td { background:#f8fbff; }
+.data-tbl tr:hover td { background:#f5f9ff; }
 .mono       { font-family:monospace; font-size:12px; color:#555; }
 .dim        { color:#8a9ab0; }
 .small-date { font-size:12px; color:#8a9ab0; white-space:nowrap; }
@@ -931,77 +923,79 @@ const total        = computed(() => totals.value[activeTab.value] ?? currentRows
 .actions    { white-space:nowrap; }
 
 /* ── Badges ──────────────────────────────────────────────────── */
-.role-badge    { padding:2px 8px; border-radius:12px; font-size:11px; font-weight:700;
-  text-transform:uppercase; letter-spacing:.4px; }
-.role-citizen    { background:#e8f4fd; color:#1a7abf; }
-.role-volunteer  { background:#e8f9ee; color:#1a7a3f; }
-.role-government { background:#fff4e0; color:#9a5f00; }
-.role-super_admin{ background:#fde8e8; color:#c0392b; }
+/* Role is metadata, not status → mono. Colour is reserved for report status. */
+.role-badge    { padding:2px 8px; border-radius:3px; font-size:11px; font-weight:700;
+  text-transform:uppercase; letter-spacing:.4px; background:#eef1f6; color:#3a4a5e;
+  border:1px solid #d8dfe8; }
 
-.status-badge { padding:2px 8px; border-radius:12px; font-size:11px; font-weight:700; }
+/* Safe = green, Rescued = blue. Every other status is red, graduated by
+   importance — darker red = more important (missing > need_help > injured >
+   potentially_missing > awaiting_response > deceased). */
+.status-badge { padding:2px 8px; border-radius:3px; font-size:11px; font-weight:700; background:#fde8e8; }
 .st-safe      { background:#e8f9ee; color:#1a7a3f; }
-.st-injured   { background:#fff4e0; color:#9a5f00; }
-.st-need_help, .st-missing, .st-verified_missing { background:#fde8e8; color:#c0392b; }
-.st-awaiting_response, .st-potentially_missing { background:#fff4e0; color:#9a5f00; }
 .st-rescued   { background:#e8f4fd; color:#1a7abf; }
-.st-deceased  { background:#f0f0f0; color:#555; }
+.st-missing, .st-verified_missing { color:#5c0d0d; }
+.st-need_help           { color:#7d1818; }
+.st-injured             { color:#9c2424; }
+.st-potentially_missing { color:#b53636; }
+.st-awaiting_response   { color:#c75050; }
+.st-deceased            { color:#cf6a6a; }
 
-.pill-green { padding:2px 8px; border-radius:12px; font-size:11px; font-weight:700;
+.pill-green { padding:2px 8px; border-radius:3px; font-size:11px; font-weight:700;
   background:#e8f9ee; color:#1a7a3f; }
-.pill-grey  { padding:2px 8px; border-radius:12px; font-size:11px; font-weight:700;
+.pill-grey  { padding:2px 8px; border-radius:3px; font-size:11px; font-weight:700;
   background:#f0f0f0; color:#666; }
 
-.action-badge        { padding:2px 8px; border-radius:12px; font-size:11px; font-weight:700; }
-.act-create          { background:#e8f9ee; color:#1a7a3f; }
-.act-update          { background:#e8f4fd; color:#1a7abf; }
-.act-delete          { background:#fde8e8; color:#c0392b; }
-.act-login           { background:#f0f0f8; color:#555; }
+/* Audit action is metadata, not status → mono. */
+.action-badge { padding:2px 8px; border-radius:3px; font-size:11px; font-weight:700;
+  background:#eef1f6; color:#3a4a5e; border:1px solid #d8dfe8; }
 
 /* ── Buttons ─────────────────────────────────────────────────── */
-.btn { padding:7px 14px; border-radius:6px; border:none; cursor:pointer;
-  font-size:13px; font-weight:600; transition:opacity .15s; }
+/* One institutional blue for every button. Filled = primary action,
+   outline = secondary; danger stays red as a destructive-action safety signal. */
+.btn { padding:8px 15px; border-radius:3px; cursor:pointer;
+  font-size:13px; font-weight:600; transition:background .12s, opacity .12s;
+  background:#fff; color:#1f4e87; border:1px solid #1f4e87; }
+.btn:hover:not(:disabled) { background:#eef3fa; }
 .btn:disabled { opacity:.5; cursor:not-allowed; }
-.btn-primary  { background:#1a7abf; color:#fff; }
-.btn-primary:hover:not(:disabled) { background:#1565a5; }
-.btn-ghost    { background:#f0f4f8; color:#4a6280; }
-.btn-ghost:hover  { background:#e0e8f0; }
-.btn-danger   { background:#c0392b; color:#fff; }
-.btn-danger:hover:not(:disabled) { background:#a93226; }
-.btn-sm       { padding:5px 11px; font-size:12px; }
-.btn-xs       { padding:3px 8px; font-size:11px; border-radius:4px; }
-.btn-edit     { background:#e8f4fd; color:#1a7abf; }
-.btn-edit:hover { background:#d0e8f8; }
-.btn-del      { background:#fde8e8; color:#c0392b; }
-.btn-del:hover  { background:#f8d0d0; }
+.btn-primary  { background:#1f4e87; color:#fff; }
+.btn-primary:hover:not(:disabled) { background:#173e6c; }
+.btn-ghost    { background:#fff; color:#1f4e87; border-color:#1f4e87; }
+.btn-ghost:hover:not(:disabled)  { background:#eef3fa; }
+.btn-danger   { background:#a5281b; color:#fff; border-color:#a5281b; }
+.btn-danger:hover:not(:disabled) { background:#871f15; }
+.btn-sm       { padding:7px 13px; font-size:12.5px; }
+.btn-xs       { padding:4px 9px; font-size:11px; }
+.btn-edit     { background:#1f4e87; color:#fff; }
+.btn-edit:hover:not(:disabled) { background:#173e6c; }
+.btn-del      { background:#fff; color:#1f4e87; border-color:#1f4e87; }
+.btn-del:hover:not(:disabled)  { background:#eef3fa; }
 
 /* ── Filter bar (compact, grouped — used by Users/Reports/Disasters/Devices) ── */
-.filter-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap;
-  margin-bottom:14px; padding:7px 9px; background:#f5f8fb;
-  border:1px solid #e1e9f2; border-radius:8px; }
-.filter-select { padding:4px 8px; border:1px solid #cdd9e6; border-radius:6px;
-  font-size:12px; line-height:1.3; background:#fff; color:#26425f; cursor:pointer;
+.filter-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+.filter-select { padding:6px 9px; border:1px solid #b6c4d6; border-radius:3px;
+  font-size:12.5px; line-height:1.3; background:#fff; color:#33455c; cursor:pointer;
   max-width:190px; }
-.filter-select:hover  { border-color:#a9bfd6; }
-.filter-select:focus  { outline:none; border-color:#1a7abf; }
-.filter-clear { margin-left:auto; padding:4px 10px; font-size:12px; font-weight:600;
-  background:transparent; border:none; color:#1a7abf; cursor:pointer; border-radius:6px; }
-.filter-clear:hover { background:#e8f1fa; }
+.filter-select:hover  { border-color:#7e98b6; }
+.filter-select:focus  { outline:none; border-color:#1f4e87; }
+.filter-clear { margin-left:auto; padding:6px 11px; font-size:12.5px; font-weight:600;
+  background:transparent; border:none; color:#1f4e87; cursor:pointer; border-radius:3px; }
+.filter-clear:hover { background:#eef3fa; }
 
 /* ── Inline link select ──────────────────────────────────────── */
-.inline-select { font-size:12px; padding:3px 6px; border:1px solid #c5d3e0;
-  border-radius:4px; background:#fff; }
+.inline-select { font-size:12px; padding:4px 7px; border:1px solid #dbe2ec;
+  border-radius:6px; background:#fff; }
 
 /* ── Stats grid ──────────────────────────────────────────────── */
-.stats-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:16px; margin-top:12px; }
-.stat-box   { background:#fff; border:1px solid #d5e3f0; border-radius:10px; padding:20px;
-  border-top:3px solid #1a7abf; }
-.stat-num   { font-size:32px; font-weight:800; color:#1a3a5c; line-height:1; }
-.stat-lbl   { font-size:13px; font-weight:700; color:#4a6280; margin-top:4px; }
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:16px; margin-top:16px; }
+.stat-box   { background:#fff; border:1px solid #c3d2e4; border-radius:6px; padding:20px; }
+.stat-num   { font-size:32px; font-weight:800; color:#16335a; line-height:1; }
+.stat-lbl   { font-size:13px; font-weight:700; color:#5a6b80; margin-top:4px; }
 .stat-sub   { font-size:11px; color:#8a9ab0; margin-top:6px; }
 
-/* ── Pagination ──────────────────────────────────────────────── */
-.pagination { display:flex; align-items:center; gap:10px; margin-top:14px; }
-.page-info  { font-size:12px; color:#8a9ab0; margin-right:4px; }
+/* ── Pagination (borderless — no extra container) ────────────── */
+.pagination { display:flex; align-items:center; gap:10px; margin-top:14px; padding:0 2px; }
+.page-info  { font-size:12.5px; color:#5a7090; margin-right:auto; font-weight:500; }
 
 /* ── Error / loading ─────────────────────────────────────────── */
 .err-banner { display:flex; align-items:center; gap:10px; padding:10px 14px;

@@ -1,9 +1,10 @@
 import React, {
   createContext, useContext, useEffect, useRef, useState, useCallback,
 } from 'react';
-import * as Location from 'expo-location';
-import { API_BASE_URL, getStats, getDisasters, currentUserId } from '../api/apiClient';
-import type { Stats, Disaster } from '../api/apiClient';
+import { API_BASE_URL, getStats, getDisasters, currentUserId, getIncident, respondToIncident } from '../api/apiClient';
+import { severityRank } from '../utils/severity';
+import { resolveLocation, DEFAULT_LOCATION } from '../utils/location';
+import type { Stats, Disaster, IncidentDetail, IncidentResponder } from '../api/apiClient';
 
 export interface LovedOneAlertItem {
   id: string;
@@ -13,6 +14,7 @@ export interface LovedOneAlertItem {
 import { outboxDb } from '../db/outboxDb';
 import { userStorage } from '../db/userStorage';
 import { notificationService } from '../services/notificationService';
+import { translateStandalone } from '../i18n';
 
 /**
  * Disaster mode is the heart of the mobile = emergency / web = data-collection
@@ -27,13 +29,15 @@ import { notificationService } from '../services/notificationService';
  */
 
 const SOCKET_EVENTS = {
-  REGISTER:        'register',
-  DISASTER_ALERT:  'disaster_alert',
-  LOVED_ONE_ALERT: 'loved_one_alert',
-  STATS_UPDATE:    'stats_update',
+  REGISTER:          'register',
+  DISASTER_ALERT:    'disaster_alert',
+  LOVED_ONE_ALERT:   'loved_one_alert',
+  STATS_UPDATE:      'stats_update',
+  INCIDENT_ALERT:    'incident_alert',
+  INCIDENT_UPDATE:   'incident_update',
+  INCIDENT_RESOLVED: 'incident_resolved',
 } as const;
 
-const DEFAULT_LOCATION = { lat: 22.3, lng: 114.1 };
 const ACK_KEY = 'rs_ack_disasters';
 
 const EMPTY_STATS: Stats = {
@@ -53,14 +57,39 @@ interface DisasterModeValue {
   /** The disaster the user is in-zone for and has not yet responded to. */
   activeDisaster: Disaster | null;
   inDisasterMode: boolean;
+  /**
+   * True while the device is inside (or server-flagged for) any active disaster
+   * zone, regardless of whether the user has already self-reported. Unlike
+   * `inDisasterMode` this survives acknowledgement — used to reveal
+   * disaster-only features (e.g. the shelters map) after the gate is cleared.
+   */
+  inDisasterZone: boolean;
   /** Best-known device location (falls back to a HK default). */
   location: { lat: number; lng: number };
   refresh: () => Promise<void>;
   /** Mark a disaster as responded-to, dismissing the gate for it. */
   acknowledgeDisaster: (id: string) => void;
+  /**
+   * Mark EVERY currently in-zone disaster as responded-to. Reporting your
+   * safety is a statement about you, not one disaster — so a single report
+   * clears the gate even when overlapping zones stack you into many at once.
+   */
+  acknowledgeAllInZone: () => void;
   /** In-app alerts for loved ones inside a disaster zone (socket path, open app). */
   lovedOneAlerts: LovedOneAlertItem[];
   dismissLovedOneAlert: (id: string) => void;
+  /**
+   * CFR: a nearby emergency this opted-in responder has been alerted to (detail
+   * + AEDs + co-responder roster). Drives the IncidentResponseScreen. Null when
+   * none active. NON-gating — unlike a disaster, it never blocks the app.
+   */
+  activeIncident: IncidentDetail | null;
+  /** Set this responder's status for the active incident. 'declined' dismisses it. */
+  /** Open a CFR incident by id (shows the full-screen response screen). */
+  openIncident: (id: string) => Promise<void>;
+  respondToActiveIncident: (status: 'enroute' | 'onscene' | 'declined') => Promise<void>;
+  /** Dismiss the active incident screen without changing status. */
+  dismissIncident: () => void;
 }
 
 const DisasterModeContext = createContext<DisasterModeValue | null>(null);
@@ -99,17 +128,6 @@ function persistAck(set: Set<string>): void {
   }
 }
 
-async function resolveLocation(): Promise<{ lat: number; lng: number }> {
-  try {
-    const perm = await Location.requestForegroundPermissionsAsync();
-    if (perm.status !== 'granted') return DEFAULT_LOCATION;
-    const pos = await Location.getCurrentPositionAsync({});
-    return { lat: pos.coords.latitude, lng: pos.coords.longitude };
-  } catch {
-    return DEFAULT_LOCATION;
-  }
-}
-
 export function DisasterModeProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const [stats, setStats]                 = useState<Stats>(EMPTY_STATS);
   const [disasters, setDisasters]         = useState<Disaster[]>([]);
@@ -119,8 +137,10 @@ export function DisasterModeProvider({ children }: { children: React.ReactNode }
   const [error, setError]                 = useState(false);
   const [connected, setConnected]         = useState(false);
   const [activeDisaster, setActiveDisaster] = useState<Disaster | null>(null);
+  const [inDisasterZone, setInDisasterZone] = useState(false);
   const [location, setLocation]           = useState(DEFAULT_LOCATION);
   const [lovedOneAlerts, setLovedOneAlerts] = useState<LovedOneAlertItem[]>([]);
+  const [activeIncident, setActiveIncident] = useState<IncidentDetail | null>(null);
 
   // Refs read inside socket handlers (avoid stale closures).
   const disastersRef    = useRef<Disaster[]>([]);
@@ -131,6 +151,12 @@ export function DisasterModeProvider({ children }: { children: React.ReactNode }
 
   /** Recompute the gate from current disasters + location + acknowledgements. */
   const recompute = useCallback(() => {
+    // In-zone for an active disaster, ignoring acknowledgement — drives
+    // disaster-only features that should stay available after self-reporting.
+    setInDisasterZone(disastersRef.current.some((d) =>
+      d.active !== false &&
+      (serverFlaggedRef.current.has(d.id) || withinRadiusKm(locRef.current, d, d.radius_km)),
+    ));
     const candidates = disastersRef.current.filter((d) =>
       d.active !== false &&
       !ackRef.current.has(d.id) &&
@@ -142,7 +168,7 @@ export function DisasterModeProvider({ children }: { children: React.ReactNode }
     }
     // Most severe first, then most recently started.
     candidates.sort(
-      (a, b) => (b.severity ?? 0) - (a.severity ?? 0) || (b.started_at ?? 0) - (a.started_at ?? 0),
+      (a, b) => severityRank(b.severity) - severityRank(a.severity) || (b.started_at ?? 0) - (a.started_at ?? 0),
     );
     setActiveDisaster(candidates[0] ?? null);
   }, []);
@@ -168,8 +194,8 @@ export function DisasterModeProvider({ children }: { children: React.ReactNode }
     }
     // Pending count is non-critical — never let SQLite block the UI.
     try {
-      const all = await outboxDb.getAll();
-      setPending(all.filter((r) => r.status === 'pending').length);
+      const pendingReports = await outboxDb.getPending();
+      setPending(pendingReports.length);
     } catch {
       /* ignore */
     }
@@ -179,8 +205,62 @@ export function DisasterModeProvider({ children }: { children: React.ReactNode }
     setLovedOneAlerts((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
+  /** Fetch full incident detail (incident + AEDs + roster) and open the screen. */
+  const openIncident = useCallback(async (id: string) => {
+    try {
+      const detail = await getIncident(id);
+      if (detail?.incident?.status === 'active') setActiveIncident(detail);
+    } catch {
+      /* not a responder for this incident, or it's gone — ignore */
+    }
+  }, []);
+
+  const dismissIncident = useCallback(() => setActiveIncident(null), []);
+
+  const respondToActiveIncident = useCallback(
+    async (status: 'enroute' | 'onscene' | 'declined') => {
+      const current = activeIncident;
+      if (!current) return;
+      try {
+        await respondToIncident(current.incident.id, {
+          status,
+          lat: locRef.current.lat,
+          lng: locRef.current.lng,
+        });
+      } catch {
+        /* best-effort — still update the UI below */
+      }
+      if (status === 'declined') { setActiveIncident(null); return; }
+      // Reflect my own status in the local roster immediately.
+      const uid = currentUserId();
+      setActiveIncident((prev) => {
+        if (!prev) return prev;
+        const mine: IncidentResponder = {
+          user_id: uid || 'me', name: translateStandalone('incident.you'), status,
+          eta_seconds: null, lat: locRef.current.lat, lng: locRef.current.lng, updated_at: Date.now(),
+        };
+        const others = prev.responders.filter((r) => r.user_id !== uid);
+        return { ...prev, responders: [mine, ...others] };
+      });
+    },
+    [activeIncident],
+  );
+
   const acknowledgeDisaster = useCallback((id: string) => {
     ackRef.current.add(id);
+    persistAck(ackRef.current);
+    recompute();
+  }, [recompute]);
+
+  const acknowledgeAllInZone = useCallback(() => {
+    for (const d of disastersRef.current) {
+      if (
+        d.active !== false &&
+        (serverFlaggedRef.current.has(d.id) || withinRadiusKm(locRef.current, d, d.radius_km))
+      ) {
+        ackRef.current.add(d.id);
+      }
+    }
     persistAck(ackRef.current);
     recompute();
   }, [recompute]);
@@ -197,6 +277,11 @@ export function DisasterModeProvider({ children }: { children: React.ReactNode }
     const offTap = notificationService.addDisasterTapListener((id, type) => {
       if (id && type !== 'loved_one_alert') serverFlaggedRef.current.add(id);
       refresh().then(() => recompute()).catch(() => {});
+    });
+
+    // Tapping a responder push (incl. cold start) opens that incident's screen.
+    const offIncidentTap = notificationService.addIncidentTapListener((id) => {
+      openIncident(id).catch(() => {});
     });
 
     (async () => {
@@ -255,6 +340,26 @@ export function DisasterModeProvider({ children }: { children: React.ReactNode }
             }
           },
         );
+
+        // CFR: a nearby emergency this responder was matched to. Fetch detail
+        // (AEDs + roster) and open the screen + fire a local alert. NON-gating.
+        socket.on(SOCKET_EVENTS.INCIDENT_ALERT, (incident: { id: string } & Record<string, any>) => {
+          if (!incident?.id) return;
+          notificationService.notifyIncident(incident as any);
+          openIncident(incident.id).catch(() => {});
+        });
+        // A co-responder changed status/position — merge into the open roster.
+        socket.on(SOCKET_EVENTS.INCIDENT_UPDATE, (payload: { incidentId: string; response: IncidentResponder }) => {
+          setActiveIncident((prev) => {
+            if (!prev || !payload?.response || prev.incident.id !== payload.incidentId) return prev;
+            const others = prev.responders.filter((r) => r.user_id !== payload.response.user_id);
+            return { ...prev, responders: [...others, payload.response] };
+          });
+        });
+        // The incident was resolved/stood down — close the screen.
+        socket.on(SOCKET_EVENTS.INCIDENT_RESOLVED, (payload: { id: string }) => {
+          setActiveIncident((prev) => (prev && prev.incident.id === payload?.id ? null : prev));
+        });
       } catch (err) {
         console.error('[DisasterModeProvider] socket init failed:', err);
       }
@@ -263,19 +368,26 @@ export function DisasterModeProvider({ children }: { children: React.ReactNode }
     return () => {
       mounted = false;
       offTap();
+      offIncidentTap();
       if (socket) socket.disconnect();
     };
-  }, [refresh, recompute, applyDisasters]);
+  }, [refresh, recompute, applyDisasters, openIncident]);
 
   const value: DisasterModeValue = {
     stats, disasters, pending, loading, loaded, error, connected,
     activeDisaster,
     inDisasterMode: activeDisaster != null,
+    inDisasterZone,
     location,
     refresh,
     acknowledgeDisaster,
+    acknowledgeAllInZone,
     lovedOneAlerts,
     dismissLovedOneAlert,
+    activeIncident,
+    openIncident,
+    respondToActiveIncident,
+    dismissIncident,
   };
 
   return <DisasterModeContext.Provider value={value}>{children}</DisasterModeContext.Provider>;

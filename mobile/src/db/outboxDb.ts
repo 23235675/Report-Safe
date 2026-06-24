@@ -19,6 +19,10 @@ export interface OutboxRow {
   updated_at: number;
 }
 
+/** Hard cap on outbox rows (C3). Only DELIVERED rows are ever evicted to stay
+ *  under it — a pending (undelivered) report is never dropped. */
+const MAX_ROWS = 200;
+
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 async function getDb(): Promise<SQLite.SQLiteDatabase> {
@@ -72,6 +76,15 @@ export async function enqueue(report: PendingReport): Promise<void> {
        VALUES (?, ?, 'pending', NULL, ?, ?)`,
       [report.id, JSON.stringify(report), report.created_at || now, now]
     );
+    // Bound the table: evict the OLDEST delivered rows (sent/relayed) beyond the
+    // cap. Pending rows are never touched, so the never-lose invariant holds.
+    await db.runAsync(
+      `DELETE FROM outbox WHERE id IN (
+         SELECT id FROM outbox WHERE status != 'pending' ORDER BY updated_at DESC
+         LIMIT -1 OFFSET ?
+       )`,
+      [MAX_ROWS]
+    );
   } catch (err) {
     console.error('[outboxDb.enqueue] failed to enqueue report:', err);
     throw err;
@@ -87,7 +100,7 @@ export async function getPending(): Promise<PendingReport[]> {
     const rows = await db.getAllAsync<RawRow>(
       `SELECT * FROM outbox WHERE status = 'pending' ORDER BY created_at ASC`
     );
-    return rows.map((r) => toRow(r).payload);
+    return rows.map((r) => JSON.parse(r.payload) as PendingReport);
   } catch (err) {
     console.error('[outboxDb.getPending] failed to read pending reports:', err);
     return [];
@@ -104,7 +117,7 @@ export async function getById(id: string): Promise<PendingReport | null> {
       `SELECT * FROM outbox WHERE id = ?`,
       [id]
     );
-    return row ? toRow(row).payload : null;
+    return row ? (JSON.parse(row.payload) as PendingReport) : null;
   } catch (err) {
     console.error('[outboxDb.getById] failed to read report:', err);
     return null;

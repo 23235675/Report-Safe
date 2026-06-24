@@ -9,10 +9,10 @@ Disaster-status reporting system for Hong Kong. Citizens submit "I am safe / I a
 | Component | Technology |
 |---|---|
 | Backend | Node.js 20 + Express 4 + Socket.IO 4 |
-| Database | PostgreSQL 16 |
-| Cache/Real-time | Redis 7 |
+| Database | MongoDB 7 (Azure Cosmos DB for MongoDB in production) |
+| Cache/Real-time | Redis 7 (optional — multi-instance Socket.IO + rate limiting) |
 | Web Frontend | Vue 3 + Vite + Leaflet |
-| Mobile | React Native + Expo SDK 54 + TypeScript |
+| Mobile | React Native 0.85.3 + Expo SDK 56 + TypeScript (strict) |
 | Mobile DB | expo-sqlite (outbox queue) + expo-notifications (local disaster alerts) |
 | Remote Push | Azure Notification Hubs → FCM (Android) + APNs (iOS) |
 | Validation | Zod |
@@ -23,8 +23,8 @@ Disaster-status reporting system for Hong Kong. Citizens submit "I am safe / I a
 ```
 Mobile (Outbox SQLite) ──┐
                          ├─► Backend API (:3001)
-Web (Vue 3)  ────────────┤    ├─ PostgreSQL 16
-                         ├─► ├─ Redis 7
+Web (Vue 3)  ────────────┤    ├─ MongoDB / Azure Cosmos DB for MongoDB
+                         ├─► ├─ Redis 7 (optional, multi-instance only)
   Gov Dashboard ─────────┘    └─ Socket.IO (real-time)
 ```
 
@@ -43,9 +43,9 @@ git clone https://github.com/anthropics/report-safe.git
 cd report-safe
 npm install
 
-# Start database & cache
-npm run db:up                    # PostgreSQL + Redis (Docker)
-npm run db:reset -- --yes        # Schema + seed data (10k HK users, 3 disasters)
+# Start database (local MongoDB 7 via Docker; mirrors Cosmos v7.0)
+npm run db:up
+npm run db:reset                 # Schema/indexes + seed data (HK users + demo disasters)
 
 # Run all services
 npm run dev                      # Backend (:3001) + Web (:5173)
@@ -61,8 +61,8 @@ Then open **http://localhost:5173** for the web app.
 - `:3001` — Backend API + Socket.IO
 - `:5173` — Web dev server
 - `:8081` — Mobile dev
-- `:5433` — PostgreSQL (host)
-- `:6379` — Redis
+- `:27017` — MongoDB (host)
+- `:6379` — Redis (optional, only used for multi-instance scaling)
 
 ## Device Roles
 
@@ -81,7 +81,7 @@ Then open **http://localhost:5173** for the web app.
 - **Identity-based linking** (HKID + phone match) connects proxy reports to the person being reported for.
 
 ### 3. Government (Gov Dashboard)
-- Access: token-protected via the `GOV_TOKEN` env var (simple `12345678` in local/testing; set a strong secret in production — the compare is timing-safe regardless)
+- Access: token-protected via the `GOV_TOKEN` env var. The built-in fallback when it is unset is `GOV-SECRET-TOKEN-2024` (see `authGuard.js`); set a strong secret in production — the compare is timing-safe regardless, and the server warns if the default is left in production.
 - View triage: prioritized by need (Need Help → Injured → Safe)
 - Trigger disasters (Typhoon, Rainstorm, etc.)
 - Full GPS + medical notes + phone (coarse location hidden from public)
@@ -128,7 +128,7 @@ Lifetimes are configurable: `ACCESS_TOKEN_TTL_HOURS` (default 24) and
 tokens with no expiry keep working until next refresh. The web client refreshes
 transparently on a 401.
 
-**Gov Token:** the `GOV_TOKEN` env var (simple `12345678` for local/testing).
+**Gov Token:** the `GOV_TOKEN` env var (built-in fallback `GOV-SECRET-TOKEN-2024` when unset).
 The compare is timing-safe and the value is read only from config — override with
 a strong secret in production; the server warns at boot if the built-in default
 is left in place while `NODE_ENV=production`.
@@ -161,7 +161,7 @@ when `HKID_STRICT=true`.
 - When a mobile device is inside an active disaster radius, a **full-screen gate** replaces the entire app
 - User must declare their safety (safe / injured / need_help) before accessing any other feature
 - Prevents confusion and ensures every device in the zone commits to a status
-- Acknowledgement persists across app restarts for the same disaster
+- A **single** safety report clears the gate for **every** overlapping disaster zone the device is currently inside (declaring yourself safe is a statement about you, not one disaster) — acknowledgement persists across app restarts
 
 ### Never Lose Data
 - Mobile always writes to SQLite before sending network request
@@ -188,7 +188,7 @@ when `HKID_STRICT=true`.
 
 ### HK Localization
 - Disaster model: HKO Typhoon Signals (T1–T10) + Rainstorm Warnings
-- Seed data: 10k HK users (valid HKIDs + +852 numbers)
+- Seed data: 100 HK users by default (valid HKIDs + +852 numbers); set `SEED_USER_COUNT` to scale up (e.g. 10k)
 - 3 test disasters: T10 typhoon, Black Rainstorm, Mid-Levels landslip
 
 ### Web = Proxy-Only (Enforced)
@@ -208,20 +208,31 @@ when `HKID_STRICT=true`.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| POST | `/api/users/register` | — | Create account, get access + refresh tokens |
+| POST | `/api/users/register` | — | Create account → access + refresh tokens |
 | POST | `/api/users/request-otp` | — | Request a phone OTP (only enforced when `OTP_ENABLED=true`) |
 | POST | `/api/users/login` | — | Phone login for an existing account → token pair |
-| POST | `/api/users/token/refresh` | — | Exchange refresh token for a new pair |
-| POST | `/api/admin/login` | — | Super-admin password login → token pair |
-| GET/POST/PUT/DELETE | `/api/admin/*` | Admin | Super-admin CRUD + audit (users, reports, disasters, links, devices) |
-| POST | `/api/reports` | — | Submit report |
+| POST | `/api/users/token/refresh` | — | Exchange refresh token for a new pair (rotates) |
+| GET | `/api/users/:phone/profile` | — | Look up a user's profile by phone |
+| DELETE | `/api/users/:id` | Token | Account erasure (PDPO DPP6 cascade) |
+| GET/PUT/DELETE | `/api/users/:id/links` | Token | View/manage family account links |
+| POST | `/api/users/:id/links` | Token | Create a family account link |
+| POST | `/api/reports` | — | Submit/relay report (idempotent upsert on UUID) |
 | GET | `/api/reports/stats` | — | Affected counts (mobile-only; web proxy-reports excluded) |
 | GET | `/api/reports/search?q=` | — | Search by name (coarse location) |
-| GET | `/api/reports/rescue?lat&lng&radius` | Bearer | Triage (gov only) |
+| GET | `/api/reports/rescue?lat&lng&radius` | Bearer | Full triage view (gov only) |
+| GET | `/api/disasters` | — | Active disasters |
 | POST | `/api/disasters/trigger` | Bearer | Trigger disaster (gov only) |
 | POST | `/api/devices/register` | Optional | Register native push handle + location |
-| GET | `/api/users/:id/links` | Token | View family links |
-| DELETE | `/api/users/:id` | Token | Account erasure (DPP6) |
+| DELETE | `/api/devices/:token` | — | Unregister a push device |
+| GET/POST | `/api/shelters` | — | List / register shelters |
+| GET/POST/PUT/DELETE | `/api/safe-places` | Varies | Community-submitted safe places (moderation queue) |
+| GET | `/api/safe-places/pending` | Admin | Moderation queue |
+| PUT | `/api/safe-places/:id/status` | Admin | Approve/reject a submission |
+| GET/POST/PUT/DELETE | `/api/missing-persons` | Varies | Missing-person case management |
+| POST | `/api/admin/login` | — | Super-admin password login → token pair |
+| GET/POST/PUT/DELETE | `/api/admin/users`, `/reports`, `/disasters`, `/links`, `/devices` | Admin | Super-admin CRUD over all collections |
+| GET | `/api/admin/audit` | Admin | Audit trail of privileged actions |
+| GET | `/api/admin/stats` | Admin | Admin dashboard aggregate counts |
 
 ## Testing
 
@@ -229,7 +240,7 @@ when `HKID_STRICT=true`.
 npm test
 ```
 
-**Coverage:** 114/114 tests passing (13 suites)
+**Coverage** (`tests/` at repo root):
 - Report store (upsert, search, stats, history)
 - Status transitions + escalation priority
 - PDPO erasure
@@ -240,9 +251,22 @@ npm test
 - OTP request/verify + register/login gating
 - Super-admin routes (auth, CRUD, audit)
 - Safe places (moderation)
+- Missing-person cases
 - Push targeting (Azure NH payloads + radius device selection)
 
-**Test DB:** Isolated `reportsafe_test` (dev data untouched). Postgres + Redis must be up (`npm run db:up`).
+**Test DB:** Isolated `reportsafe_test` (dev data untouched). MongoDB must be up (`npm run db:up`); Redis is optional.
+
+**Mobile checks:** `cd mobile && npx tsc --noEmit` (strict types) and `npx vitest run --config vitest.config.mjs` (pure-logic units: HKID/phone, severity). **Web check:** `cd web && npm run build`.
+
+## Client Fixes (web + mobile)
+
+Recent correctness fixes applied to **both** client surfaces unless noted:
+
+- **Severity now handles string *and* numeric values.** The API returns `severity` as either a `1–5` number or a label (`"moderate"`, `"high"`). Clients previously did numeric-only comparisons, so string severities failed (`"high" < 3` → `NaN`) and were mislabelled "Extreme" with the wrong colour — and on mobile the disaster-gate "most severe first" sort became non-deterministic. A shared `severityRank`/`severityKey` helper now normalises both forms (`web/src/iconography.js`, `mobile/src/utils/severity.ts`).
+- **Safe-place form validation.** Suggesting a safe place with non-numeric coordinates, an out-of-range lat/lng, or a zero/decimal capacity surfaced the server's generic *"validation failed"*. Both clients now validate client-side with a clear message before submitting (`SheltersView.vue`, `mobile/.../MapScreen.tsx`).
+- **Location lookups can no longer hang.** Geolocation calls had no timeout and never resolve without a GPS fix (the disaster case), trapping a safety report on the spinner. All call sites now cap the wait and fall back to last-known → HK-centre (mobile `resolveLocation` util; web `getCurrentPosition({ timeout })`).
+- **Corrupt stored profile no longer crashes the Account screen.** The `JSON.parse` of the saved user is now guarded on both clients.
+- **Mobile:** one safety report clears every overlapping disaster zone (see Disaster-Mode Gate); local disaster notifications carry the `disasterId` so a tap routes into the gate.
 
 ## Configuration
 
@@ -266,11 +290,8 @@ HKID_STRICT=false
 
 REDIS_HOST=localhost
 REDIS_PORT=6379
-PGHOST=localhost
-PGPORT=5433
-PGUSER=reportsafe
-PGPASSWORD=reportsafe
-PGDATABASE=reportsafe
+MONGODB_URI=mongodb://localhost:27017
+MONGODB_DB=reportsafe
 RATE_LIMIT_PER_MIN=300
 CORS_ORIGIN=*
 LOG_LEVEL=info
@@ -281,7 +302,7 @@ LOG_LEVEL=info
 
 ## Next Steps
 
-- **Deploy:** Follow [DEPLOYMENT_AZURE.md](DEPLOYMENT_AZURE.md) for the full Azure runbook (managed PostgreSQL, HTTPS via Caddy, multi-instance scaling, Notification Hubs push, backups)
+- **Deploy:** See [DEPLOYMENT.md](DEPLOYMENT.md) for the environment-variable reference, then [DEPLOYMENT_AZURE.md](DEPLOYMENT_AZURE.md) for the full Azure runbook (managed Cosmos DB for MongoDB, HTTPS via Caddy, multi-instance scaling, Notification Hubs push, backups)
 - **QA Testing:** Follow [PROJECT_WORKFLOW_ASSESSMENT.md](PROJECT_WORKFLOW_ASSESSMENT.md) for testing checklist, load testing, and security audit
 - **Production:** Monitoring (Azure Monitor / Log Analytics), on-call rotation, runbooks
 

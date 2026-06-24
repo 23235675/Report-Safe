@@ -5,7 +5,7 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env') });
 
 const crypto = require('crypto');
-const { connect, collection } = require('./mongo');
+const { connect, collection } = require('../src/db/mongo');
 
 /** Insert documents in batches of 100 (replaces the former UNNEST bulk insert). */
 async function insertInBatches(name, docs) {

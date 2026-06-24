@@ -3,6 +3,7 @@
  * EXPO_PUBLIC_API_URL for physical devices (e.g. http://192.168.1.10:3001).
  */
 
+import { Platform } from 'react-native';
 import { userStorage } from '../db/userStorage';
 
 // Full status set — kept in sync with the server (server/src/lib/zodSchemas.js).
@@ -66,7 +67,8 @@ export interface Disaster {
   id:          string;
   type:        string;
   magnitude:   number | null;
-  severity:    number | null;
+  /** 1–5 number OR a string label ("moderate"/"high") — normalise via severityRank. */
+  severity:    number | string | null;
   lat:         number;
   lng:         number;
   radius_km:   number;
@@ -76,8 +78,14 @@ export interface Disaster {
   active:      boolean;
 }
 
+// Android emulator can't reach the host via localhost — it maps the host to the
+// special alias 10.0.2.2. iOS sim & web use localhost. EXPO_PUBLIC_API_URL still
+// overrides for physical devices / remote backends.
+const DEFAULT_API_URL =
+  Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://localhost:3001';
+
 export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
+  process.env.EXPO_PUBLIC_API_URL || DEFAULT_API_URL;
 
 const DEFAULT_TIMEOUT_MS = 10000;
 
@@ -105,18 +113,32 @@ async function fetchWithTimeout(
  * keep queued). Mirrors the web ReportView / outbox logic.
  */
 export async function submitReport(
-  report: PendingReport
+  report: PendingReport,
+  retried = false
 ): Promise<{ ok: boolean; id?: string; status?: number; error?: string }> {
   try {
+    // C1: report writes are authenticated; the server derives identity from this
+    // token. A queued report carries the token when it eventually flushes.
+    const token = getAccessToken();
     const res = await fetchWithTimeout(`${API_BASE_URL}/api/reports`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify(report),
     });
     let body: any = null;
     try { body = await res.json(); } catch { body = null; }
-    if (!res.ok) return { ok: false, status: res.status, error: body?.error };
-    return { ok: true, id: body?.id };
+    if (!res.ok) {
+      // Access token expired → refresh once and replay (keeps the report from
+      // being treated as a permanent 4xx drop). H1 also classifies 401 transient.
+      if (res.status === 401 && body?.code === 'token_expired' && token && !retried) {
+        if (await refreshAccessToken()) return submitReport(report, true);
+      }
+      return { ok: false, status: res.status, error: body?.error };
+    }
+    return { ok: true, id: body?.data?.id };
   } catch {
     return { ok: false }; // network error → no status → transient
   }
@@ -128,8 +150,8 @@ export async function searchByName(q: string): Promise<CivilianReport[]> {
       `${API_BASE_URL}/api/reports/search?q=${encodeURIComponent(q)}`
     );
     if (!res.ok) return [];
-    const body = (await res.json()) as { results?: CivilianReport[] };
-    return body.results ?? [];
+    const body = (await res.json()) as { data?: CivilianReport[] };
+    return body.data ?? [];
   } catch {
     return [];
   }
@@ -144,8 +166,8 @@ export async function getStats(): Promise<Stats> {
   try {
     const res  = await fetchWithTimeout(`${API_BASE_URL}/api/reports/stats`);
     if (!res.ok) return fallback;
-    const body = (await res.json()) as { stats?: Stats };
-    return body.stats ?? fallback;
+    const body = (await res.json()) as { data?: Stats };
+    return body.data ?? fallback;
   } catch {
     return fallback;
   }
@@ -155,8 +177,8 @@ export async function getDisasters(): Promise<Disaster[]> {
   try {
     const res  = await fetchWithTimeout(`${API_BASE_URL}/api/disasters`);
     if (!res.ok) return [];
-    const body = (await res.json()) as { disasters?: Disaster[] };
-    return body.disasters ?? [];
+    const body = (await res.json()) as { data?: Disaster[] };
+    return body.data ?? [];
   } catch {
     return [];
   }
@@ -243,7 +265,7 @@ export function canManageFacilities(): boolean {
 
 /** Create an account → returns { user, access_token, refresh_token }. Throws on failure. */
 export async function registerUser(payload: {
-  phone: string; name: string; personal_id?: string | null;
+  phone: string; name: string; gender: 'male' | 'female'; personal_id?: string | null;
   email?: string | null; privacy_consent: boolean; user_type?: 'mobile' | 'web';
 }): Promise<any> {
   const res = await fetchWithTimeout(`${API_BASE_URL}/api/users/register`, {
@@ -343,7 +365,7 @@ export async function listLovedOnes(): Promise<LovedOne[]> {
   const uid = currentUserId();
   if (!uid) return [];
   const body = await authedRequest(`/api/users/${uid}/links`);
-  return body.links ?? [];
+  return body.data ?? [];
 }
 
 /** Send a link request to another registered user by phone (they must confirm). */
@@ -391,7 +413,7 @@ export async function listSafePlaces(): Promise<SafePlace[]> {
     const res = await fetchWithTimeout(`${API_BASE_URL}/api/safe-places`);
     if (!res.ok) return [];
     const body = await res.json();
-    return body.safe_places ?? [];
+    return body.data ?? [];
   } catch { return []; }
 }
 
@@ -406,7 +428,7 @@ export async function createSafePlace(payload: {
 /** Moderation queue (gov/volunteer): safe places awaiting review. */
 export async function listPendingSafePlaces(): Promise<SafePlace[]> {
   const body = await authedRequest('/api/safe-places/pending');
-  return body.safe_places ?? [];
+  return body.data ?? [];
 }
 
 /** Approve or decline a pending safe place (gov/volunteer). */
@@ -415,4 +437,144 @@ export async function moderateSafePlace(id: string, status: 'approved' | 'reject
     method: 'PUT',
     body: JSON.stringify({ status }),
   });
+}
+
+/* ── Community First Responder (CFR) ───────────────────────────────────────── */
+
+export type IncidentType = 'cardiac_arrest' | 'fire' | 'trauma' | 'other';
+export type ResponseStatus = 'notified' | 'enroute' | 'onscene' | 'declined' | 'stood_down';
+
+export interface Incident {
+  id:         string;
+  type:       IncidentType;
+  status:     'active' | 'resolved' | 'stood_down';
+  lat:        number;
+  lng:        number;
+  address?:   string | null;
+  is_public:  boolean;
+  notes?:     string | null;
+  created_at: number;
+}
+
+export interface Aed {
+  id:              string;
+  name:            string;
+  lat:             number;
+  lng:             number;
+  address?:        string | null;
+  floor?:          string | null;
+  available_hours?: string | null;
+  distance_km:     number;
+}
+
+export interface IncidentResponder {
+  user_id:     string;
+  name:        string;
+  status:      ResponseStatus;
+  eta_seconds: number | null;
+  lat:         number | null;
+  lng:         number | null;
+  updated_at:  number;
+}
+
+export interface IncidentDetail {
+  incident:   Incident;
+  aeds:       Aed[];
+  responders: IncidentResponder[];
+}
+
+/** Incident detail (the incident, nearest AEDs, co-responder roster). */
+export async function getIncident(id: string): Promise<IncidentDetail> {
+  const body = await authedRequest(`/api/incidents/${id}`);
+  return body.data;
+}
+
+/** Set this responder's status/position for an incident (enroute/onscene/declined). */
+export async function respondToIncident(
+  id: string,
+  payload: { status: 'enroute' | 'onscene' | 'declined'; lat?: number | null; lng?: number | null; eta_seconds?: number | null },
+): Promise<void> {
+  await authedRequest(`/api/incidents/${id}/respond`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+/** Nearest public AEDs to a point. Best-effort — empty on failure. */
+export async function getNearbyAed(lat: number, lng: number, radius = 2): Promise<Aed[]> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/aed?lat=${lat}&lng=${lng}&radius=${radius}`);
+    if (!res.ok) return [];
+    const body = await res.json();
+    return body.data ?? [];
+  } catch { return []; }
+}
+
+/** A nearby active CFR incident, as returned to an opted-in responder. */
+export interface NearbyIncident {
+  id:          string;
+  type:        IncidentType;
+  status:      'active';
+  lat:         number;
+  lng:         number;
+  is_public:   boolean;
+  created_at:  number;
+  distance_km: number;
+}
+
+/**
+ * Active CFR incidents near a point that THIS user is allowed to see.
+ * Empty for non-responders (server enforces opt-in) and best-effort on failure.
+ */
+export async function getNearbyIncidents(lat: number, lng: number, radius = 5): Promise<NearbyIncident[]> {
+  try {
+    const body = await authedRequest(`/api/incidents/nearby?lat=${lat}&lng=${lng}&radius=${radius}`);
+    return body.data ?? [];
+  } catch { return []; }
+}
+
+/** A shelter / safe place, as returned by GET /api/shelters. */
+export interface Shelter {
+  id: string;
+  name: string;
+  type: string;
+  source?: string;
+  lat: number;
+  lng: number;
+  capacity?: number | null;
+  current_count?: number;
+  address?: string | null;
+  phone?: string | null;
+  contact_name?: string | null;
+  hours_open?: string | null;
+  distance_km?: number;
+}
+
+/** Shelters (optionally filtered by disaster). Best-effort — empty on failure. */
+export async function getShelters(disasterId?: string): Promise<Shelter[]> {
+  try {
+    const qs = disasterId ? `?disaster_id=${encodeURIComponent(disasterId)}` : '';
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/shelters${qs}`);
+    if (!res.ok) return [];
+    const body = await res.json();
+    return body.data ?? [];
+  } catch { return []; }
+}
+
+/** Public people roster (coarse location only). Best-effort — empty on failure. */
+export async function getPeople(limit = 200): Promise<CivilianReport[]> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/reports/people?limit=${limit}`);
+    if (!res.ok) return [];
+    const body = await res.json();
+    return body.data ?? [];
+  } catch { return []; }
+}
+
+/** Opt in/out as a Community First Responder and set skills + travel radius. */
+export async function setResponderProfile(payload: {
+  responder_opt_in: boolean;
+  responder_skills?: ('cpr' | 'aed' | 'fire')[];
+  responder_max_radius_km?: number;
+}): Promise<void> {
+  const uid = currentUserId();
+  if (!uid) throw new Error('Sign in first to become a responder.');
+  await authedRequest(`/api/users/${uid}/responder`, { method: 'PATCH', body: JSON.stringify(payload) });
 }

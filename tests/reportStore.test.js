@@ -109,6 +109,12 @@ describe('reportStore.searchByName', () => {
     expect(await reportStore.searchByName('MEI WONG')).toHaveLength(1);
   });
 
+  it('H7: matches a name PREFIX, not a mid-string substring', async () => {
+    await makeUserWithReport(); // "Mei Wong"
+    expect(await reportStore.searchByName('Mei')).toHaveLength(1);  // prefix → match
+    expect(await reportStore.searchByName('Wong')).toHaveLength(0); // mid-string → no match (anchored)
+  });
+
   it('finds a person by phone number (last 8 digits)', async () => {
     await makeUserWithReport({ phone: '+85298765432' });
     const results = await reportStore.searchByName('98765432');

@@ -93,4 +93,22 @@ describe('PDPO erasure (DPP6)', () => {
     expect(rep.phone).toBeNull();
     expect(rep.personal_id).toBeNull();
   });
+
+  it('M1: a crash-stranded PII-free tombstone is finalized by the sweep', async () => {
+    const now = Date.now();
+    // Simulate a mid-erase crash: PII already scrubbed, tombstone left pending,
+    // an orphan device + link still referencing it.
+    await collection('users').insertOne({
+      _id: 'u_tomb', phone: 'erased-u_tomb', name: 'Erased', deletion_state: 'pending',
+      deletion_requested_at: now, created_at: now, updated_at: now,
+    });
+    await collection('device_push_tokens').insertOne({ _id: 'd_tomb', token: 'tk', user_id: 'u_tomb' });
+    await collection('account_links').insertOne({ _id: 'l_tomb', user_a_id: 'u_tomb', user_b_id: 'x', status: 'confirmed', created_at: now });
+
+    const res = await reportStore.finalizePendingErasures();
+    expect(res.finalized).toBeGreaterThanOrEqual(1);
+    expect(await collection('users').findOne({ _id: 'u_tomb' })).toBeNull();
+    expect(await collection('device_push_tokens').findOne({ _id: 'd_tomb' })).toBeNull();
+    expect(await collection('account_links').findOne({ _id: 'l_tomb' })).toBeNull();
+  });
 });

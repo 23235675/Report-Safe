@@ -1,6 +1,6 @@
 'use strict';
 
-const { escalateStaleReports, getStats } = require('./reportStore');
+const { escalateStaleReports } = require('./reportStore');
 
 /**
  * Missing Person Escalation Engine.
@@ -48,10 +48,14 @@ async function runEscalation(io) {
 }
 
 function startEscalation(io) {
-  // Run once on startup so stale data from previous sessions is handled.
-  runEscalation(io).catch(() => {});
+  const { runIfLeader } = require('../lib/leaderLock');
+  const ttl = Math.ceil(POLL_INTERVAL_MS * 1.1);
+  // Leader-gated (C4) so escalations + their status_history rows run once, not
+  // once per instance.
+  const tick = () => runIfLeader('escalation', ttl, () => runEscalation(io)).catch(() => {});
 
-  timer = setInterval(() => runEscalation(io), POLL_INTERVAL_MS);
+  tick(); // run once on startup so stale data from previous sessions is handled
+  timer = setInterval(tick, POLL_INTERVAL_MS);
   if (timer.unref) timer.unref();
 
   console.log(

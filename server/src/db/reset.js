@@ -22,9 +22,6 @@ const { setup, COLLECTIONS } = require('./setup');
 const { seed } = require('./seed');
 const { collection, closeDb } = require('./mongo');
 
-// Every collection — clearing each one is the blast radius.
-const ALL_COLLECTIONS = COLLECTIONS;
-
 function describeTarget() {
   const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
   const db  = process.env.MONGODB_DB || 'reportsafe';
@@ -52,8 +49,9 @@ async function reset() {
   // Ensure schema exists first (fresh databases), then wipe and re-seed.
   await setup();
 
-  console.log(`[db/reset] clearing ${ALL_COLLECTIONS.length} collections ...`);
-  for (const name of ALL_COLLECTIONS) {
+  // Every collection — clearing each one is the blast radius.
+  console.log(`[db/reset] clearing ${COLLECTIONS.length} collections ...`);
+  for (const name of COLLECTIONS) {
     await collection(name).deleteMany({});
   }
 

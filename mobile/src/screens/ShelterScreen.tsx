@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ActivityIndicator, Linking, RefreshControl, ScrollView, Modal, Switch,
+  ActivityIndicator, Linking, RefreshControl, ScrollView, Modal,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,24 +10,8 @@ import {
   API_BASE_URL, getDisasters, currentUserId, canManageFacilities,
   createSafePlace, listPendingSafePlaces, moderateSafePlace,
 } from '../api/apiClient';
-import type { Disaster, SafePlace } from '../api/apiClient';
+import type { Disaster, SafePlace, Shelter } from '../api/apiClient';
 import { useTranslation } from '../i18n';
-
-interface Shelter {
-  id: string;
-  name: string;
-  type: string;
-  source?: string;
-  lat: number;
-  lng: number;
-  capacity?: number | null;
-  current_count?: number;
-  address?: string | null;
-  phone?: string | null;
-  contact_name?: string | null;
-  hours_open?: string | null;
-  distance_km?: number;
-}
 
 const TYPE_COLORS: Record<string, { bg: string; fg: string; icon: keyof typeof Ionicons.glyphMap }> = {
   hospital: { bg: C.criticalDim, fg: C.critical, icon: 'medkit' },
@@ -41,7 +25,13 @@ function capPct(s: Shelter): number | null {
   return Math.round(((s.current_count ?? 0) / s.capacity) * 100);
 }
 
-export default function MapScreen(): React.JSX.Element {
+/** Beds free = capacity − current occupancy (web bedsFree). */
+function bedsFree(s: Shelter): number | null {
+  if (!s.capacity || s.capacity <= 0) return null;
+  return Math.max(0, s.capacity - (s.current_count ?? 0));
+}
+
+export default function ShelterScreen(): React.JSX.Element {
   const { t, disasterTypeLabel } = useTranslation();
   /** Localized facility-type label, falling back to the raw type. */
   const typeLabel = (ty: string) => {
@@ -49,6 +39,9 @@ export default function MapScreen(): React.JSX.Element {
     const v = t(key);
     return v === key ? ty : v;
   };
+  // Managers (gov/volunteer) toggle between shelter info and the request queue —
+  // mobile has no room to show both at once.
+  const [view, setView] = useState<'info' | 'requests'>('info');
   const [shelters,   setShelters]   = useState<Shelter[]>([]);
   const [disasters,  setDisasters]  = useState<Disaster[]>([]);
   const [filterDis,  setFilterDis]  = useState<string>('');
@@ -75,7 +68,12 @@ export default function MapScreen(): React.JSX.Element {
     try {
       const perm = await Location.requestForegroundPermissionsAsync();
       if (perm.status !== 'granted') { setSpErr(t('map.errPermDenied')); return; }
-      const pos = await Location.getCurrentPositionAsync({});
+      // Cap the GPS wait — getCurrentPositionAsync never resolves without a fix.
+      const pos = await Promise.race([
+        Location.getCurrentPositionAsync({}),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+      ]);
+      if (!pos) { setSpErr(t('map.errGeoFailed')); return; }
       setSpForm((f) => ({ ...f, lat: pos.coords.latitude.toFixed(5), lng: pos.coords.longitude.toFixed(5) }));
     } catch { setSpErr(t('map.errGeoFailed')); }
   }
@@ -84,14 +82,30 @@ export default function MapScreen(): React.JSX.Element {
     setSpErr('');
     if (!spForm.name.trim()) { setSpErr(t('map.errNameRequired')); return; }
     if (spForm.lat === '' || spForm.lng === '') { setSpErr(t('map.errLocationRequired')); return; }
+    // Validate numbers here so the user gets a clear message instead of the
+    // server's generic "Validation failed": NaN/out-of-range coords, and a
+    // capacity that isn't a positive whole number, are all rejected server-side.
+    const lat = Number(spForm.lat);
+    const lng = Number(spForm.lng);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90 ||
+        !Number.isFinite(lng) || lng < -180 || lng > 180) {
+      setSpErr(t('map.errCoordsInvalid')); return;
+    }
+    let capacity: number | null = null;
+    if (spForm.capacity.trim()) {
+      capacity = Number(spForm.capacity);
+      if (!Number.isInteger(capacity) || capacity <= 0) {
+        setSpErr(t('map.errCapacityInvalid')); return;
+      }
+    }
     setSpBusy(true);
     try {
       await createSafePlace({
         name: spForm.name.trim(),
-        lat: Number(spForm.lat),
-        lng: Number(spForm.lng),
+        lat,
+        lng,
         description: spForm.description.trim() || null,
-        capacity: spForm.capacity ? Number(spForm.capacity) : null,
+        capacity,
         disaster_id: filterDis || null,
       });
       setShowForm(false);
@@ -117,7 +131,7 @@ export default function MapScreen(): React.JSX.Element {
       const url = `${API_BASE_URL}/api/shelters${params.toString() ? `?${params}` : ''}`;
       const res  = await fetch(url);
       const body = await res.json();
-      setShelters(body.shelters || []);
+      setShelters(body.data || []);
     } catch (e: any) {
       setError(e.message);
     }
@@ -125,7 +139,7 @@ export default function MapScreen(): React.JSX.Element {
 
   async function loadAll() {
     setError('');
-    const [d] = await Promise.all([getDisasters()]);
+    const d = await getDisasters();
     setDisasters(d);
     await loadShelters(filterDis || undefined);
     loadPending();
@@ -167,6 +181,72 @@ export default function MapScreen(): React.JSX.Element {
         </View>
       </View>
 
+      {/* Managers switch between shelter info and the suggestion queue. */}
+      {canManage ? (
+        <View style={S.segRow}>
+          <TouchableOpacity
+            style={[S.seg, view === 'info' && S.segOn]}
+            onPress={() => setView('info')}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="home" size={15} color={view === 'info' ? C.govBlue : C.textLo} />
+            <Text style={[S.segText, view === 'info' && S.segTextOn]}>{t('map.tabInfo')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[S.seg, view === 'requests' && S.segOn]}
+            onPress={() => setView('requests')}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="file-tray-full" size={15} color={view === 'requests' ? C.govBlue : C.textLo} />
+            <Text style={[S.segText, view === 'requests' && S.segTextOn]}>
+              {t('map.tabRequests')}{pending.length ? ` (${pending.length})` : ''}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {/* ── REQUESTS view (managers) ─────────────────────────────── */}
+      {canManage && view === 'requests' ? (
+        pending.length > 0 ? (
+          <View style={S.pendingPanel}>
+            <View style={S.pendingHead}>
+              <Ionicons name="alert-circle" size={15} color={C.textMd} />
+              <Text style={S.pendingHeadText}>{t('map.pendingReview', { n: pending.length })}</Text>
+            </View>
+            {pending.map((p) => (
+              <View key={p.id} style={S.pendingRow}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={S.pendingName} numberOfLines={1}>{p.name}</Text>
+                  <Text style={S.pendingMeta} numberOfLines={1}>
+                    {p.lat.toFixed(4)}, {p.lng.toFixed(4)}
+                    {p.capacity ? ` · ${t('map.cap', { n: p.capacity })}` : ''}
+                    {p.submitter_name ? ` · ${t('map.by', { name: p.submitter_name })}` : ''}
+                  </Text>
+                  {p.description ? <Text style={S.pendingDesc} numberOfLines={2}>{p.description}</Text> : null}
+                </View>
+                <View style={S.pendingActions}>
+                  <TouchableOpacity style={S.approveBtn} onPress={() => reviewPlace(p.id, 'approved')}>
+                    <Ionicons name="checkmark" size={15} color={C.textInv} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={S.declineBtn} onPress={() => reviewPlace(p.id, 'rejected')}>
+                    <Ionicons name="close" size={15} color={C.critical} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <View style={S.empty}>
+            <Ionicons name="checkmark-done-circle-outline" size={48} color={C.borderStrong} />
+            <Text style={S.emptyText}>{t('map.noRequests')}</Text>
+            <Text style={S.emptyHint}>{t('map.noRequestsHint')}</Text>
+          </View>
+        )
+      ) : null}
+
+      {/* ── INFO view (everyone) ─────────────────────────────────── */}
+      {!canManage || view === 'info' ? (
+      <>
       {/* Filter by disaster */}
       {disasters.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={S.filterRow} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
@@ -205,37 +285,6 @@ export default function MapScreen(): React.JSX.Element {
         </View>
       ) : null}
 
-      {/* Pending moderation queue (gov/volunteer only) */}
-      {canManage && pending.length > 0 ? (
-        <View style={S.pendingPanel}>
-          <View style={S.pendingHead}>
-            <Ionicons name="alert-circle" size={15} color={C.amber} />
-            <Text style={S.pendingHeadText}>{t('map.pendingReview', { n: pending.length })}</Text>
-          </View>
-          {pending.map((p) => (
-            <View key={p.id} style={S.pendingRow}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={S.pendingName} numberOfLines={1}>{p.name}</Text>
-                <Text style={S.pendingMeta} numberOfLines={1}>
-                  {p.lat.toFixed(4)}, {p.lng.toFixed(4)}
-                  {p.capacity ? ` · ${t('map.cap', { n: p.capacity })}` : ''}
-                  {p.submitter_name ? ` · ${t('map.by', { name: p.submitter_name })}` : ''}
-                </Text>
-                {p.description ? <Text style={S.pendingDesc} numberOfLines={2}>{p.description}</Text> : null}
-              </View>
-              <View style={S.pendingActions}>
-                <TouchableOpacity style={S.approveBtn} onPress={() => reviewPlace(p.id, 'approved')}>
-                  <Ionicons name="checkmark" size={15} color={C.textInv} />
-                </TouchableOpacity>
-                <TouchableOpacity style={S.declineBtn} onPress={() => reviewPlace(p.id, 'rejected')}>
-                  <Ionicons name="close" size={15} color={C.critical} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
-        </View>
-      ) : null}
-
       {error ? (
         <View style={S.errorBox}>
           <Text style={S.errorText}>{error}</Text>
@@ -255,6 +304,7 @@ export default function MapScreen(): React.JSX.Element {
           {shelters.map((s) => {
             const tc  = TYPE_COLORS[s.type] ?? { bg: C.bgRaised, fg: C.textMd, icon: 'business' as const };
             const pct = capPct(s);
+            const free = bedsFree(s);
             return (
               <TouchableOpacity
                 key={s.id}
@@ -284,6 +334,14 @@ export default function MapScreen(): React.JSX.Element {
                   </View>
                 ) : null}
 
+                {/* Source (web "Source" column) */}
+                {s.source ? (
+                  <View style={S.scAddrRow}>
+                    <Ionicons name="business-outline" size={14} color={C.textLo} />
+                    <Text style={S.scMeta}>{t(`source.${s.source}`)}</Text>
+                  </View>
+                ) : null}
+
                 {pct != null ? (
                   <View style={S.capRow}>
                     <View style={S.capBarWrap}>
@@ -291,6 +349,10 @@ export default function MapScreen(): React.JSX.Element {
                     </View>
                     <Text style={S.capText}>{s.current_count}/{s.capacity} ({pct}%)</Text>
                   </View>
+                ) : null}
+                {/* Beds free (web "bedsFree") */}
+                {free != null ? (
+                  <Text style={S.bedsFree}>{t('map.bedsFree', { n: free })}</Text>
                 ) : null}
 
                 {s.hours_open ? (
@@ -317,6 +379,8 @@ export default function MapScreen(): React.JSX.Element {
           })}
         </View>
       )}
+      </>
+      ) : null}
 
       {/* ── Suggest a Safe Place modal ──────────────────────────── */}
       <Modal visible={showForm} transparent animationType="fade" onRequestClose={() => setShowForm(false)}>
@@ -402,6 +466,17 @@ const S = StyleSheet.create({
   headerTitle: { fontSize: 16, fontWeight: '700', color: C.textHi },
   headerSub:   { fontSize: 12, color: C.textLo, marginTop: 3 },
 
+  bedsFree: { fontSize: 12, color: C.textLo, fontWeight: '600', marginBottom: 6 },
+
+  segRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginTop: 12 },
+  seg: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 10, borderRadius: R.sm, backgroundColor: C.bgPanel, borderWidth: 1, borderColor: C.border,
+  },
+  segOn: { backgroundColor: C.govBlueDim, borderColor: C.govBlue },
+  segText: { fontSize: 13, fontWeight: '700', color: C.textLo },
+  segTextOn: { color: C.govBlue },
+
   filterRow: { marginTop: 12, marginBottom: 4 },
   filterChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: R.pill, backgroundColor: C.bgPanel, borderWidth: 1, borderColor: C.border },
   filterActive: { borderColor: C.govBlue, backgroundColor: C.govBlueDim },
@@ -445,10 +520,10 @@ const S = StyleSheet.create({
   okText: { flex: 1, fontSize: 13, color: C.safe, fontWeight: '600', lineHeight: 18 },
 
   /* Pending moderation queue */
-  pendingPanel: { margin: 16, marginTop: 12, padding: 12, backgroundColor: C.awaitingDim, borderRadius: R.md, borderWidth: 1, borderColor: C.awaitingBorder },
+  pendingPanel: { margin: 16, marginTop: 12, padding: 12, backgroundColor: C.bgPanel, borderRadius: R.md, borderWidth: 1, borderColor: C.border },
   pendingHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  pendingHeadText: { fontSize: 13, fontWeight: '700', color: C.amber },
-  pendingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: C.awaitingBorder },
+  pendingHeadText: { fontSize: 13, fontWeight: '700', color: C.textMd },
+  pendingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: C.border },
   pendingName: { fontSize: 14, fontWeight: '600', color: C.textHi },
   pendingMeta: { fontSize: 12, color: C.textLo, marginTop: 2 },
   pendingDesc: { fontSize: 12, color: C.textMd, marginTop: 2 },

@@ -133,4 +133,36 @@ describe('syncService 3-layer fallback', () => {
     const result = await attemptDelivery();
     expect(result).toEqual({ delivered: 0, relayed: 0, queued: 0 });
   });
+
+  it('H1: a 429 keeps the report pending (transient), not dropped', async () => {
+    mocks.state.connected = true;
+    mocks.apiSubmit.mockResolvedValueOnce({ ok: false, status: 429, error: 'slow down' });
+    const result = await submitReport(makeReport('rep-429'));
+    expect(result.delivered).toBe(0);
+    expect(mocks.store.get('rep-429')!.status).toBe('pending'); // still retriable
+  });
+
+  it('H1: a real validation 422 is permanent (dropped from the queue)', async () => {
+    mocks.state.connected = true;
+    mocks.apiSubmit.mockResolvedValueOnce({ ok: false, status: 422, error: 'bad data' });
+    const result = await submitReport(makeReport('rep-422'));
+    expect(result.rejected).toBe(1);
+    expect(mocks.store.get('rep-422')!.status).toBe('sent'); // consumed (won't retry)
+  });
+
+  it('C3: a failed mesh relay keeps the report pending and re-flushes on reconnect', async () => {
+    // The real MockMeshTransport now returns false (no real transport → never
+    // claim delivery). Simulate that: the report must stay pending, not relayed.
+    mocks.state.peers = [{ id: 'peer-strong', signalStrength: 88, hasInternet: true }];
+    mocks.sendToPeer.mockResolvedValueOnce(false);
+    const offline = await submitReport(makeReport('rep-c3'));
+    expect(offline.relayed).toBe(0);
+    expect(mocks.store.get('rep-c3')!.status).toBe('pending');
+
+    // Connectivity returns → the whole pending queue flushes to the server.
+    mocks.state.connected = true;
+    const online = await attemptDelivery();
+    expect(online.delivered).toBe(1);
+    expect(mocks.store.get('rep-c3')!.status).toBe('sent');
+  });
 });

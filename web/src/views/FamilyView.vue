@@ -5,10 +5,9 @@ import {
   searchByName, listLovedOnes, addLovedOne, confirmLovedOne, removeLovedOne, currentUserId,
 } from '../api.js';
 import AppIcon from '../components/AppIcon.vue';
-import StatusIcon from '../components/StatusIcon.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 import VisibilityChip from '../components/VisibilityChip.vue';
-import { statusColor } from '../iconography.js';
+import { statusColor, genderIcon } from '../iconography.js';
 import { t } from '../i18n/index.js';
 
 const router = useRouter();
@@ -26,19 +25,22 @@ const confirmed = computed(() => links.value.filter((l) => l.link_status === 'co
 const incoming  = computed(() => links.value.filter((l) => l.link_status === 'pending' && l.is_incoming));
 const outgoing  = computed(() => links.value.filter((l) => l.link_status === 'pending' && !l.is_incoming));
 
-async function loadLinks() {
+async function loadLinks(isPolling = false) {
   const uid = currentUserId();
   hasAccount.value = !!uid;
   if (!uid) { links.value = []; return; }
-  linksLoading.value = true;
+
+  // 如果是背景輪詢，不顯示全域的 loading 轉圈，提升 UX
+  if (!isPolling) linksLoading.value = true;
   linksError.value = null;
+
   try {
     const res = await listLovedOnes();
     links.value = res.links || [];
   } catch {
     linksError.value = t('family.errLoad');
   } finally {
-    linksLoading.value = false;
+    if (!isPolling) linksLoading.value = false;
   }
 }
 
@@ -115,15 +117,24 @@ function relativeTime(ts) {
 const ALERT_STATUSES = new Set(['need_help', 'awaiting_response', 'potentially_missing', 'missing']);
 function isAlert(s) { return ALERT_STATUSES.has(s); }
 
-// Keep the list fresh so a recipient sees a new incoming request without a manual
-// reload: refresh on tab focus and poll every 20s while the page is open.
 function onFocus() { loadLinks(); }
+
+// 使用安全的地毯式定時器，防範 Race Condition
 let pollTimer = null;
+function startPolling() {
+  pollTimer = setInterval(async () => {
+    if (hasAccount.value && !linksLoading.value) {
+      await loadLinks(true);
+    }
+  }, 20000);
+}
+
 onMounted(() => {
   loadLinks();
   window.addEventListener('focus', onFocus);
-  pollTimer = setInterval(() => { if (hasAccount.value) loadLinks(); }, 20000);
+  startPolling();
 });
+
 onUnmounted(() => {
   window.removeEventListener('focus', onFocus);
   if (pollTimer) clearInterval(pollTimer);
@@ -132,18 +143,16 @@ onUnmounted(() => {
 
 <template>
   <div style="max-width: 720px; margin: 0 auto;">
-
     <div class="page-header">
       <h1>{{ $t('family.title') }}</h1>
-      <p class="subtitle">
-        {{ $t('family.subtitle') }}
-      </p>
+      <p class="subtitle">{{ $t('family.subtitle') }}</p>
     </div>
 
-    <!-- ── Loved Ones ─────────────────────────────────────────────── -->
-    <div class="section-label inline-ico"><AppIcon name="heart" :size="13" style="color: var(--gov-blue);" /> {{ $t('family.lovedOnes') }}{{ confirmed.length ? ` (${confirmed.length})` : '' }}</div>
+    <div class="section-label inline-ico">
+      <AppIcon name="heart" :size="13" style="color: var(--gov-blue);" />
+      {{ $t('family.lovedOnes') }}{{ confirmed.length ? ` (${confirmed.length})` : '' }}
+    </div>
 
-    <!-- Account gate -->
     <div v-if="!hasAccount" class="state-block">
       <div class="state-icon is-info"><AppIcon name="person-circle" :size="26" /></div>
       <p class="state-title">{{ $t('family.setupAccount') }}</p>
@@ -158,7 +167,6 @@ onUnmounted(() => {
         <AppIcon name="information-circle" :size="16" /><span>{{ notice }}</span>
       </div>
 
-      <!-- Add by phone -->
       <form class="search-form" @submit.prevent="onAdd">
         <div class="search-field">
           <AppIcon name="call" :size="16" style="color: var(--text-lo);" />
@@ -173,7 +181,6 @@ onUnmounted(() => {
       <div v-if="linksLoading && links.length === 0" class="state-loading"><span class="spinner"></span> {{ $t('common.loading') }}</div>
       <div v-else-if="linksError" class="msg msg-error msg-row"><AppIcon name="alert-circle" :size="16" /><span>{{ linksError }}</span></div>
 
-      <!-- Confirmed loved ones -->
       <div v-if="confirmed.length > 0" class="list" style="margin-bottom: var(--sp-4);">
         <div
           v-for="l in confirmed"
@@ -183,8 +190,7 @@ onUnmounted(() => {
           :style="{ borderLeftColor: isAlert(l.report_status) ? statusColor(l.report_status) : undefined, flexDirection: 'column', alignItems: 'stretch', gap: 'var(--sp-3)' }"
         >
           <div style="display: flex; align-items: center; gap: var(--sp-3);">
-            <StatusIcon v-if="l.report_status" :status="l.report_status" :size="40" :icon="20" />
-            <span v-else class="watch-avatar">{{ (l.name || l.phone).charAt(0).toUpperCase() }}</span>
+            <span class="watch-avatar"><AppIcon :name="genderIcon(l.gender)" :size="22" /></span>
             <div style="flex: 1; min-width: 0;">
               <div style="font-size: 16px; font-weight: 700; color: var(--text-hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ l.name || l.phone }}</div>
               <div style="font-size: 12px; color: var(--text-lo); margin-top: 3px;">
@@ -196,6 +202,9 @@ onUnmounted(() => {
             <span v-else class="no-report-chip">{{ $t('family.noReport') }}</span>
           </div>
           <div style="display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;">
+            <span v-if="l.in_affected_zone" class="zone-chip inline-ico">
+              <AppIcon name="warning" :size="13" /> {{ $t('family.inAffectedZone') }}
+            </span>
             <VisibilityChip tier="coarse" :short="true" />
             <span style="flex: 1;"></span>
             <button class="btn-ghost btn-sm" style="color: var(--gov-blue);" @click="reportOnBehalf(l.name)"><AppIcon name="create" :size="14" /> {{ $t('family.report') }}</button>
@@ -208,12 +217,11 @@ onUnmounted(() => {
         {{ $t('family.noLovedOnes') }}
       </p>
 
-      <!-- Incoming requests -->
       <template v-if="incoming.length > 0">
         <div class="section-label inline-ico" style="margin-top: var(--sp-4);"><AppIcon name="mail-unread" :size="13" style="color: var(--awaiting);" /> {{ $t('family.requestsForYou', { n: incoming.length }) }}</div>
         <div class="list">
           <div v-for="l in incoming" :key="l.link_id" class="card req-row">
-            <span class="watch-avatar">{{ (l.name || l.phone).charAt(0).toUpperCase() }}</span>
+            <span class="watch-avatar"><AppIcon :name="genderIcon(l.gender)" :size="22" /></span>
             <div style="flex: 1; min-width: 0;">
               <div style="font-weight: 700; color: var(--text-hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ l.name || l.phone }}</div>
               <div style="font-size: 12px; color: var(--text-lo);">{{ $t('family.wantsToConnect') }}</div>
@@ -224,12 +232,11 @@ onUnmounted(() => {
         </div>
       </template>
 
-      <!-- Outgoing pending -->
       <template v-if="outgoing.length > 0">
         <div class="section-label inline-ico" style="margin-top: var(--sp-4);"><AppIcon name="time" :size="13" /> {{ $t('family.awaitingConfirmation', { n: outgoing.length }) }}</div>
         <div class="list">
           <div v-for="l in outgoing" :key="l.link_id" class="card req-row">
-            <span class="watch-avatar" style="background: var(--bg-raised); color: var(--text-lo);">{{ (l.name || l.phone).charAt(0).toUpperCase() }}</span>
+            <span class="watch-avatar" style="background: var(--bg-raised); color: var(--text-lo);"><AppIcon :name="genderIcon(l.gender)" :size="22" /></span>
             <div style="flex: 1; min-width: 0;">
               <div style="font-weight: 700; color: var(--text-hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ l.name || l.phone }}</div>
               <div style="font-size: 12px; color: var(--text-lo);">{{ $t('family.requestSentLabel') }}</div>
@@ -240,11 +247,8 @@ onUnmounted(() => {
       </template>
     </template>
 
-    <!-- ── Name / phone search ────────────────────────────────────── -->
     <div class="section-label inline-ico" style="margin-top: var(--sp-6);"><AppIcon name="search" :size="13" /> {{ $t('family.searchByName') }}</div>
-    <p class="subtitle" style="margin: 0 0 var(--sp-3);">
-      {{ $t('family.searchSubtitle') }}
-    </p>
+    <p class="subtitle" style="margin: 0 0 var(--sp-3);">{{ $t('family.searchSubtitle') }}</p>
 
     <form class="search-form" @submit.prevent="() => onSearch()">
       <div class="search-field">
@@ -258,7 +262,6 @@ onUnmounted(() => {
     </form>
 
     <div v-if="loading" class="state-loading"><span class="spinner"></span> {{ $t('family.searching') }}</div>
-
     <div v-else-if="error" class="state-block">
       <div class="state-icon is-error"><AppIcon name="alert-circle" :size="26" /></div>
       <p class="state-title">{{ $t('family.searchFailedTitle') }}</p>
@@ -286,8 +289,7 @@ onUnmounted(() => {
           :style="{ borderLeftColor: isAlert(r.status) ? statusColor(r.status) : undefined, flexDirection: 'column', alignItems: 'stretch', gap: 'var(--sp-3)' }"
         >
           <div style="display: flex; align-items: center; gap: var(--sp-3);">
-            <StatusIcon v-if="r.status" :status="r.status" :size="40" :icon="20" />
-            <span v-else class="watch-avatar">{{ (r.name || '?').charAt(0).toUpperCase() }}</span>
+            <span class="watch-avatar"><AppIcon :name="genderIcon(r.gender)" :size="22" /></span>
             <div style="flex: 1; min-width: 0;">
               <div style="font-size: 16px; font-weight: 700; color: var(--text-hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ r.name }}</div>
               <div style="font-size: 12px; color: var(--text-lo); margin-top: 3px; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;">
@@ -318,12 +320,9 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Privacy note -->
     <div class="privacy-note msg-row">
       <AppIcon name="lock-closed" :size="16" style="color: var(--text-lo);" />
-      <span>
-        {{ $t('family.privacyNote') }}
-      </span>
+      <span>{{ $t('family.privacyNote') }}</span>
     </div>
   </div>
 </template>
@@ -355,6 +354,11 @@ onUnmounted(() => {
   border-radius: 999px; padding: 4px 9px; align-self: center;
 }
 .empty-hint { font-size: 13px; color: var(--text-lo); line-height: 1.6; margin: 0 0 var(--sp-3); }
+.zone-chip {
+  font-size: 11px; font-weight: 700; color: var(--need-help);
+  background: var(--need-help-dim); border: 1px solid var(--need-help-border);
+  border-radius: 999px; padding: 4px 9px; gap: 4px;
+}
 .update-btn { background: var(--awaiting-dim); color: var(--awaiting); border: 1px solid var(--awaiting-border); gap: 4px; }
 .update-btn:hover { background: var(--awaiting); color: #fff; }
 .btn-ghost { gap: 4px; }

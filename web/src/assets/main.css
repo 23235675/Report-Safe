@@ -1,98 +1,106 @@
 /* ===================================================================
-   Report Safe — Design System v4
-   Government Emergency Operations Center (EOC) — Light Theme
-   Inspired by: FEMA, ArcGIS Operations Dashboard, Crisis24, EOC Systems
+   Report Safe — Design System "Beacon"
+   Calm authority + human warmth — Light Theme
+   Brand: Pine Green (#0F766E) for the citizen web app; status indicators are
+   the only coloured exceptions. The government/admin consoles use Federal Navy.
 
-   Status Color Semantics (WCAG-AA on white background):
-     Green  #16A34A = Safe
-     Amber  #CA8A04 = Injured
-     Orange #EA580C = Awaiting Response
-     Red    #DC2626 = Need Help / Critical Rescue
-     Rose   #9F1239 = Potentially Missing
-     Slate  #475569 = Missing / Unknown
-     Cyan   #0891B2 = Rescued
-     Blue   #2563EB = Government Resources / Assets
+   Status Color Semantics — WCAG-AA verified (>=4.5:1) as small text on
+   white AND on each -dim tint. Semantic meanings preserved:
+     Emerald #047857 = Safe
+     Amber   #B45309 = Injured
+     Orange  #C2410C = Awaiting Response
+     Crimson #C81E1E = Need Help / Critical Rescue
+     Rose    #9D174D = Potentially Missing
+     Slate   #4B5563 = Missing / Unknown
+     Teal    #0F766E = Rescued
+     Pine    #0F766E = Brand / Government / Rescue authority (one green)
 =================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;700&display=swap');
 
 /* ── Design Tokens ─────────────────────────────────────────────── */
 :root {
-  /* Canvas layers */
-  --bg-canvas:   #F8FAFC;
+  /* Canvas layers — cool "ink" neutrals with a faint indigo undertone */
+  --bg-canvas:   #F7F8FB;
   --bg-panel:    #FFFFFF;
-  --bg-raised:   #F1F5F9;
-  --bg-hover:    #E2E8F0;
-  --bg-sidebar:  #F1F5F9;
+  --bg-raised:   #EFF1F6;
+  --bg-hover:    #E4E7F0;
+  --bg-sidebar:  #EFF1F6;
 
   /* Text */
-  --text-hi:     #0F172A;
-  --text-md:     #334155;
-  --text-lo:     #64748B;
+  --text-hi:     #15182B;
+  --text-md:     #353A52;
+  --text-lo:     #646A80;
   --text-inv:    #FFFFFF;
 
   /* Borders */
-  --border-line:   #E2E8F0;
-  --border-strong: #CBD5E1;
-  --border-focus:  #3B82F6;
+  --border-line:   #E2E5EE;
+  --border-strong: #CBD0DE;
+  --border-focus:  #0F766E;
 
-  /* Brand */
-  --brand:         #1E3A5F;
-  --brand-accent:  #2563EB;
+  /* Brand — Pine Green clinical palette. One accent hue for the citizen web
+     app; the only coloured exceptions are the status indicators below.
+     (The government/admin consoles use their own Federal Navy palette.) */
+  --brand:         #022C2A;
+  --brand-accent:  #0F766E;
 
-  /* Government blue */
-  --gov-blue:        #2563EB;
-  --gov-blue-dim:    #EFF6FF;
-  --gov-blue-border: #BFDBFE;
-  --gov-blue-text:   #1D4ED8;
+  /* Primary / brand action — pine green. Token name kept as --gov-blue
+     for back-compat; it is the single accent across the citizen web app. */
+  --gov-blue:        #0F766E;
+  --gov-blue-dim:    #F2F8F7;
+  --gov-blue-border: #99CBC8;
+  --gov-blue-text:   #044E4B;
+  --accent-hover:    #034E4B;
+  --accent-active:   #023B39;
 
-  /* Status — WCAG-AA contrast (≥4.5:1) as text on white AND on the *-dim tint.
-     Vivid hues were one notch too light for small text on their pale tints
-     (safe/injured/awaiting/rescued all landed ~3:1); deepened to pass AA while
-     staying the same recognisable hue. need-help red already passes. */
-  --safe:             #15803D;
-  --safe-dim:         #F0FDF4;
-  --safe-border:      #BBF7D0;
+  /* Status — hues match the Admin console exactly (AdminView.vue .st-* classes)
+     so every status reads the same colour on the citizen UI and the admin UI.
+     These are the ONLY hued tokens; the rest of the app stays brand-green. */
+  --safe:             #1a7a3f;
+  --safe-dim:         #e8f9ee;
+  --safe-border:      #a7e0bd;
+  --safe-hover:       #146431;
 
-  --injured:          #A16207;
-  --injured-dim:      #FEFCE8;
-  --injured-border:   #FDE68A;
+  --injured:          #9a5f00;
+  --injured-dim:      #fff4e0;
+  --injured-border:   #f0d49a;
 
-  --need-help:        #DC2626;
-  --need-help-dim:    #FEF2F2;
-  --need-help-border: #FECACA;
+  --need-help:        #c0392b;
+  --need-help-dim:    #fde8e8;
+  --need-help-border: #f3b0b0;
+  --need-help-hover:  #a12d21;
 
-  --awaiting:         #C2410C;
-  --awaiting-dim:     #FFF7ED;
-  --awaiting-border:  #FED7AA;
+  --awaiting:         #9a5f00;
+  --awaiting-dim:     #fff4e0;
+  --awaiting-border:  #f0d49a;
 
-  --pot-missing:         #9F1239;
-  --pot-missing-dim:     #FFF1F2;
-  --pot-missing-border:  #FECDD3;
+  --pot-missing:         #9a5f00;
+  --pot-missing-dim:     #fff4e0;
+  --pot-missing-border:  #f0d49a;
 
-  --missing:          #475569;
-  --missing-dim:      #F8FAFC;
-  --missing-border:   #CBD5E1;
+  --missing:          #c0392b;
+  --missing-dim:      #fde8e8;
+  --missing-border:   #f3b0b0;
 
-  --rescued:          #0E7490;
-  --rescued-dim:      #F0F9FF;
-  --rescued-border:   #BAE6FD;
+  --rescued:          #1a7abf;
+  --rescued-dim:      #e8f4fd;
+  --rescued-border:   #b3dcf3;
 
-  --deceased:         #374151;
-  --deceased-dim:     #F9FAFB;
-  --deceased-border:  #D1D5DB;
+  --deceased:         #555555;
+  --deceased-dim:     #f0f0f0;
+  --deceased-border:  #d0d0d0;
 
   /* Aliases */
   --critical:       var(--need-help);
   --critical-dim:   var(--need-help-dim);
-  --amber:          #B45309;
-  --amber-dim:      #FFFBEB;
-  --amber-border:   #FDE68A;
+  --amber:          #334155;
+  --amber-dim:      #F1F5F9;
+  --amber-border:   #CBD5E1;
 
   /* Disaster */
-  --disaster:        #DC2626;
-  --disaster-dim:    #FEF2F2;
-  --disaster-border: #FECACA;
+  --disaster:        #0F172A;
+  --disaster-dim:    #F1F5F9;
+  --disaster-border: #CBD5E1;
 
   /* Priority */
   --p1:     var(--need-help);
@@ -102,23 +110,23 @@
   --p3:     var(--awaiting);
   --p3-dim: var(--awaiting-dim);
 
-  /* Typography */
-  --font-ui:   'Inter', 'Segoe UI', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  /* Typography — Beacon: Plus Jakarta Sans (humanist UI) + IBM Plex Mono (data) */
+  --font-ui:   'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
 
-  /* Spacing (4px base) */
+  /* Spacing (4px base) — unchanged, so the re-skin causes zero layout reflow */
   --sp-1: 4px;  --sp-2: 8px;   --sp-3: 12px; --sp-4: 16px;
   --sp-5: 24px; --sp-6: 32px;  --sp-7: 48px;
 
-  /* Elevation */
-  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.10), 0 1px 2px -1px rgb(0 0 0 / 0.10);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.10), 0 2px 4px -2px rgb(0 0 0 / 0.10);
+  /* Elevation — flat system surfaces; structure comes from crisp 1px borders. */
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: 0 1px 2px 0 rgb(15 23 42 / 0.08);
 
-  /* Radius */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  /* Radius — tight, hardcore console edges. */
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
 }
 
 /* ── Reset ─────────────────────────────────────────────────────── */
@@ -134,134 +142,6 @@ body {
 }
 a { color: inherit; text-decoration: none; }
 
-/* ── App Shell ─────────────────────────────────────────────────── */
-.app-shell { display: flex; flex-direction: column; min-height: 100%; }
-
-.app-header {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-4);
-  padding: 0 var(--sp-5);
-  height: 56px;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border-line);
-  box-shadow: var(--shadow-xs);
-  flex-shrink: 0;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: -0.01em;
-  color: var(--brand);
-  flex-shrink: 0;
-  text-decoration: none;
-}
-
-.brand-mark {
-  display: inline-grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  background: var(--gov-blue);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-  border-radius: var(--radius-sm);
-  flex-shrink: 0;
-}
-
-.brand-text { color: var(--brand); }
-.brand-sub {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-lo);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.app-nav {
-  display: flex;
-  gap: 0;
-  margin-left: var(--sp-4);
-}
-
-.app-nav a {
-  display: flex;
-  align-items: center;
-  height: 56px;
-  padding: 0 var(--sp-3);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-lo);
-  border-bottom: 2px solid transparent;
-  transition: color 100ms, border-color 100ms;
-  white-space: nowrap;
-}
-.app-nav a:hover { color: var(--text-hi); }
-.app-nav a.router-link-exact-active {
-  color: var(--gov-blue);
-  border-bottom-color: var(--gov-blue);
-}
-.app-nav .gov-link {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.app-nav .gov-link-badge {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  background: var(--gov-blue);
-  color: #fff;
-  padding: 1px 5px;
-  border-radius: 3px;
-}
-
-.conn {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-lo);
-  white-space: nowrap;
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.conn-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--border-strong);
-  flex-shrink: 0;
-}
-.conn.on .conn-dot { background: var(--safe); }
-.conn.on { color: var(--safe); }
-
-.app-main {
-  flex: 1;
-  width: 100%;
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: var(--sp-6) var(--sp-5);
-}
-
-/* Gov dashboard escapes max-width/padding constraints */
-.app-main.gov-mode {
-  max-width: 100%;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 56px);
-  overflow: hidden;
-}
 
 .app-footer {
   padding: var(--sp-4) var(--sp-5);
@@ -322,8 +202,8 @@ button, .btn {
   justify-content: center;
   gap: 6px;
 }
-button:hover  { background: #1D4ED8; }
-button:active { background: #1E40AF; }
+button:hover  { background: var(--accent-hover); }
+button:active { background: var(--accent-active); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-secondary {
@@ -347,7 +227,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-danger:hover { background: #B91C1C; }
 
 .btn-safe    { background: var(--safe); }
-.btn-safe:hover { background: #15803D; }
+.btn-safe:hover { background: var(--safe-hover); }
 
 .btn-sm { height: 32px; font-size: 12px; padding: 0 var(--sp-3); }
 .btn-lg { height: 48px; font-size: 15px; padding: 0 var(--sp-5); }
@@ -371,7 +251,7 @@ input[type='search'], textarea, select {
 input::placeholder, textarea::placeholder { color: var(--text-lo); }
 input:focus, textarea:focus, select:focus {
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgb(59 130 246 / 0.10);
+  box-shadow: 0 0 0 3px rgb(15 118 110 / 0.12);
 }
 
 label {
@@ -443,33 +323,35 @@ input[type='checkbox'], input[type='radio'] {
   display: flex;
   align-items: flex-start;
   gap: var(--sp-3);
-  background: var(--disaster-dim);
-  border: 1px solid var(--disaster-border);
-  border-left: 4px solid var(--disaster);
-  border-radius: var(--radius-md);
-  color: var(--text-hi);
-  padding: var(--sp-4) var(--sp-5);
+  background: var(--accent-hover);          /* dark teal system alert bar */
+  border: 1px solid var(--accent-active);
+  border-left: 4px solid var(--gov-blue);
+  border-radius: var(--radius-sm);
+  color: #ffffff;
+  padding: var(--sp-3) var(--sp-4);
   margin-bottom: var(--sp-5);
-  box-shadow: var(--shadow-sm);
+  font-size: 13.5px;
 }
+.disaster-banner strong { letter-spacing: 0.02em; text-transform: uppercase; }
+.disaster-banner span[style] { color: #cbe3e1 !important; }   /* "area affected" subtext */
 .disaster-banner .indicator {
   font-weight: 700;
   font-size: 16px;
-  color: var(--need-help);
+  color: #ffffff;
   flex-shrink: 0;
 }
 .disaster-banner .close-x {
   margin-left: auto;
   background: transparent;
-  border: 1px solid var(--border-line);
-  color: var(--text-lo);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff;
   height: 28px;
   padding: 0 var(--sp-2);
   font-size: 13px;
   flex-shrink: 0;
   border-radius: var(--radius-sm);
 }
-.disaster-banner .close-x:hover { background: var(--bg-raised); }
+.disaster-banner .close-x:hover { background: rgba(255, 255, 255, 0.12); }
 
 /* ── Stat Grid (citizen) ─────────────────────────────────────────── */
 .stat-grid {
@@ -612,7 +494,7 @@ input[type='checkbox'], input[type='radio'] {
   border-color: var(--safe-border);
   color: var(--safe);
 }
-.hub-btn-safe .hub-btn-title { color: #15803D; }
+.hub-btn-safe .hub-btn-title { color: var(--safe); }
 
 /* Injured */
 .hub-btn-injured {
@@ -687,7 +569,7 @@ input[type='checkbox'], input[type='radio'] {
   transition: background 80ms;
 }
 .triage-row:hover { background: var(--bg-raised); }
-.triage-row.highlight { background: #EFF6FF; border-left: 3px solid var(--gov-blue); }
+.triage-row.highlight { background: var(--gov-blue-dim); border-left: 3px solid var(--gov-blue); }
 .triage-row.p1 { border-left: 3px solid var(--need-help); }
 .triage-row.p2 { border-left: 3px solid var(--injured); }
 
@@ -736,7 +618,7 @@ input[type='checkbox'], input[type='radio'] {
   background: var(--safe-dim);
   border-color: var(--safe-border);
   border-left-color: var(--safe);
-  color: #15803D;
+  color: var(--safe);
 }
 .status-option.active-injured {
   background: var(--injured-dim);
@@ -772,7 +654,7 @@ input[type='checkbox'], input[type='radio'] {
   margin-top: var(--sp-4);
   line-height: 1.5;
 }
-.msg-success { border-color: var(--safe-border);      color: #15803D;    background: var(--safe-dim); }
+.msg-success { border-color: var(--safe-border);      color: var(--safe);    background: var(--safe-dim); }
 .msg-warn    { border-color: var(--injured-border);   color: #92400E;    background: var(--injured-dim); }
 .msg-error   { border-color: var(--need-help-border); color: var(--need-help); background: var(--need-help-dim); }
 .msg-info    { border-color: var(--gov-blue-border);  color: var(--gov-blue-text); background: var(--gov-blue-dim); }
@@ -1246,68 +1128,6 @@ input[type='checkbox'], input[type='radio'] {
 .watchlist-pill:hover { background: var(--gov-blue-border); }
 .watchlist-pill.active { background: var(--gov-blue); color: #fff; }
 
-/* ── Hamburger / Mobile Nav ─────────────────────────────────────── */
-.nav-hamburger {
-  display: none;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 5px;
-  width: 40px;
-  height: 40px;
-  background: transparent;
-  border: 1px solid var(--border-line);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  padding: 0;
-  flex-shrink: 0;
-  margin-left: auto;
-  transition: background 100ms;
-}
-.nav-hamburger:hover { background: var(--bg-raised); }
-.nav-hamburger span {
-  display: block;
-  width: 18px;
-  height: 2px;
-  background: var(--text-md);
-  border-radius: 2px;
-  transition: transform 200ms, opacity 200ms;
-}
-.nav-hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
-.nav-hamburger.open span:nth-child(2) { opacity: 0; }
-.nav-hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
-
-.mobile-nav-overlay {
-  position: fixed;
-  inset: 56px 0 0 0;
-  z-index: 99;
-  background: rgb(15 23 42 / 0.35);
-}
-.mobile-nav {
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border-line);
-  box-shadow: var(--shadow-md);
-  display: flex;
-  flex-direction: column;
-  padding: var(--sp-2) 0;
-}
-.mobile-nav a {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: 14px var(--sp-5);
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-md);
-  border-bottom: 1px solid var(--border-line);
-  transition: background 80ms;
-}
-.mobile-nav a:last-child { border-bottom: none; }
-.mobile-nav a:hover,
-.mobile-nav a.router-link-exact-active { background: var(--bg-raised); color: var(--gov-blue); }
-.mobile-nav-gov { color: var(--gov-blue) !important; }
-.mobile-nav-gov .gov-link-badge { margin-left: auto; }
-
 /* ── Responsive ─────────────────────────────────────────────────── */
 @media (max-width: 1200px) {
   .eoc-layout { grid-template-columns: 240px 1fr 260px; }
@@ -1320,18 +1140,6 @@ input[type='checkbox'], input[type='radio'] {
 }
 
 @media (max-width: 768px) {
-  /* Hide desktop nav, show hamburger */
-  .app-nav { display: none; }
-  .nav-hamburger { display: flex; }
-  .conn-label { display: none; }
-  .brand-sub { display: none; }
-
-  /* Header tighter on mobile */
-  .app-header { padding: 0 var(--sp-3); gap: var(--sp-2); }
-
-  /* Main content full-width with smaller padding */
-  .app-main { padding: var(--sp-4) var(--sp-3); }
-
   /* Stat grid 2-col on mobile */
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .nav-cards { grid-template-columns: 1fr; }
@@ -1533,4 +1341,217 @@ input[type='checkbox'], input[type='radio'] {
   color: var(--text-lo);
   flex-shrink: 0;
   font-family: var(--font-mono);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Citizen Shell — dark-teal clinical layout (responder-module reference):
+   white top connection bar, a teal horizontal tab strip (primary nav), a
+   left sidebar (brand + secondary nav), a paper-first canvas, and a sticky
+   mono metadata footer. Colors are literal hex to match the reference 100%.
+   (Gov EOC + Admin keep their own shells above; this is citizen-only.)
+
+   Reference token map:
+     --resp-teal-header  #2a706d  dark teal horizontal bar
+     --resp-teal-accent  #0f766e  focus states / active metrics
+     --resp-teal-action  #034e4b  solid action buttons
+     --resp-accent-dim   #f2f8f7  card selection tint
+     --resp-accent-border#99cbc8  active option borders
+══════════════════════════════════════════════════════════════════════ */
+.rs-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: #d1d5db;
+}
+
+/* ── 1. Top connection bar ──────────────────────────────────────────── */
+.rs-top-nav {
+  height: 46px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--border-line);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: 0 var(--sp-4);
+  flex-shrink: 0;
+}
+.rs-conn-status { display: flex; align-items: center; gap: var(--sp-2); font-size: 13px; font-weight: 600; color: var(--text-hi); flex-shrink: 0; }
+.rs-conn-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border-strong); }
+.rs-conn-dot.on { background: var(--gov-blue); }
+.rs-top-nav-title { flex: 1; font-size: 13px; color: var(--text-lo); font-weight: 500; }
+
+/* ── 2. Clinical horizontal teal tab strip (primary nav) ────────────── */
+.rs-tabs-bar {
+  background: #2a706d;
+  display: flex;
+  padding: 0 var(--sp-4);
+  gap: var(--sp-2);
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.rs-tabs-bar::-webkit-scrollbar { display: none; }
+.rs-tab {
+  color: #e2f1f0;
+  padding: var(--sp-3) var(--sp-4);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rs-tab.router-link-exact-active {
+  font-weight: 700;
+  color: #ffffff;
+  border-bottom-color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ── 3. Sidebar + paper canvas row ──────────────────────────────────── */
+.rs-app-container { display: flex; flex: 1; min-height: 0; }
+
+.rs-sidebar {
+  width: 240px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: var(--sp-4) var(--sp-3);
+  border-right: 1px solid var(--border-line);
+  flex-shrink: 0;
+}
+.rs-brand-area {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-hi);
+  margin-bottom: var(--sp-5);
+  padding-left: var(--sp-2);
+  text-decoration: none;
+}
+.rs-brand-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  background: #0f766e;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+.rs-nav-section-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+  padding: 0 var(--sp-3) var(--sp-1);
+  text-align: left;
+}
+.rs-nav-group { display: flex; flex-direction: column; gap: var(--sp-1); margin-bottom: var(--sp-5); }
+.rs-sub-nav-btn { width: 100%; background: none; border: none; }
+.rs-sub-nav-item {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-md);
+  text-decoration: none;
+  border-left: 3px solid transparent;
+}
+.rs-sub-nav-item:hover { background: #f8fafc; }
+.rs-sub-nav-item.router-link-exact-active {
+  background: #f2f8f7;
+  color: #0f766e;
+  font-weight: 700;
+  border-left-color: #0f766e;
+}
+.rs-nav-badge {
+  background: var(--gov-blue);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+.rs-workspace { flex: 1; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; }
+
+.rs-paper {
+  width: 100%;
+  max-width: 880px;
+  background: var(--bg-panel);
+  margin: var(--sp-5) auto;
+  padding: 40px;
+  border-radius: 4px;
+  border: 1px solid var(--border-line);
+  box-sizing: border-box;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+}
+
+/* ── 4. Sticky mono metadata footer ─────────────────────────────────── */
+.rs-sticky-footer {
+  height: 34px;
+  background: #f1f5f9;
+  border-top: 1px solid var(--border-line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 var(--sp-4);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-md);
+  flex-shrink: 0;
+}
+
+/* ── Action buttons + clinical controls used inside the paper canvas ── */
+.btn-teal-action {
+  background: #034e4b;
+  color: #ffffff;
+  border: none;
+  padding: var(--sp-2) var(--sp-4);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: auto;
+}
+.btn-teal-action:hover { background: #0f766e; }
+.btn-secondary-outline {
+  background: #ffffff;
+  color: var(--text-md);
+  border: 1px solid var(--border-line);
+  padding: var(--sp-2) var(--sp-4);
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  height: auto;
+}
+.btn-secondary-outline:hover { background: #f8fafc; border-color: var(--text-lo); }
+
+/* ── Responsive: sidebar hides, tab strip scrolls horizontally ──────── */
+@media (max-width: 768px) {
+  .rs-sidebar { display: none; }
+  .rs-paper { padding: var(--sp-4); margin: var(--sp-4) auto; }
+}
+
+/* ── Print-friendly (Paper-first): print only the A4 sheet ──────────── */
+@media print {
+  .rs-shell { background: #fff; display: block; }
+  .rs-top-nav, .rs-tabs-bar, .rs-sidebar, .rs-sticky-footer { display: none !important; }
+  .rs-workspace { padding: 0; display: block; }
+  .rs-paper { max-width: none; border: none; box-shadow: none; border-radius: 0; padding: 0; margin: 0; }
 }

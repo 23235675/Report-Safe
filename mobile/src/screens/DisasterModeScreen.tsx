@@ -3,18 +3,17 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Location from 'expo-location';
 import { randomUUID } from 'expo-crypto';
 import { Ionicons } from '@expo/vector-icons';
 import { submitReport } from '../services/syncService';
 import type { PendingReport, ReportStatus, Disaster } from '../api/apiClient';
 import { userStorage } from '../db/userStorage';
 import { useTranslation } from '../i18n';
+import { resolveLocation } from '../utils/location';
 import {
-  C, R, SHADOW, statusColor, statusDim, STATUS_ICON, DISASTER_ICON,
+  C, R, SHADOW, STATUS_ICON, DISASTER_ICON,
 } from '../theme';
 
-const DEFAULT_LOCATION = { lat: 22.3, lng: 114.1 };
 const USER_KEY = 'rs_user';
 
 /** The three first-person statuses a person can self-report to clear the gate. */
@@ -32,17 +31,6 @@ function readProfile(): { name: string; phone: string | null } {
     return { name: p.name || '', phone: p.phone || null };
   } catch {
     return { name: '', phone: null };
-  }
-}
-
-async function resolveLocation(): Promise<{ lat: number; lng: number }> {
-  try {
-    const perm = await Location.requestForegroundPermissionsAsync();
-    if (perm.status !== 'granted') return DEFAULT_LOCATION;
-    const pos = await Location.getCurrentPositionAsync({});
-    return { lat: pos.coords.latitude, lng: pos.coords.longitude };
-  } catch {
-    return DEFAULT_LOCATION;
   }
 }
 
@@ -163,30 +151,28 @@ export default function DisasterModeScreen({ disaster, onReported }: Props): Rea
         {/* Safety actions */}
         <Text style={[S.fieldLabel, { marginTop: 20 }]}>{t('disasterMode.iAmCurrently')}</Text>
         {SAFETY_OPTIONS.map((opt) => {
-          const col = statusColor(opt.value);
-          const dim = statusDim(opt.value);
           const busy = submitting === opt.value;
           const disabled = submitting !== null;
           return (
             <TouchableOpacity
               key={opt.value}
-              style={[S.action, { backgroundColor: dim, borderColor: col }, disabled && !busy && S.actionDimmed]}
+              style={[S.action, disabled && !busy && S.actionDimmed]}
               onPress={() => report(opt.value)}
               disabled={disabled}
               activeOpacity={0.85}
             >
-              <View style={[S.actionIcon, { backgroundColor: C.bgPanel }]}>
+              <View style={S.actionIcon}>
                 {busy ? (
-                  <ActivityIndicator color={col} />
+                  <ActivityIndicator color={C.textMd} />
                 ) : (
-                  <Ionicons name={(STATUS_ICON[opt.value] ?? 'ellipse') as any} size={26} color={col} />
+                  <Ionicons name={(STATUS_ICON[opt.value] ?? 'ellipse') as any} size={26} color={C.textMd} />
                 )}
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[S.actionLabel, { color: col }]}>{statusLabel(opt.value)}</Text>
+                <Text style={S.actionLabel}>{statusLabel(opt.value)}</Text>
                 <Text style={S.actionSub}>{t(opt.subKey)}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={col} />
+              <Ionicons name="chevron-forward" size={20} color={C.textLo} />
             </TouchableOpacity>
           );
         })}
@@ -251,15 +237,16 @@ const S = StyleSheet.create({
 
   action: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
-    padding: 14, borderRadius: R.md, borderWidth: 1.5, marginBottom: 12,
+    padding: 14, borderRadius: R.md, borderWidth: 1, marginBottom: 12,
+    backgroundColor: C.bgPanel, borderColor: C.borderStrong,
     ...SHADOW.card,
   },
   actionDimmed: { opacity: 0.45 },
   actionIcon: {
-    width: 52, height: 52, borderRadius: R.sm,
+    width: 52, height: 52, borderRadius: R.sm, backgroundColor: C.bgRaised,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  actionLabel: { fontSize: 18, fontWeight: '800' },
+  actionLabel: { fontSize: 18, fontWeight: '800', color: C.textHi },
   actionSub:   { fontSize: 13, color: C.textLo, marginTop: 2 },
 
   reassure: {

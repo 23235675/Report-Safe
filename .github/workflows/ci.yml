@@ -44,7 +44,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run test suite (Vitest against ephemeral Postgres)
+      - name: Lint server (eslint)
+        # Legacy .eslintrc.json → pin eslint 8 + disable flat-config lookup.
+        # Scoped to production source; test files allow looser style.
+        env:
+          ESLINT_USE_FLAT_CONFIG: "false"
+        run: npx --yes eslint@8 "server/src/**/*.js"
+
+      - name: Run test suite (Vitest against ephemeral MongoDB + Redis)
         run: npm test
 
       - name: Build web frontend
@@ -52,3 +59,36 @@ jobs:
 
       - name: Typecheck mobile
         run: cd mobile && npx tsc --noEmit
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks scans full history
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Dependency audit (fail on high+)
+        run: npm audit --audit-level=high --omit=dev
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@v3

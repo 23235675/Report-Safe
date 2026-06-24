@@ -7,17 +7,7 @@ const { authenticate, allowGovOrVolunteer } = require('../lib/authGuard');
 const { boundingBox } = require('../services/reportStore');
 const { haversineKm } = require('../lib/geo');
 const { SafePlaceCreateSchema, SafePlaceQuerySchema } = require('../lib/zodSchemas');
-
-/** Map a stored doc's _id → id. */
-function mapId(doc) {
-  if (!doc) return doc;
-  const { _id, ...rest } = doc;
-  return { id: _id, ...rest };
-}
-/** Driver v6 findOneAndUpdate returns the doc directly; v5 wrapped it in {value}. */
-function unwrap(res) {
-  return res && res.value !== undefined ? res.value : res;
-}
+const { mapId, unwrap } = require('../lib/mongoMap');
 
 // Public list projection — never exposes the submitter, status, or review fields.
 const PUBLIC_PROJECTION = { name: 1, lat: 1, lng: 1, description: 1, capacity: 1, disaster_id: 1, active: 1, created_at: 1 };
@@ -52,11 +42,11 @@ module.exports = function createSafePlacesRouter() {
           if (distance_km <= radius) within.push({ ...mapId(d), distance_km });
         }
         within.sort((a, b) => a.distance_km - b.distance_km);
-        return res.json({ ok: true, safe_places: within });
+        return res.json({ ok: true, data: within });
       }
 
       const docs = await collection('safe_places').find(filter).project(PUBLIC_PROJECTION).sort({ created_at: -1 }).toArray();
-      return res.json({ ok: true, safe_places: docs.map(mapId) });
+      return res.json({ ok: true, data: docs.map(mapId) });
     } catch (err) {
       console.error('[routes/safePlaces GET /] failed:', err);
       return res.status(500).json({ error: 'Internal server error' });
@@ -88,7 +78,7 @@ module.exports = function createSafePlacesRouter() {
         reviewed_by: null, reviewed_at: null, created_at: now,
       };
       await collection('safe_places').insertOne(doc);
-      return res.status(201).json({ ok: true, safe_place: mapId(doc) });
+      return res.status(201).json({ ok: true, data: mapId(doc) });
     } catch (err) {
       console.error('[routes/safePlaces POST /] failed:', err);
       return res.status(500).json({ error: 'Internal server error' });
@@ -115,7 +105,7 @@ module.exports = function createSafePlacesRouter() {
           submitter_phone: u ? u.phone : null,
         };
       });
-      return res.json({ ok: true, safe_places });
+      return res.json({ ok: true, data: safe_places });
     } catch (err) {
       console.error('[routes/safePlaces GET /pending] failed:', err);
       return res.status(500).json({ error: 'Internal server error' });
@@ -139,7 +129,7 @@ module.exports = function createSafePlacesRouter() {
       if (!doc) {
         return res.status(404).json({ error: 'Pending safe place not found (already reviewed?)' });
       }
-      return res.json({ ok: true, safe_place: mapId(doc) });
+      return res.json({ ok: true, data: mapId(doc) });
     } catch (err) {
       console.error('[routes/safePlaces PUT /:id/status] failed:', err);
       return res.status(500).json({ error: 'Internal server error' });

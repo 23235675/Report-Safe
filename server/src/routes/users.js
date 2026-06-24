@@ -4,10 +4,42 @@ const express  = require('express');
 const crypto   = require('crypto');
 const { collection } = require('../db/mongo');
 const reportStore = require('../services/reportStore');
-const { UserRegisterSchema, UserUpdateSchema, LoginSchema, LinkRequestSchema } = require('../lib/zodSchemas');
-const { authenticate, isOwnerOrGov, generateTokenPair, hashToken } = require('../lib/authGuard');
+const { UserRegisterSchema, UserUpdateSchema, LoginSchema, LinkRequestSchema, ResponderProfileSchema } = require('../lib/zodSchemas');
+const { authenticate, isOwnerOrGov, generateTokenPair, hashToken, refreshTokenTtlMs } = require('../lib/authGuard');
 const { rateLimit } = require('../lib/rateLimit');
+const { mapId, unwrap } = require('../lib/mongoMap');
 const otpService = require('../lib/otpService');
+const { isWithinRadius } = require('../lib/geo');
+
+const REFRESH_COOKIE = 'rs_refresh';
+const REFRESH_PATH = '/api/users/token/refresh';
+
+/**
+ * H3: deliver the refresh token to web clients as an httpOnly cookie so an XSS
+ * can't read it from localStorage (the 30-day account-takeover path). It is also
+ * still returned in the JSON body for the mobile app, which has no cookie jar.
+ * Path-scoped to the refresh endpoint + SameSite=Strict covers CSRF for it.
+ */
+function setRefreshCookie(res, token) {
+  res.cookie(REFRESH_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: REFRESH_PATH,
+    maxAge: refreshTokenTtlMs(),
+  });
+}
+
+/** Read a cookie value from the raw header (no cookie-parser dependency). */
+function readCookie(req, name) {
+  const raw = req.headers.cookie || '';
+  for (const part of raw.split(';')) {
+    const i = part.indexOf('=');
+    if (i === -1) continue;
+    if (part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return null;
+}
 
 /**
  * PCPD masking: an HKID must never travel back out in full on any response
@@ -22,23 +54,11 @@ function forbidden(res) {
   return res.status(403).json({ error: 'Forbidden — you may only access your own account.' });
 }
 
-/** Map a stored doc's _id → id (used for account_links rows). */
-function mapId(doc) {
-  if (!doc) return doc;
-  const { _id, ...rest } = doc;
-  return { id: _id, ...rest };
-}
-
 /** Public user shape: _id → id, strip secret hashes, mask the HKID. */
 function publicUser(doc) {
   if (!doc) return doc;
   const { _id, access_token_hash, refresh_token_hash, password_hash, name_lower, ...rest } = doc;
   return { id: _id, ...rest, personal_id: maskPersonalId(rest.personal_id) };
-}
-
-/** Driver v6 findOneAndUpdate returns the doc directly; v5 wrapped it in {value}. */
-function unwrap(res) {
-  return res && res.value !== undefined ? res.value : res;
 }
 
 /** A MongoDB duplicate-key error (the former Postgres 23505). */
@@ -62,10 +82,10 @@ module.exports = function createUsersRouter() {
    * (already-normalised) phone. No-op when OTP_ENABLED is off → register/login
    * stay frictionless for testing. Returns true when the caller may proceed.
    */
-  function otpOk(req, res, phone) {
+  async function otpOk(req, res, phone) {
     if (!otpService.isEnabled()) return true;
     const otp = req.body?.otp;
-    if (!otp || !otpService.verifyOtp(phone, String(otp))) {
+    if (!otp || !(await otpService.verifyOtp(phone, String(otp)))) {
       res.status(401).json({ error: 'A valid OTP is required. Request one via POST /api/users/request-otp.', code: 'otp_required' });
       return false;
     }
@@ -82,7 +102,7 @@ module.exports = function createUsersRouter() {
     }
     try {
       const result = await otpService.requestOtp(parsed.data.phone);
-      return res.json({ ok: true, enabled: otpService.isEnabled(), ...result });
+      return res.json({ ok: true, data: { enabled: otpService.isEnabled(), ...result } });
     } catch (err) {
       console.error('[users POST /request-otp] failed:', err);
       return res.status(500).json({ error: 'Internal server error' });
@@ -98,9 +118,9 @@ module.exports = function createUsersRouter() {
     if (!parsed.success) {
       return res.status(400).json({ error: 'Validation failed', details: parsed.error.errors });
     }
-    const { phone, name, email, personal_id, user_type, privacy_consent } = parsed.data;
+    const { phone, name, gender, email, personal_id, user_type, privacy_consent } = parsed.data;
     // OTP gate (no-op unless OTP_ENABLED=true) — proves phone ownership.
-    if (!otpOk(req, res, phone)) return;
+    if (!(await otpOk(req, res, phone))) return;
     const now = Date.now();
     const id  = crypto.randomUUID();
     const tok = generateTokenPair(now);
@@ -111,6 +131,7 @@ module.exports = function createUsersRouter() {
       const setOnInsert = { _id: id, phone, user_type, role: 'citizen', created_at: now };
       const set = {
         name,
+        gender,
         personal_id,
         privacy_consent,
         access_token_hash:        tok.accessTokenHash,
@@ -127,6 +148,7 @@ module.exports = function createUsersRouter() {
         { upsert: true, returnDocument: 'after' }
       );
       const user = publicUser(unwrap(result));
+      setRefreshCookie(res, tok.refreshToken); // H3: web reads the cookie; mobile uses the body
       // Tokens are returned ONCE. Client stores both: the access token authorises
       // requests; the refresh token (POST /token/refresh) mints a new pair when
       // the access token expires.
@@ -158,11 +180,11 @@ module.exports = function createUsersRouter() {
     }
     const { phone } = parsed.data;
     // OTP gate (no-op unless OTP_ENABLED=true) — proves phone ownership.
-    if (!otpOk(req, res, phone)) return;
+    if (!(await otpOk(req, res, phone))) return;
     try {
       const found = await collection('users').findOne(
         { phone },
-        { projection: { phone: 1, name: 1, email: 1, personal_id: 1, user_type: 1, role: 1, privacy_consent: 1 } }
+        { projection: { phone: 1, name: 1, gender: 1, email: 1, personal_id: 1, user_type: 1, role: 1, privacy_consent: 1 } }
       );
       if (!found) {
         return res.status(404).json({ error: 'No account found for that number. Please register first.' });
@@ -178,6 +200,7 @@ module.exports = function createUsersRouter() {
         } }
       );
       const user = { ...mapId(found), personal_id: maskPersonalId(found.personal_id) };
+      setRefreshCookie(res, tok.refreshToken); // H3
       return res.json({
         ok: true,
         user,
@@ -193,20 +216,37 @@ module.exports = function createUsersRouter() {
   });
 
   // POST /api/users/token/refresh — exchange a valid refresh token for a new
-  // access+refresh pair. Refresh tokens ROTATE (one-time use): the old one is
-  // invalidated, so a stolen-then-used refresh token is detectable (the real
-  // user's next refresh fails). Body: { refresh_token }.
+  // access+refresh pair. Refresh tokens ROTATE (one-time use) WITH reuse
+  // detection (H4/B14): we keep the immediately-previous refresh hash; if a
+  // client presents it after rotation, the token was stolen and replayed, so we
+  // invalidate the WHOLE family (clear access + both refresh hashes) and force a
+  // re-login on every session. Body: { refresh_token }.
   router.post('/token/refresh', refreshLimiter, async (req, res) => {
-    const refreshToken = req.body?.refresh_token;
+    // H3: web sends the refresh token via the httpOnly cookie; mobile via the body.
+    const refreshToken = readCookie(req, REFRESH_COOKIE) || req.body?.refresh_token;
     if (!refreshToken || typeof refreshToken !== 'string') {
       return res.status(400).json({ error: 'refresh_token is required' });
     }
     try {
+      const presented = hashToken(refreshToken);
       const found = await collection('users').findOne(
-        { refresh_token_hash: hashToken(refreshToken) },
+        { refresh_token_hash: presented },
         { projection: { refresh_token_expires_at: 1 } }
       );
       if (!found) {
+        // Not the current token — is it the one we just rotated out? That's a
+        // replay of a (presumably stolen) token → nuke the family.
+        const reused = await collection('users').findOne(
+          { prev_refresh_token_hash: presented },
+          { projection: { _id: 1 } }
+        );
+        if (reused) {
+          await collection('users').updateOne(
+            { _id: reused._id },
+            { $set: { access_token_hash: null, refresh_token_hash: null, prev_refresh_token_hash: null, updated_at: Date.now() } }
+          );
+          return res.status(401).json({ error: 'Refresh token reuse detected — please sign in again.', code: 'token_reuse' });
+        }
         return res.status(401).json({ error: 'Invalid refresh token', code: 'refresh_invalid' });
       }
       const exp = found.refresh_token_expires_at;
@@ -220,9 +260,11 @@ module.exports = function createUsersRouter() {
         { $set: {
             access_token_hash: tok.accessTokenHash, access_token_expires_at: tok.accessTokenExpiresAt,
             refresh_token_hash: tok.refreshTokenHash, refresh_token_expires_at: tok.refreshTokenExpiresAt,
+            prev_refresh_token_hash: presented, // the token just rotated out (reuse tripwire)
             updated_at: now,
         } }
       );
+      setRefreshCookie(res, tok.refreshToken); // H3: rotate the cookie too
       return res.json({
         ok: true,
         access_token:  tok.accessToken,
@@ -243,11 +285,11 @@ module.exports = function createUsersRouter() {
       if (req.auth.kind !== 'gov' && req.auth.user.phone !== req.params.phone) return forbidden(res);
       const doc = await collection('users').findOne(
         { phone: req.params.phone },
-        { projection: { phone: 1, name: 1, email: 1, personal_id: 1, user_type: 1, role: 1, privacy_consent: 1, created_at: 1, updated_at: 1 } }
+        { projection: { phone: 1, name: 1, gender: 1, email: 1, personal_id: 1, user_type: 1, role: 1, privacy_consent: 1, created_at: 1, updated_at: 1 } }
       );
       if (!doc) return res.status(404).json({ error: 'User not found' });
       const user = { ...mapId(doc), personal_id: maskPersonalId(doc.personal_id) };
-      return res.json({ ok: true, user });
+      return res.json({ ok: true, data: user });
     } catch (err) {
       console.error('[users GET /:phone/profile] failed:', err);
       return res.status(500).json({ error: 'Internal server error' });
@@ -277,7 +319,7 @@ module.exports = function createUsersRouter() {
       );
       const doc = unwrap(result);
       if (!doc) return res.status(404).json({ error: 'User not found' });
-      return res.json({ ok: true, user: publicUser(doc) });
+      return res.json({ ok: true, data: publicUser(doc) });
     } catch (err) {
       if (isDupKey(err)) {
         return res.status(409).json({ error: 'This personal ID is already registered to another phone number.' });
@@ -294,9 +336,40 @@ module.exports = function createUsersRouter() {
     try {
       const result = await reportStore.eraseUserData(req.params.id);
       if (!result.deleted) return res.status(404).json({ error: 'User not found' });
-      return res.json({ ok: true, ...result });
+      return res.json({ ok: true, data: result });
     } catch (err) {
       console.error('[users DELETE /:id] failed:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // PATCH /api/users/:id/responder — opt in/out as a Community First Responder
+  // (CFR) and set skills + travel radius. Owner or gov. Opting in is explicit
+  // PDPO consent to be alerted and to share live location while responding.
+  router.patch('/:id/responder', authenticate, async (req, res) => {
+    if (!isOwnerOrGov(req, req.params.id)) return forbidden(res);
+    const parsed = ResponderProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Validation failed', details: parsed.error.errors });
+    }
+    const { responder_opt_in, responder_skills, responder_max_radius_km } = parsed.data;
+    try {
+      const result = await collection('users').findOneAndUpdate(
+        { _id: req.params.id },
+        { $set: {
+            responder_opt_in,
+            // Opting out clears skills so a stale skill can't keep matching.
+            responder_skills: responder_opt_in ? responder_skills : [],
+            responder_max_radius_km,
+            updated_at: Date.now(),
+        } },
+        { returnDocument: 'after' }
+      );
+      const doc = unwrap(result);
+      if (!doc) return res.status(404).json({ error: 'User not found' });
+      return res.json({ ok: true, data: publicUser(doc) });
+    } catch (err) {
+      console.error('[users PATCH /:id/responder] failed:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -327,7 +400,7 @@ module.exports = function createUsersRouter() {
         { $set: { status: 'pending', created_at: now }, $setOnInsert: { _id: id, confirmed_at: null } },
         { upsert: true, returnDocument: 'after' }
       );
-      return res.status(201).json({ ok: true, link: mapId(unwrap(result)) });
+      return res.status(201).json({ ok: true, data: mapId(unwrap(result)) });
     } catch (err) {
       console.error('[users POST /:id/links] failed:', err);
       return res.status(500).json({ error: 'Internal server error' });
@@ -345,7 +418,7 @@ module.exports = function createUsersRouter() {
       );
       const doc = unwrap(result);
       if (!doc) return res.status(404).json({ error: 'Pending link not found' });
-      return res.json({ ok: true, link: mapId(doc) });
+      return res.json({ ok: true, data: mapId(doc) });
     } catch (err) {
       console.error('[users PUT /:id/links/:link_id] failed:', err);
       return res.status(500).json({ error: 'Internal server error' });
@@ -363,7 +436,21 @@ module.exports = function createUsersRouter() {
       const links = await collection('account_links')
         .find({ $or: [{ user_a_id: me }, { user_b_id: me }], status: { $in: ['pending', 'confirmed'] } })
         .toArray();
-      if (links.length === 0) return res.json({ ok: true, links: [] });
+      if (links.length === 0) return res.json({ ok: true, data: [] });
+
+      const activeDisasters = await collection('disasters')
+        .find({ active: true })
+        .project({ _id: 1, lat: 1, lng: 1, radius_km: 1 })
+        .toArray();
+
+      // Live radius check (recomputed every request) rather than trusting the
+      // disaster_id stamped on the report at creation time — a moved/resized
+      // zone, or a disaster that started after the report was filed, still
+      // shows up correctly here.
+      function inAnyActiveZone(lat, lng) {
+        if (lat == null || lng == null) return false;
+        return activeDisasters.some((d) => isWithinRadius({ lat, lng }, { lat: d.lat, lng: d.lng }, d.radius_km));
+      }
 
       const withPartner = links.map((al) => ({
         al,
@@ -379,30 +466,43 @@ module.exports = function createUsersRouter() {
 
       // Latest report for a partner, matched by IDENTITY (id / reported-for /
       // HKID / phone), not by display name. Only resolved for confirmed links.
-      async function latestReportFor(u) {
+      const latestReportFor = async (u) => {
         const or = [{ user_id: u._id }, { reported_for_user_id: u._id }];
         if (u.personal_id) or.push({ personal_id: u.personal_id });
         if (u.phone) or.push({ phone: u.phone });
         const docs = await collection('reports')
           .find({ $or: or })
-          .project({ status: 1, updated_at: 1, disaster_id: 1 })
+          .project({ status: 1, updated_at: 1, disaster_id: 1, lat: 1, lng: 1 })
           .sort({ updated_at: -1 })
           .limit(1)
           .toArray();
         return docs[0] || null;
       }
 
+      // Resolve every confirmed partner's latest report CONCURRENTLY (was a serial
+      // await-in-loop N+1). Keyed by partnerId; per-row values are unchanged because
+      // latestReportFor depends only on the partner, and the rows below are still
+      // built in the original withPartner order — so output and ordering are identical.
+      const reportByPartner = new Map(
+        await Promise.all(
+          withPartner
+            .filter(({ al, partnerId }) => al.status === 'confirmed' && partnerById.has(partnerId))
+            .map(async ({ partnerId }) => [partnerId, await latestReportFor(partnerById.get(partnerId))])
+        )
+      );
+
       const entries = [];
       for (const { al, partnerId, isIncoming } of withPartner) {
         const u = partnerById.get(partnerId);
         if (!u) continue; // JOIN users — drop a link whose partner vanished
-        let report_status = null, status_updated_at = null, disaster_id = null;
+        let report_status = null, status_updated_at = null, disaster_id = null, in_affected_zone = false;
         if (al.status === 'confirmed') {
-          const r = await latestReportFor(u);
+          const r = reportByPartner.get(partnerId) || null;
           if (r) {
             report_status = r.status ?? null;
             status_updated_at = r.updated_at != null ? Number(r.updated_at) : null;
             disaster_id = r.disaster_id ?? null;
+            in_affected_zone = inAnyActiveZone(r.lat, r.lng);
           }
         }
         entries.push({
@@ -417,6 +517,7 @@ module.exports = function createUsersRouter() {
             report_status,
             status_updated_at,
             disaster_id,
+            in_affected_zone,
           },
           status: al.status,
           created_at: al.created_at,
@@ -428,7 +529,7 @@ module.exports = function createUsersRouter() {
         if (a.status !== b.status) return a.status < b.status ? -1 : 1;
         return (b.created_at || 0) - (a.created_at || 0);
       });
-      return res.json({ ok: true, links: entries.map((e) => e.row) });
+      return res.json({ ok: true, data: entries.map((e) => e.row) });
     } catch (err) {
       console.error('[users GET /:id/links] failed:', err);
       return res.status(500).json({ error: 'Internal server error' });

@@ -2,7 +2,8 @@
 
 const express = require('express');
 const { ReportSchema, RescueQuerySchema, ReportSearchQuerySchema } = require('../lib/zodSchemas');
-const { authGuard } = require('../lib/authGuard');
+const { authGuard, authenticate } = require('../lib/authGuard');
+const { rateLimit } = require('../lib/rateLimit');
 const { collection } = require('../db/mongo');
 const reportStore = require('../services/reportStore');
 const realtimeService = require('../services/realtimeService');
@@ -60,8 +61,22 @@ async function resolveReportedForUser(data) {
 module.exports = function createReportsRouter(io) {
   const router = express.Router();
 
-  // POST /api/reports — submit (or relay) a status report.
-  router.post('/', async (req, res) => {
+  // Report-ingest limiter (B2/H1): separate from the global /api limiter and
+  // keyed by USER (post-auth), not raw IP — so carrier-NAT users sharing an
+  // egress IP don't throttle each other during a real surge. Higher ceiling
+  // because a disaster legitimately produces many reports per user device.
+  const ingestLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: Number(process.env.REPORT_RATE_LIMIT_PER_MIN) || 600,
+    keyFn: (req) => req.auth?.userId || `gov:${req.ip}`,
+    message: 'Report ingest rate limit reached — your queued reports will retry automatically.',
+  });
+
+  // POST /api/reports — submit (or relay) a status report. Authenticated (C1):
+  // an anonymous client can no longer inject reports attributed to arbitrary
+  // users/HKIDs. Identity is DERIVED from the principal, never trusted from the
+  // body — the one exception is the gov/admin token (trusted tooling).
+  router.post('/', authenticate, ingestLimiter, async (req, res) => {
     try {
       const parsed = ReportSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -71,6 +86,25 @@ module.exports = function createReportsRouter(io) {
       }
 
       const data = parsed.data;
+
+      // C1 — de-mass-assignment. A normal user may not set identity/attribution
+      // fields: the server derives them from req.auth. Gov/admin is trusted and
+      // may set them explicitly (admin edits, tests, backfills).
+      if (req.auth.kind !== 'gov') {
+        delete data.user_id;
+        delete data.reported_for_user_id;
+        if (data.user_type === 'web') {
+          // Proxy report by a logged-in family member about someone ELSE — never
+          // the submitter's own report. reported_for_user_id is resolved below.
+          data.reporter_name = req.auth.user?.name || data.reporter_name || null;
+        } else {
+          // Self report: attribute it to the authenticated user.
+          data.user_id = req.auth.userId;
+          data.reported_by = 'self';
+          data.reporter_name = null;
+        }
+      }
+
       if (data.user_type === 'web') {
         // Web proxy reporters cannot mark someone as "safe" — only the affected
         // person can confirm their own safety, and they do so via the mobile app.
@@ -108,7 +142,7 @@ module.exports = function createReportsRouter(io) {
           data.disaster_id = null;
         }
       }
-      const result = await reportStore.upsertReport(parsed.data);
+      const result = await reportStore.upsertReport(data);
 
       // Web proxy reports are excluded from public stats (getStats excludeWeb=true)
       // and must never trigger disaster alerts — only mobile reports count toward
@@ -117,7 +151,7 @@ module.exports = function createReportsRouter(io) {
         await realtimeService.broadcastStats(io);
       }
 
-      return res.status(201).json({ ok: true, id: result.id });
+      return res.status(201).json({ ok: true, data: { id: result.id } });
     } catch (err) {
       console.error('[routes/reports POST /] failed to store report:', err);
       return res.status(500).json({ error: 'Internal server error' });
@@ -133,9 +167,23 @@ module.exports = function createReportsRouter(io) {
       }
       const { q, limit, offset } = parsed.data;
       const results = await reportStore.searchByName(q, { limit, offset });
-      return res.json({ ok: true, results, limit, offset });
+      return res.json({ ok: true, data: results, meta: { limit, offset } });
     } catch (err) {
       console.error('[routes/reports GET /search] failed to search:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/reports/people?limit=&offset= — public Status Overview roster
+  // (name + masked phone + status, no auth required).
+  router.get('/people', async (req, res) => {
+    try {
+      const limit = req.query.limit;
+      const offset = req.query.offset;
+      const { rows, total } = await reportStore.listPeople({ limit, offset });
+      return res.json({ ok: true, data: rows, meta: { limit, offset, total } });
+    } catch (err) {
+      console.error('[routes/reports GET /people] failed to list people:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -151,19 +199,22 @@ module.exports = function createReportsRouter(io) {
       }
       const { lat, lng, radius, limit, offset } = parsed.data;
       const results = await reportStore.getRescueView(lat, lng, radius, { limit, offset });
-      return res.json({ ok: true, results, limit, offset });
+      return res.json({ ok: true, data: results, meta: { limit, offset } });
     } catch (err) {
       console.error('[routes/reports GET /rescue] failed to build rescue view:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
   });
 
-  // GET /api/reports/stats — aggregate counts; ?exclude_web=true omits web-user reports.
+  // GET /api/reports/stats — aggregate counts. Official counts EXCLUDE web (proxy)
+  // reporters by default (H5/B7) so this REST path agrees with the socket
+  // stats_update broadcast (realtimeService always excludeWeb). Pass
+  // ?exclude_web=false to get combined counts.
   router.get('/stats', async (req, res) => {
     try {
-      const excludeWeb = req.query.exclude_web === 'true';
+      const excludeWeb = req.query.exclude_web !== 'false';
       const stats = await reportStore.getStats({ excludeWeb });
-      return res.json({ ok: true, stats });
+      return res.json({ ok: true, data: stats });
     } catch (err) {
       console.error('[routes/reports GET /stats] failed to get stats:', err);
       return res.status(500).json({ error: 'Internal server error' });

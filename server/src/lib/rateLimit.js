@@ -30,10 +30,10 @@ function getRedisClient() { return _redisClient; }
 
 // ── Redis-backed limiter ────────────────────────────────────────────────────
 
-function createRedisRateLimiter({ windowMs = 60_000, max = 60, keyFn, message } = {}) {
+function createRedisRateLimiter({ windowMs = 60_000, max = 60, keyFn, message, failClosed = false } = {}) {
   return async function redisRateLimiter(req, res, next) {
     const client = _redisClient;
-    if (!client) return next(); // Redis dropped mid-flight — let the request through
+    if (!client) return next(); // single-instance / Redis not configured — no limiting
 
     const key = `rl:${String((keyFn ? keyFn(req) : req.ip) || 'unknown')}:${Math.floor(Date.now() / windowMs)}`;
     try {
@@ -54,8 +54,15 @@ function createRedisRateLimiter({ windowMs = 60_000, max = 60, keyFn, message } 
       }
       return next();
     } catch (err) {
-      // Redis unavailable mid-request — degrade gracefully, let request through.
-      logger.warn('redis_rate_limit_error', { error: err.message });
+      // Redis errored mid-request (M9). failClosed limiters (the general /api
+      // ceiling) return 429 so an outage can't silently disable abuse protection;
+      // fail-open limiters (report ingest) let it through — losing a report is
+      // worse than briefly skipping a rate check.
+      logger.warn('redis_rate_limit_error', { error: err.message, failClosed });
+      if (failClosed) {
+        res.setHeader('Retry-After', String(Math.ceil(windowMs / 1000)));
+        return res.status(429).json({ error: message || 'Service busy — please retry shortly.' });
+      }
       return next();
     }
   };

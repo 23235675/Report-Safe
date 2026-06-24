@@ -52,7 +52,7 @@
       "expo-status-bar"
     ],
     "extra": {
-      "apiUrl": "http://localhost:3001",
+      "apiUrl": "https://report-safe-api-23235675.azurewebsites.net",
       "eas": {
         "projectId": "a14e58fa-6927-40b9-87ff-7fcfa7155db1"
       }

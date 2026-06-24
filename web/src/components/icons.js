@@ -58,6 +58,9 @@ export const ICONS = {
   'heart': '<path d="M12 20s-7-4.6-9.2-9.1C1.3 7.7 3 5 6 5c2 0 3.2 1.2 4 2.4C10.8 6.2 12 5 14 5c3 0 4.7 2.7 3.2 5.9C19 15.4 12 20 12 20z"/>',
   'mail-unread': '<path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h9a1.5 1.5 0 0 1 1.5 1.5V16a2 2 0 0 1-2 2H5a2 2 0 0 1-1-3.7"/><path d="M4 8l6 4 3.2-2.1"/><circle cx="19" cy="6" r="2.6"/>',
   'person': '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/>',
+  // Gender symbols (Mars / Venus) — used for user-profile avatars.
+  'male':   '<circle cx="10" cy="14" r="5"/><path d="M14 10l6-6M15 4h5v5"/>',
+  'female': '<circle cx="12" cy="9" r="5"/><path d="M12 14v7M9 18h6"/>',
   'person-add': '<circle cx="9" cy="8" r="3.1"/><path d="M3.4 19.5a5.6 5.6 0 0 1 11.2 0"/><path d="M18.5 7v6M15.5 10h6"/>',
   'person-circle': '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="2.6"/><path d="M6.8 18.4a5.4 5.4 0 0 1 10.4 0"/>',
   'navigate': '<path d="M20.5 3.5L3.5 10.8l7 2.6 2.4 6.9L20.5 3.5z"/>',

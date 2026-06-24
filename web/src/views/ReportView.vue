@@ -11,13 +11,10 @@ import { t } from '../i18n/index.js';
 
 const route = useRoute();
 
-// 'safe' is excluded from web proxy reports — only the affected person can
-// confirm their own safety, via the mobile app.
 const VALID_STATUSES = ['injured', 'need_help', 'awaiting_response', 'missing'];
 const initStatus = VALID_STATUSES.includes(route.query.status) ? route.query.status : 'injured';
 const initName   = route.query.name  || '';
 
-// Web is PROXY-ONLY (A6): always filing on behalf of someone else.
 const subjectName  = ref(initName);
 const reporterName = ref('');
 const status       = ref(initStatus);
@@ -31,20 +28,9 @@ const lastRefId    = ref(null);
 
 const { enqueue, markSent, retryAll, pendingCount, storageUnavailable } = useOutbox();
 
-// Web is proxy-only: 'safe' is intentionally excluded — the affected person
-// must confirm their own safety from the mobile app.
 const proxyStatuses = ['injured', 'need_help', 'awaiting_response', 'missing'];
 const availableStatuses = computed(() => proxyStatuses);
 
-// Colour + active-class per status (text labels come from i18n via metaText).
-const STATUS_META = {
-  injured:           { color: 'var(--injured)',    cls: 'active-injured'   },
-  need_help:         { color: 'var(--need-help)',  cls: 'active-need-help' },
-  awaiting_response: { color: 'var(--awaiting)',   cls: 'active-awaiting'  },
-  missing:           { color: 'var(--missing)',    cls: 'active-missing'   },
-};
-
-// Status → i18n key fragment for its proxy-form label/sub-label.
 const META_KEY = { injured: 'Injured', need_help: 'NeedHelp', awaiting_response: 'Awaiting', missing: 'Missing' };
 function metaText(s) {
   const k = META_KEY[s] || 'Injured';
@@ -84,12 +70,11 @@ async function onSubmit() {
 
   try {
     const id = crypto.randomUUID();
-    // Web proxy reports carry NO browser location (A6) — the server resolves
-    // the affected person's location from their own (mobile) report.
     const report = {
       id,
       name,
       status:        status.value,
+      severity:      null,
       medical_notes: showNotes.value ? medicalNotes.value.trim() || null : null,
       phone:         phone.value.trim() || null,
       personal_id:   personalId.value.trim() ? normalizeHKID(personalId.value) : null,
@@ -108,22 +93,12 @@ async function onSubmit() {
       success.value   = true;
       resetForm();
     } catch (err) {
-      // Distinguish a PERMANENT rejection (the server received it and refused —
-      // bad data) from a TRANSIENT failure (offline / server down). A 4xx will
-      // never succeed on retry, so drop it from the queue and show the real
-      // reason instead of pretending it's queued for later.
       const status = err?.status;
-      if (status && status >= 400 && status < 500) {
-        markSent(id); // remove from outbox — retrying won't help
-        message.value = {
-          type: 'error',
-          text: err?.message || t('report.errRejected'),
-        };
+      if (status === 400 || status === 422) {
+        markSent(id);
+        message.value = { type: 'error', text: err?.message || t('report.errRejected') };
       } else {
-        message.value = {
-          type: 'warn',
-          text: t('report.warnOffline'),
-        };
+        message.value = { type: 'warn', text: t('report.warnOffline') };
       }
     }
   } catch {
@@ -137,28 +112,26 @@ onMounted(async () => { try { await retryAll(); } catch {} });
 </script>
 
 <template>
-  <div style="max-width: 600px; margin: 0 auto;">
+  <div class="report-form-wrap resp-shell">
 
-    <div class="page-header">
+    <div class="form-title-block">
       <h1>{{ $t('report.title') }}</h1>
-      <p class="subtitle">
-        {{ $t('report.subtitle') }}
-      </p>
+      <p>{{ $t('report.subtitle') }}</p>
     </div>
 
-    <!-- ── Success State ─────────────────────────────────────────── -->
-    <div v-if="success" class="state-block" style="border: none; background: transparent;">
-      <div class="state-icon is-safe" style="width: 84px; height: 84px;"><AppIcon name="checkmark-circle" :size="44" /></div>
-      <h2 style="margin-bottom: var(--sp-1);">{{ $t('report.submitted') }}</h2>
+    <hr class="divider">
+
+    <div v-if="success" class="state-block">
+      <div class="state-icon is-safe"><AppIcon name="checkmark-circle" :size="32" /></div>
+      <h2>{{ $t('report.submitted') }}</h2>
       <p class="state-sub">{{ $t('report.submittedSub') }}</p>
       <div class="ref-pill"><AppIcon name="shield-checkmark" :size="13" /> {{ $t('report.ref') }} {{ (lastRefId || '').slice(0, 8) }}</div>
-      <button class="btn-secondary" @click="success = false" style="margin-top: var(--sp-5);">
+      <button class="btn-secondary-outline" @click="success = false" style="margin-top: var(--sp-4);">
         <AppIcon name="add" :size="16" /> {{ $t('report.submitAnother') }}
       </button>
     </div>
 
     <template v-if="!success">
-      <!-- Warnings -->
       <div v-if="storageUnavailable()" class="msg msg-warn msg-row">
         <AppIcon name="warning" :size="16" />
         <span>{{ $t('report.storageUnavailable') }}</span>
@@ -168,159 +141,201 @@ onMounted(async () => { try { await retryAll(); } catch {} });
         {{ $t(pendingCount === 1 ? 'report.queuedOne' : 'report.queuedMany', { n: pendingCount }) }}
       </div>
 
-      <!-- Web is proxy-only: every web report is filed on behalf of a relative. -->
-      <div class="card" style="margin-bottom: var(--sp-5);">
-        <div style="display: flex; align-items: flex-start; gap: var(--sp-3); font-size: 15px; font-weight: 600; color: var(--text-hi);">
-          <span class="proxy-ico"><AppIcon name="people" :size="20" /></span>
-          <div>
-            {{ $t('report.proxyTitle') }}
-            <div style="font-size: 13px; font-weight: 400; color: var(--text-lo); margin-top: 2px;">
-              {{ $t('report.proxyBody') }}
-            </div>
-          </div>
+      <div class="card proxy-banner">
+        <span class="proxy-ico"><AppIcon name="people" :size="20" /></span>
+        <div class="proxy-text">
+          <h3>{{ $t('report.proxyTitle') }}</h3>
+          <p>{{ $t('report.proxyBody') }}</p>
         </div>
       </div>
 
       <form @submit.prevent="onSubmit">
 
-        <!-- Subject name -->
-        <div class="field">
-          <label for="subject-name">{{ $t('report.subjectName') }}</label>
-          <input
-            id="subject-name"
-            v-model="subjectName"
-            type="text"
-            :placeholder="$t('report.subjectPlaceholder')"
-            autocomplete="name"
-          />
+        <div class="section-label">{{ $t('report.sectionWho') }}</div>
+
+        <div class="field-block">
+          <label class="resp-question" for="subject-name">{{ $t('report.subjectName') }}</label>
+          <div class="input-field-wrapper">
+            <input id="subject-name" v-model="subjectName" type="text" class="input-text-clinical" :placeholder="$t('report.subjectPlaceholder')" autocomplete="name" />
+          </div>
         </div>
 
-        <!-- Reporter name -->
-        <div class="field">
-          <label for="reporter-name">{{ $t('report.reporterName') }}</label>
-          <input
-            id="reporter-name"
-            v-model="reporterName"
-            type="text"
-            :placeholder="$t('report.reporterPlaceholder')"
-            autocomplete="off"
-          />
+        <div class="field-block">
+          <label class="resp-question" for="reporter-name">{{ $t('report.reporterName') }}</label>
+          <div class="input-field-wrapper">
+            <input id="reporter-name" v-model="reporterName" type="text" class="input-text-clinical" :placeholder="$t('report.reporterPlaceholder')" autocomplete="off" />
+          </div>
         </div>
 
-        <!-- Status selection -->
-        <div class="field">
-          <label style="margin-bottom: var(--sp-3);">{{ $t('report.currentStatus') }}</label>
-          <div class="status-group">
+        <div class="field-block">
+          <label class="resp-question" for="phone">
+            {{ $t('report.phoneLabel') }}
+            <span class="resp-question-hint">({{ $t('report.phoneHint') }})</span>
+          </label>
+          <div class="input-field-wrapper">
+            <input id="phone" v-model="phone" type="tel" class="input-text-clinical" placeholder="+852 ..." autocomplete="tel" />
+          </div>
+        </div>
+
+        <div class="field-block">
+          <label class="resp-question" for="personal-id">
+            {{ $t('report.hkidLabel') }}
+            <span class="resp-question-hint">({{ $t('report.hkidHint') }})</span>
+          </label>
+          <div class="input-field-wrapper">
+            <input id="personal-id" v-model="personalId" type="text" class="input-text-clinical" placeholder="A123456(7)" autocomplete="off" style="text-transform: uppercase;" />
+            <span class="field-icon-indicator">☰</span>
+          </div>
+        </div>
+
+        <div class="section-label" style="margin-top: var(--sp-5);">{{ $t('report.sectionSituation') }}</div>
+
+        <div class="field-block">
+          <label class="resp-question" style="margin-bottom: var(--sp-2);">{{ $t('report.currentStatus') }}</label>
+          <div class="resp-option-vertical-group">
             <label
               v-for="s in availableStatuses"
               :key="s"
-              class="status-option"
-              :class="{ [STATUS_META[s].cls]: status === s }"
+              class="resp-option"
+              :class="{ 'is-selected': status === s }"
             >
-              <input v-model="status" type="radio" :value="s" />
-              <span
-                class="status-medallion"
-                :style="status === s
-                  ? { color: STATUS_META[s].color, background: 'var(--bg-panel)' }
-                  : { color: 'var(--text-lo)', background: 'var(--bg-raised)' }"
-              >
-                <AppIcon :name="statusIcon(s)" :size="22" />
-              </span>
-              <div style="flex: 1;">
-                <div style="font-size: 16px; font-weight: 700; line-height: 1.2;">{{ metaText(s).label }}</div>
-                <div style="font-size: 13px; font-weight: 400; margin-top: 3px; opacity: 0.8;">{{ metaText(s).sub }}</div>
+              <input v-model="status" type="radio" :value="s" class="hidden-radio" />
+              <span class="resp-glyph"></span>
+              <div class="option-label-group">
+                <span class="option-title">{{ metaText(s).label }}</span>
+                <span class="option-desc">{{ metaText(s).sub }}</span>
               </div>
-              <AppIcon
-                :name="status === s ? 'radio-on' : 'radio-off'"
-                :size="20"
-                :style="{ color: status === s ? STATUS_META[s].color : 'var(--border-strong)' }"
-              />
             </label>
           </div>
         </div>
 
-        <!-- Medical notes -->
-        <div v-show="showNotes" class="field">
-          <label for="notes">{{ $t('report.notesLabel') }}</label>
-          <textarea
-            id="notes"
-            v-model="medicalNotes"
-            rows="3"
-            :placeholder="$t('report.notesPlaceholder')"
-          ></textarea>
+        <div v-show="showNotes" class="field-block">
+          <label class="resp-question" for="notes">{{ $t('report.notesLabel') }}</label>
+          <div class="input-field-wrapper">
+            <textarea id="notes" v-model="medicalNotes" rows="3" class="input-text-clinical textarea-clinical" :placeholder="$t('report.notesPlaceholder')"></textarea>
+          </div>
         </div>
 
-        <!-- Personal ID (HKID) -->
-        <div class="field">
-          <label for="personal-id">
-            {{ $t('report.hkidLabel') }}
-            <span style="font-weight: 400; color: var(--text-lo);">{{ $t('report.hkidHint') }}</span>
-          </label>
-          <input id="personal-id" v-model="personalId" type="text" placeholder="A123456(7)" autocomplete="off" style="text-transform: uppercase;" />
+        <div class="action-slot-bar" style="margin-top: var(--sp-5);">
+          <button type="submit" :disabled="submitting" class="btn-teal-action complete-action">
+            <template v-if="submitting">
+              <span class="spinner"></span> {{ $t('report.submitting') }}
+            </template>
+            <template v-else>
+              <span>✓</span> {{ $t('report.submitReport') }}
+            </template>
+          </button>
         </div>
-
-        <!-- Phone -->
-        <div class="field">
-          <label for="phone">
-            {{ $t('report.phoneLabel') }}
-            <span style="font-weight: 400; color: var(--text-lo);">{{ $t('report.phoneHint') }}</span>
-          </label>
-          <input id="phone" v-model="phone" type="tel" placeholder="+852 ..." autocomplete="tel" />
-        </div>
-
-        <!-- Submit -->
-        <button
-          type="submit"
-          :disabled="submitting"
-          :class="['btn-xl', 'submit-btn', status === 'need_help' ? 'btn-danger' : '']"
-        >
-          <template v-if="submitting"><span class="spinner" style="border-top-color: #fff;"></span> {{ $t('report.submitting') }}</template>
-          <template v-else><AppIcon name="send" :size="18" /> {{ $t('report.submitReport') }}</template>
-        </button>
       </form>
 
-      <div v-if="message" class="msg msg-row" :class="`msg-${message.type}`">
-        <AppIcon :name="message.type === 'error' ? 'alert-circle' : message.type === 'warn' ? 'cloud-offline' : message.type === 'success' ? 'checkmark-circle' : 'information-circle'" :size="16" />
+      <div v-if="message" class="msg msg-row" :class="`msg-${message.type}`" style="margin-top: var(--sp-3);">
+        <AppIcon :name="message.type === 'error' ? 'alert-circle' : 'information-circle'" :size="16" />
         <span>{{ message.text }}</span>
       </div>
 
-      <!-- Privacy note: the two tiers this report will be visible under -->
       <div class="report-privacy">
-        <div class="rp-head inline-ico"><AppIcon name="lock-closed" :size="15" /> {{ $t('report.whoCanSee') }}</div>
+        <div class="rp-head"><AppIcon name="lock-closed" :size="14" /> {{ $t('report.whoCanSee') }}</div>
         <div class="rp-tiers">
           <VisibilityChip tier="coarse" />
           <VisibilityChip tier="rescue" />
         </div>
-        <p class="rp-note">
-          {{ $t('report.privacyNote') }}
-        </p>
+        <p class="rp-note">{{ $t('report.privacyNote') }}</p>
       </div>
     </template>
   </div>
 </template>
 
 <style scoped>
-.proxy-ico {
-  display: inline-grid; place-items: center; flex-shrink: 0;
-  width: 40px; height: 40px; border-radius: var(--radius-md);
-  background: var(--gov-blue-dim); color: var(--gov-blue);
-}
-.submit-btn { gap: 8px; margin-top: var(--sp-3); }
-
-.ref-pill {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 5px 12px; border-radius: 20px;
-  background: var(--bg-raised); border: 1px solid var(--border-line);
-  font-size: 12px; font-weight: 600; color: var(--text-md);
-  font-variant-numeric: tabular-nums;
+.report-form-wrap {
+  background: #ffffff;
+  padding: 40px;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  max-width: 820px;
+  margin: var(--sp-5) auto;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
 }
 
-.report-privacy {
-  margin-top: var(--sp-6); padding: var(--sp-4);
-  background: var(--bg-raised); border: 1px solid var(--border-line);
-  border-radius: var(--radius-md);
+/* Master Color System */
+.resp-shell {
+  --resp-teal-header:   #2a706d;
+  --resp-teal-accent:   #0f766e;
+  --resp-teal-action:   #034e4b;
+  --resp-accent-dim:    #f2f8f7;
+  --resp-accent-border: #99cbc8;
+  --resp-accent-text:   #044e4b;
 }
-.rp-head { font-size: 13px; font-weight: 700; color: var(--text-md); margin-bottom: var(--sp-3); }
-.rp-tiers { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-2); }
-.rp-note  { font-size: 12px; color: var(--text-lo); line-height: 1.6; margin: 0; }
+
+/* Typography Headings Layout */
+.form-title-block h1 { font-size: 26px; font-weight: 700; color: #0f172a; margin: 0 0 var(--sp-2) 0; }
+.form-title-block p { font-size: 13.5px; color: #334155; line-height: 1.5; margin: 0 0 var(--sp-5) 0; }
+.divider { border: 0; border-top: 1px solid #cbd5e1; margin-bottom: var(--sp-5); }
+.section-label { font-size: 12px; font-weight: 700; color: var(--resp-teal-accent); text-transform: uppercase; margin-bottom: var(--sp-3); letter-spacing: 0.05em; }
+
+/* Structural Form Blocks */
+.field-block { margin-bottom: var(--sp-4); }
+.resp-question { font-size: 13px; font-weight: 700; color: #0f172a; display: block; margin-bottom: var(--sp-1); }
+.resp-question-hint { font-size: 12px; color: #64748b; font-weight: 400; }
+
+/* 100% Strict Input Fields Style Layout */
+.input-field-wrapper { position: relative; display: flex; align-items: center; width: 100%; }
+.input-text-clinical {
+  width: 100%; height: 34px; border: 1px solid #cbd5e1;
+  border-radius: 4px; padding: 0 var(--sp-3);
+  font-size: 13.5px; color: #0f172a; box-sizing: border-box;
+  background: #ffffff;
+}
+.input-text-clinical:focus {
+  outline: none; border-color: var(--resp-teal-accent);
+  box-shadow: 0 0 0 2px var(--resp-accent-dim);
+}
+.textarea-clinical { height: auto; padding: var(--sp-2) var(--sp-3); resize: vertical; }
+.field-icon-indicator { position: absolute; right: var(--sp-3); color: #64748b; font-size: 14px; pointer-events: none; }
+
+/* 100% Option Selection Card Styles Layout Row */
+.resp-option-vertical-group { display: flex; flex-direction: column; gap: var(--sp-2); width: 100%; }
+.resp-shell .resp-option {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3); background: #ffffff;
+  border: 1px solid #cbd5e1; border-radius: 4px;
+  cursor: pointer; font-size: 13px; color: #0f172a; user-select: none;
+}
+.resp-shell .resp-option.is-selected {
+  background: var(--resp-accent-dim); border-color: var(--resp-accent-border);
+  color: var(--resp-accent-text); font-weight: 600;
+}
+.resp-shell .resp-glyph {
+  width: 14px; height: 14px; border: 1.5px solid #64748b;
+  border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; flex-shrink: 0;
+}
+.resp-shell .resp-option.is-selected .resp-glyph { border-color: var(--resp-teal-accent); background: var(--resp-teal-accent); }
+.resp-shell .resp-option.is-selected .resp-glyph::after { content: ""; width: 4px; height: 4px; background: #ffffff; border-radius: 50%; }
+.hidden-radio { position: absolute; opacity: 0; pointer-events: none; }
+
+.option-label-group { display: flex; flex-direction: column; }
+.option-title { font-size: 14px; font-weight: 700; }
+.option-desc { font-size: 12px; color: #64748b; font-weight: 400; }
+.resp-option.is-selected .option-desc { color: var(--resp-teal-accent); }
+
+/* Actions Bar Trigger Group Layout */
+.action-slot-bar { display: flex; gap: var(--sp-3); }
+.btn-teal-action {
+  background: var(--resp-teal-action); color: #ffffff; border: none;
+  padding: var(--sp-2) var(--sp-4); font-size: 13px; font-weight: 600;
+  border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: var(--sp-2);
+}
+.btn-teal-action:hover { background: var(--resp-teal-accent); }
+.complete-action { width: 100%; justify-content: center; height: 40px; font-size: 14px; }
+
+/* Informational Banners and Context Cards */
+.proxy-banner { display: flex; gap: var(--sp-3); padding: var(--sp-3); background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; margin-bottom: var(--sp-4); }
+.proxy-ico { color: var(--resp-teal-accent); display: flex; align-items: center; }
+.proxy-text h3 { margin: 0; font-size: 14px; font-weight: 700; color: #0f172a; }
+.proxy-text p { margin: 2px 0 0 0; font-size: 12.5px; color: #64748b; }
+
+.report-privacy { margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: 1px solid #cbd5e1; }
+.rp-head { font-size: 13px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 6px; margin-bottom: var(--sp-2); }
+.rp-tiers { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.rp-note { font-size: 12px; color: #64748b; margin: 0; line-height: 1.4; }
+.ref-pill { display: inline-flex; align-items: center; gap: var(--sp-1); background: #f1f5f9; padding: var(--sp-1) var(--sp-2); border-radius: 4px; font-size: 12px; font-weight: 600; }
 </style>

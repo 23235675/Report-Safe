@@ -12,6 +12,7 @@
  */
 import { ref, readonly } from 'vue';
 import { messages } from './messages.js';
+import { severityRank } from '../iconography.js';
 
 const STORAGE_KEY = 'rs_lang';
 export const SUPPORTED = ['en', 'zh'];
@@ -89,11 +90,12 @@ export function sourceLabel(src) {
   return resolve(_locale.value, `source.${key}`) ?? resolve('en', `source.${key}`) ?? key;
 }
 
-/** Map a numeric severity to its label key ('minor' | 'moderate' | 'severe' | 'extreme'). */
+/** Map a severity (number OR string label) to its key ('minor'|'moderate'|'severe'|'extreme'). */
 export function severityKey(s) {
-  if (!s || s < 3) return 'minor';
-  if (s < 4) return 'moderate';
-  if (s < 5) return 'severe';
+  const r = severityRank(s);
+  if (r < 3) return 'minor';
+  if (r < 4) return 'moderate';
+  if (r < 5) return 'severe';
   return 'extreme';
 }
 

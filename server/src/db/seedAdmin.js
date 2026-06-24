@@ -18,13 +18,19 @@
 const crypto = require('crypto');
 const { collection } = require('./mongo');
 const { hashPassword, generateTokenPair } = require('../lib/authGuard');
+const { normalizePhone } = require('../lib/zodSchemas');
 
 async function seedAdmin() {
   // Credentials come from the environment ONLY — never hardcoded in source.
   // For local/testing, simple values live in server/.env (and .env.example);
   // production sets strong ones. This is what keeps the security level at the
   // released-version bar: the codebase ships no known password.
-  const phone    = process.env.SUPER_ADMIN_PHONE;
+  // Phone is normalised to the canonical +852XXXXXXXX form so it's stored exactly
+  // like every other account (SUPER_ADMIN_PHONE may be bare 8 digits) — and so a
+  // restart MATCHES the existing admin and UPDATEs it instead of trying to insert
+  // a duplicate (which fails on Cosmos: two admins with no personal_id collide on
+  // the non-sparse-on-Cosmos unique index).
+  const phone    = process.env.SUPER_ADMIN_PHONE ? normalizePhone(process.env.SUPER_ADMIN_PHONE) : undefined;
   const password = process.env.SUPER_ADMIN_PASSWORD;
   const name     = process.env.SUPER_ADMIN_NAME || 'Super Administrator';
 

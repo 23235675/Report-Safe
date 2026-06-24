@@ -33,14 +33,20 @@ export class MockMeshTransport implements IMeshTransport {
     ];
   }
 
-  /** Logs the relay action and resolves true after 300ms. */
+  /**
+   * Stub transport — there is NO real BLE/WiFi-Direct link yet, so it MUST NOT
+   * claim delivery. Returning false keeps the report `pending` in the outbox so
+   * it is re-flushed on reconnect, instead of being silently marked `relayed`
+   * (terminal) and lost — the canonical offline-disaster scenario (C3).
+   * ponytail: returns false until a real transport with delivery receipts exists.
+   */
   async sendToPeer(peer: Peer, reports: PendingReport[]): Promise<boolean> {
     console.log(
-      `[MockMeshTransport] relaying ${reports.length} report(s) to peer ${peer.id} ` +
-        `(signal ${peer.signalStrength}, internet=${peer.hasInternet})`
+      `[MockMeshTransport] no real mesh transport — keeping ${reports.length} report(s) ` +
+        `queued for reconnect (peer ${peer.id}, signal ${peer.signalStrength})`
     );
     await delay(300);
-    return true;
+    return false;
   }
 
   /** Stores the callback. In the mock it never fires. */

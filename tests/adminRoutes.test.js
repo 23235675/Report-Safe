@@ -97,18 +97,18 @@ describe('GET /users — filters', () => {
   });
 
   it('filters by role', async () => {
-    const { rows } = await (await authed('/api/admin/users?role=volunteer')).json();
+    const { data: rows } = await (await authed('/api/admin/users?role=volunteer')).json();
     expect(rows.every((r) => r.role === 'volunteer')).toBe(true);
     expect(rows).toHaveLength(1);
   });
 
   it('filters by consent=true', async () => {
-    const { rows } = await (await authed('/api/admin/users?consent=true')).json();
+    const { data: rows } = await (await authed('/api/admin/users?consent=true')).json();
     expect(rows.every((r) => r.privacy_consent === true)).toBe(true);
   });
 
   it('filters by has_email=false', async () => {
-    const { rows } = await (await authed('/api/admin/users?has_email=false')).json();
+    const { data: rows } = await (await authed('/api/admin/users?has_email=false')).json();
     expect(rows.some((r) => r.id === 'u-gov')).toBe(true);
     expect(rows.every((r) => !r.email)).toBe(true);
   });
@@ -116,10 +116,23 @@ describe('GET /users — filters', () => {
   it('combines filters and search safely (parameterized)', async () => {
     const res = await authed(`/api/admin/users?role=citizen&q=${encodeURIComponent("'; DROP TABLE users; --")}`);
     expect(res.status).toBe(200);
-    const { rows } = await res.json();
+    const { data: rows } = await res.json();
     expect(rows).toHaveLength(0); // no match, no injection
     // table still intact:
-    expect((await (await authed('/api/admin/users')).json()).rows.length).toBeGreaterThan(0);
+    expect((await (await authed('/api/admin/users')).json()).data.length).toBeGreaterThan(0);
+  });
+});
+
+describe('M7: cursor pagination on /users', () => {
+  it('?after pages without skip and returns next_cursor', async () => {
+    for (let i = 0; i < 5; i++) await addUser(`cu-${i}`, { name: `Cursor ${i}` });
+    const page1 = await (await authed('/api/admin/users?after=&limit=3')).json();
+    expect(page1.data).toHaveLength(3);
+    expect(page1.meta.next_cursor).toBeTruthy();
+    const page2 = await (await authed(`/api/admin/users?limit=3&after=${page1.meta.next_cursor}`)).json();
+    // No overlap between the two pages.
+    const ids1 = new Set(page1.data.map((r) => r.id));
+    expect(page2.data.every((r) => !ids1.has(r.id))).toBe(true);
   });
 });
 
@@ -136,20 +149,20 @@ describe('GET /reports — urgency sort + filters', () => {
   });
 
   it('defaults to urgency order — need_help before injured before safe', async () => {
-    const { rows } = await (await authed('/api/admin/reports')).json();
+    const { data: rows } = await (await authed('/api/admin/reports')).json();
     const order = rows.map((r) => r.status);
     expect(order.indexOf('need_help')).toBeLessThan(order.indexOf('injured'));
     expect(order.indexOf('injured')).toBeLessThan(order.indexOf('safe'));
   });
 
   it('filters by status', async () => {
-    const { rows } = await (await authed('/api/admin/reports?status=need_help')).json();
+    const { data: rows } = await (await authed('/api/admin/reports?status=need_help')).json();
     expect(rows).toHaveLength(1);
     expect(rows[0].status).toBe('need_help');
   });
 
   it('disaster_id=__none__ returns only unlinked reports', async () => {
-    const { rows } = await (await authed('/api/admin/reports?disaster_id=__none__')).json();
+    const { data: rows } = await (await authed('/api/admin/reports?disaster_id=__none__')).json();
     expect(rows.every((r) => r.disaster_id === null)).toBe(true);
   });
 });

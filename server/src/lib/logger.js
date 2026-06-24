@@ -26,9 +26,23 @@ const logger = {
   debug: (msg, fields) => emit('debug', msg, fields),
 };
 
+/** In-process request metrics (B23) — exposed via GET /api/metrics. */
+const metrics = { requests: 0, errors: 0, totalMs: 0 };
+
+/** Snapshot of request count, error rate and average latency. */
+function getMetrics() {
+  return {
+    requests: metrics.requests,
+    errors: metrics.errors,
+    error_rate: metrics.requests ? Number((metrics.errors / metrics.requests).toFixed(4)) : 0,
+    avg_latency_ms: metrics.requests ? Math.round(metrics.totalMs / metrics.requests) : 0,
+  };
+}
+
 /**
  * Express middleware: assign/propagate a request id and log one structured
- * line per completed request (method, path, status, latency).
+ * line per completed request (method, path, status, latency); also feeds the
+ * /api/metrics counters.
  */
 function requestLogger(req, res, next) {
   const id = req.headers['x-request-id'] || crypto.randomUUID();
@@ -36,15 +50,19 @@ function requestLogger(req, res, next) {
   res.setHeader('X-Request-Id', id);
   const start = Date.now();
   res.on('finish', () => {
+    const ms = Date.now() - start;
+    metrics.requests += 1;
+    metrics.totalMs += ms;
+    if (res.statusCode >= 500) metrics.errors += 1;
     logger.info('http_request', {
       reqId: id,
       method: req.method,
       path: req.path,
       status: res.statusCode,
-      ms: Date.now() - start,
+      ms,
     });
   });
   next();
 }
 
-module.exports = { logger, requestLogger };
+module.exports = { logger, requestLogger, getMetrics };

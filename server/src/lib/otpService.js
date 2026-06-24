@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const { logger } = require('./logger');
+const { getRedisClient } = require('./rateLimit');
 
 /*
  * OTP (one-time passcode) phone verification.
@@ -21,14 +22,16 @@ const { logger } = require('./logger');
  *   OTP_SMS_PROVIDER set to a real provider id in production (otherwise the
  *                    code is only logged and a warning is emitted).
  *
- * STORE: in-memory (per instance), like the in-memory rate-limiter tier. For a
- * multi-instance production deployment, back this with Redis (the same client
- * the rate limiter uses) so a code requested on one node verifies on another.
+ * STORE (M2): Redis when the shared client is connected (so a code requested on
+ * node A verifies on node B behind a load balancer); falls back to an in-memory
+ * Map per-instance when Redis is absent (single-instance / tests).
  */
 
-/** phone -> { hash, expiresAt, attempts } */
+/** phone -> { hash, expiresAt, attempts } — in-memory fallback only. */
 const store = new Map();
 const MAX_ATTEMPTS = 5;
+const otpKey      = (phone) => `otp:${phone}`;
+const attemptsKey = (phone) => `otpa:${phone}`;
 
 function isEnabled()  { return process.env.OTP_ENABLED === 'true'; }
 function ttlMs()      { return (Number(process.env.OTP_TTL_SECONDS) || 300) * 1000; }
@@ -80,26 +83,53 @@ async function sendSms(phone, code) {
  */
 async function requestOtp(phone) {
   const code = generateCode();
-  store.set(phone, { hash: hash(code), expiresAt: Date.now() + ttlMs(), attempts: 0 });
+  const h = hash(code);
+  const redis = getRedisClient();
+  if (redis) {
+    await redis.set(otpKey(phone), h, { PX: ttlMs() });
+    await redis.del(attemptsKey(phone));
+  } else {
+    store.set(phone, { hash: h, expiresAt: Date.now() + ttlMs(), attempts: 0 });
+  }
   await sendSms(phone, code);
   return devEcho() ? { sent: true, dev_code: code } : { sent: true };
 }
 
+/** Timing-safe compare of a submitted code against a stored hash. */
+function codeMatches(code, storedHash) {
+  const a = Buffer.from(hash(String(code)));
+  const b = Buffer.from(String(storedHash));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 /**
  * Verify a submitted code for a phone. One-time use (consumed on success),
- * attempt-limited, expiry-checked, timing-safe compare.
- * @returns {boolean}
+ * attempt-limited, expiry-checked, timing-safe compare. Async because the
+ * shared store may be Redis (M2).
+ * @returns {Promise<boolean>}
  */
-function verifyOtp(phone, code) {
+async function verifyOtp(phone, code) {
+  const redis = getRedisClient();
+  if (redis) {
+    const storedHash = await redis.get(otpKey(phone));
+    if (!storedHash) return false; // absent or expired (Redis TTL)
+    const attempts = await redis.incr(attemptsKey(phone));
+    await redis.pExpire(attemptsKey(phone), ttlMs());
+    if (attempts > MAX_ATTEMPTS) {
+      await redis.del(otpKey(phone), attemptsKey(phone));
+      return false;
+    }
+    const ok = codeMatches(code, storedHash);
+    if (ok) await redis.del(otpKey(phone), attemptsKey(phone)); // consume on success
+    return ok;
+  }
+
   const rec = store.get(phone);
   if (!rec) return false;
   if (rec.expiresAt <= Date.now()) { store.delete(phone); return false; }
   if (rec.attempts >= MAX_ATTEMPTS) { store.delete(phone); return false; }
   rec.attempts += 1;
-
-  const a = Buffer.from(hash(String(code)));
-  const b = Buffer.from(rec.hash);
-  const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
+  const ok = codeMatches(code, rec.hash);
   if (ok) store.delete(phone); // consume on success
   return ok;
 }

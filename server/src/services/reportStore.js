@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { collection } = require('../db/mongo');
 const { haversineKm } = require('../lib/geo');
+const { escapeRegex } = require('../lib/mongoMap');
 
 /**
  * Triage priority tier for rescue sorting (0 = most urgent).
@@ -46,13 +47,19 @@ const ALL_STATUSES = Object.freeze([
   'potentially_missing', 'missing', 'verified_missing', 'rescued', 'deceased',
 ]);
 
+/**
+ * Hard ceiling on how many docs any geo bounding-box query pulls into the heap
+ * before the exact haversine pass (C2). A city-wide disaster (seeded T10 has
+ * radius_km 60 → box covers all of HK) would otherwise stream the WHOLE
+ * collection into Node — an OOM risk on Azure B1 and an RU-exhaustion (429)
+ * risk on Cosmos Free. Well above any realistic single-radius hit, so normal
+ * results are unaffected; only the pathological all-collection box is bounded.
+ * ponytail: a scan ceiling, not cursor pagination — M7 adds paging for the tail.
+ */
+const GEO_SCAN_CAP = Number(process.env.GEO_SCAN_CAP) || 5000;
+
 function coarsen(v) {
   return Math.round(v * 100) / 100;
-}
-
-/** Escape a string for safe use inside a MongoDB $regex. */
-function escapeRegex(s) {
-  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -86,6 +93,20 @@ function boundingBox(lat, lng, radiusKm) {
     return { latMin: -90, latMax: 90, lngMin: -180, lngMax: 180 };
   }
   return { latMin, latMax, lngMin, lngMax };
+}
+
+/**
+ * The index-friendly Mongo sub-filter for "inside the bounding box of
+ * (lat,lng,radiusKm)". Spread into a find() filter, then refine with an exact
+ * haversine pass. Single source of truth for the box→filter shape that the
+ * shelters/aed/incident/disaster geo queries all build.
+ */
+function boxFilter(lat, lng, radiusKm) {
+  const bb = boundingBox(lat, lng, radiusKm);
+  return {
+    lat: { $gte: bb.latMin, $lte: bb.latMax },
+    lng: { $gte: bb.lngMin, $lte: bb.lngMax },
+  };
 }
 
 /**
@@ -144,6 +165,7 @@ async function upsertReport(report) {
       lat: report.lat,
       lng: report.lng,
       medical_notes: report.medical_notes ?? null,
+      severity: report.severity ?? null,
       phone: report.phone ?? null,
       personal_id: report.personal_id ?? null,
       created_at: report.created_at || now,
@@ -194,16 +216,20 @@ async function searchByName(queryStr, { limit = 100, offset = 0 } = {}) {
     const off = Math.max(Number(offset) || 0, 0);
     const q = queryStr.trim();
 
-    // All-digits → phone search (match the last 8 digits). Else name (regex, i).
+    // All-digits → phone search (match the last 8 digits). Else name PREFIX search
+    // (H7): anchored `^q` instead of an unanchored scan, so the query can seek the
+    // index rather than reading every citizen row on each lookup.
+    // ponytail: anchored case-insensitive regex on `name`; for full index use on
+    // Cosmos, denormalise a `name_lower` onto users and match that exactly.
     const isPhoneQuery = /^\d+$/.test(q);
     const userFilter = isPhoneQuery
       ? { role: 'citizen', phone: { $regex: escapeRegex(q.slice(-8)) + '$' } }
-      : { role: 'citizen', name: { $regex: escapeRegex(q), $options: 'i' } };
+      : { role: 'citizen', name: { $regex: '^' + escapeRegex(q), $options: 'i' } };
 
     // Matched citizens (hard cap bounds memory for a broad regex on a big table).
     const users = await collection('users')
       .find(userFilter)
-      .project({ _id: 1, name: 1, phone: 1 })
+      .project({ _id: 1, name: 1, phone: 1, gender: 1 })
       .limit(1000)
       .toArray();
     if (users.length === 0) return [];
@@ -230,6 +256,7 @@ async function searchByName(queryStr, { limit = 100, offset = 0 } = {}) {
       return {
         id:            u._id,
         name:          u.name,
+        gender:        u.gender || null,
         status:        r ? (r.status || null) : null,   // null = registered but no report yet
         phone_masked:  maskPhone(u.phone),
         updated_at:    r && r.updated_at != null ? Number(r.updated_at) : null,
@@ -254,6 +281,62 @@ async function searchByName(queryStr, { limit = 100, offset = 0 } = {}) {
   }
 }
 
+/**
+ * List every person with a filed report, newest-status-first — the public
+ * Status Overview roster. Same masked-phone privacy tier as searchByName:
+ * never the full phone, never exact GPS.
+ */
+async function listPeople({ limit = 50, offset = 0 } = {}) {
+  try {
+    const lim = Math.min(Math.max(Number(limit) || 50, 1), 100);
+    const off = Math.max(Number(offset) || 0, 0);
+
+    // ponytail: scan cap on latest-reports, matches the bound used by getRescueView.
+    const reports = await collection('reports')
+      .find({})
+      .project({ user_id: 1, reported_for_user_id: 1, status: 1, updated_at: 1 })
+      .sort({ updated_at: -1 })
+      .limit(GEO_SCAN_CAP)
+      .toArray();
+
+    const latest = new Map();
+    for (const r of reports) {
+      const uid = r.reported_for_user_id || r.user_id;
+      if (uid && !latest.has(uid)) latest.set(uid, r);
+    }
+
+    const allIds = [...latest.keys()];
+    const pageIds = allIds.slice(off, off + lim);
+    if (pageIds.length === 0) return { rows: [], total: allIds.length };
+
+    const users = await collection('users')
+      .find({ _id: { $in: pageIds } })
+      .project({ _id: 1, name: 1, phone: 1 })
+      .toArray();
+    const userMap = new Map(users.map((u) => [u._id, u]));
+
+    const rows = pageIds
+      .map((uid) => {
+        const u = userMap.get(uid);
+        if (!u) return null;
+        const r = latest.get(uid);
+        return {
+          id: uid,
+          name: u.name,
+          phone_masked: maskPhone(u.phone),
+          status: r.status || null,
+          updated_at: r.updated_at != null ? Number(r.updated_at) : null,
+        };
+      })
+      .filter(Boolean);
+
+    return { rows, total: allIds.length };
+  } catch (err) {
+    console.error('[reportStore.listPeople] failed:', err);
+    throw err;
+  }
+}
+
 /** Mask a phone for public display: "+85298765432" → "····5432". */
 function maskPhone(phone) {
   if (!phone) return null;
@@ -274,8 +357,13 @@ async function getRescueView(lat, lng, radiusKm, { limit = 500, offset = 0 } = {
     const off = Math.max(Number(offset) || 0, 0);
     const bb = boundingBox(lat, lng, radiusKm);
 
+    // Bound the scan (C2). Newest-first on the indexed updated_at so, if the cap
+    // is hit, it's the most recently-active reports that survive — then the exact
+    // haversine + priority sort below re-orders the survivors for triage.
     const candidates = await collection('reports')
       .find({ lat: { $gte: bb.latMin, $lte: bb.latMax }, lng: { $gte: bb.lngMin, $lte: bb.lngMax } })
+      .sort({ updated_at: -1 })
+      .limit(GEO_SCAN_CAP)
       .toArray();
 
     const within = [];
@@ -292,14 +380,17 @@ async function getRescueView(lat, lng, radiusKm, { limit = 500, offset = 0 } = {
       return a.distance_km - b.distance_km;
     });
 
-    return within.slice(off, off + lim).map((r) => ({
-      ...r,
-      created_at:     Number(r.created_at),
-      updated_at:     Number(r.updated_at),
-      distance_km:    Number(r.distance_km),
-      priority:       STATUS_PRIORITY[r.status] ?? 3,
-      priority_label: PRIORITY_LABEL[STATUS_PRIORITY[r.status] ?? 3],
-    }));
+    return within.slice(off, off + lim).map((r) => {
+      const priority = STATUS_PRIORITY[r.status] ?? 3;
+      return {
+        ...r,
+        created_at:     Number(r.created_at),
+        updated_at:     Number(r.updated_at),
+        distance_km:    Number(r.distance_km),
+        priority,
+        priority_label: PRIORITY_LABEL[priority],
+      };
+    });
   } catch (err) {
     console.error('[reportStore.getRescueView] failed:', err);
     throw err;
@@ -420,6 +511,8 @@ async function getShelters(lat, lng, radiusKm) {
     const bb = boundingBox(lat, lng, radiusKm);
     const candidates = await collection('shelters')
       .find({ active: true, lat: { $gte: bb.latMin, $lte: bb.latMax }, lng: { $gte: bb.lngMin, $lte: bb.lngMax } })
+      .sort({ lat: 1 }) // indexed; makes the cap deterministic (C2)
+      .limit(GEO_SCAN_CAP)
       .toArray();
 
     const within = [];
@@ -451,6 +544,7 @@ async function getShelters(lat, lng, radiusKm) {
 async function eraseUserData(userId) {
   try {
     const now = Date.now();
+    // Phase 1a — scrub PII from the user's reports (rows kept for aggregate counts).
     const scrub = await collection('reports').updateMany(
       { $or: [{ user_id: userId }, { reported_for_user_id: userId }] },
       {
@@ -461,33 +555,73 @@ async function eraseUserData(userId) {
         },
       }
     );
-    const del = await collection('users').deleteOne({ _id: userId });
-    // Emulate FK cascades that the SQL schema performed on user deletion.
-    await collection('account_links').deleteMany({ $or: [{ user_a_id: userId }, { user_b_id: userId }] });
-    await collection('device_push_tokens').deleteMany({ user_id: userId });
-    await collection('safe_places').deleteMany({ created_by_user_id: userId });
 
-    return { deleted: del.deletedCount, reportsScrubbed: scrub.modifiedCount };
+    // Phase 1b — scrub PII from the USER doc IN PLACE and tombstone it FIRST, so
+    // a crash after this point can never leave PII behind (M1) — only a PII-free
+    // pending tombstone that finalizePendingErasures() cleans up. phone is a
+    // (non-sparse) unique index → use a per-user sentinel so multiple tombstones
+    // don't collide; personal_id is $unset so the sparse-unique index drops it.
+    const marked = await collection('users').findOneAndUpdate(
+      { _id: userId },
+      {
+        $set: {
+          name: 'Erased', name_lower: 'erased', phone: `erased-${userId}`, email: null,
+          access_token_hash: null, refresh_token_hash: null, prev_refresh_token_hash: null,
+          deletion_state: 'pending', deletion_requested_at: now, updated_at: now,
+        },
+        $unset: { personal_id: '' },
+      },
+      { returnDocument: 'after' }
+    );
+    const existed = marked && marked.value !== undefined ? marked.value : marked;
+    if (!existed) return { deleted: 0, reportsScrubbed: scrub.modifiedCount };
+
+    // Phase 2 — cascade deletes (idempotent) then drop the tombstone.
+    await finalizePendingErasures(userId);
+    return { deleted: 1, reportsScrubbed: scrub.modifiedCount };
   } catch (err) {
     console.error('[reportStore.eraseUserData] failed:', err);
     throw err;
   }
 }
 
+/**
+ * Finalize PDPO erasure tombstones (M1 phase 2): emulate the SQL FK cascades and
+ * remove the (already PII-free) user doc. Idempotent — safe to re-run after a
+ * crash. Pass a userId to finalize one, or omit to sweep every pending tombstone
+ * (called from the retention job for crash recovery).
+ */
+async function finalizePendingErasures(userId) {
+  const filter = userId
+    ? { _id: userId }
+    : { deletion_state: 'pending' };
+  const pending = await collection('users').find(filter, { projection: { _id: 1 } }).limit(500).toArray();
+  for (const { _id } of pending) {
+    await collection('account_links').deleteMany({ $or: [{ user_a_id: _id }, { user_b_id: _id }] });
+    await collection('device_push_tokens').deleteMany({ user_id: _id });
+    await collection('safe_places').deleteMany({ created_by_user_id: _id });
+    await collection('users').deleteOne({ _id });
+  }
+  return { finalized: pending.length };
+}
+
 module.exports = {
   STATUS_PRIORITY,
   PRIORITY_LABEL,
   boundingBox,
+  boxFilter,
   fromDoc,
   escapeRegex,
   recordStatusHistory,
   upsertReport,
   searchByName,
+  listPeople,
   getRescueView,
   getStats,
   updateStatus,
   escalateStaleReports,
   getShelters,
   eraseUserData,
+  finalizePendingErasures,
   coarsen,
 };

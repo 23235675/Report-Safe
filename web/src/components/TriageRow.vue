@@ -38,11 +38,11 @@ function relativeTime(ts) {
 <template>
   <div class="triage-row" :class="[priorityClass, { highlight }]">
     <div class="triage-rank">{{ String(index + 1).padStart(2, '0') }}</div>
-    <StatusIcon :status="report.status" :size="28" :icon="16" style="margin-top: 1px;" />
+    <StatusIcon :status="report.status" :size="28" :icon="16" :vivid="true" style="margin-top: 1px;" />
     <div style="flex: 1; min-width: 0;">
       <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; flex-wrap: wrap;">
         <span style="font-size: 12px; font-weight: 700; color: var(--text-hi);">{{ report.name }}</span>
-        <StatusBadge :status="report.status" :short="true" />
+        <StatusBadge :status="report.status" :short="true" :vivid="true" />
         <span
           v-if="report.reported_by === 'family'"
           class="proxy-tag"

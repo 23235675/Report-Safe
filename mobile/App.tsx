@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import type { BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,9 +13,10 @@ import type { ReportStatus } from './src/api/apiClient';
 import HomeScreen    from './src/screens/HomeScreen';
 import ReportScreen  from './src/screens/ReportScreen';
 import FamilyScreen  from './src/screens/FamilyScreen';
-import MapScreen     from './src/screens/MapScreen';
+import ShelterScreen from './src/screens/ShelterScreen';
 import AccountScreen from './src/screens/AccountScreen';
 import DisasterModeScreen from './src/screens/DisasterModeScreen';
+import IncidentResponseScreen from './src/screens/IncidentResponseScreen';
 import { connectivityWatcher } from './src/services/connectivityWatcher';
 import { notificationService } from './src/services/notificationService';
 import { DisasterModeProvider, useDisasterMode } from './src/context/DisasterModeContext';
@@ -69,7 +71,7 @@ export default function App(): React.JSX.Element {
  * DisasterModeScreen replaces the tab navigator entirely.
  */
 function AppContent(): React.JSX.Element {
-  const { inDisasterMode, activeDisaster, acknowledgeDisaster } = useDisasterMode();
+  const { inDisasterMode, activeDisaster, acknowledgeAllInZone, activeIncident } = useDisasterMode();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
@@ -79,8 +81,19 @@ function AppContent(): React.JSX.Element {
         <StatusBar style="light" />
         <DisasterModeScreen
           disaster={activeDisaster}
-          onReported={() => acknowledgeDisaster(activeDisaster.id)}
+          onReported={() => acknowledgeAllInZone()}
         />
+      </>
+    );
+  }
+
+  // CFR: an opted-in responder matched to a nearby emergency. Shown only when
+  // the victim's own disaster gate isn't active (above). Dismissable.
+  if (activeIncident) {
+    return (
+      <>
+        <StatusBar style="light" />
+        <IncidentResponseScreen />
       </>
     );
   }
@@ -91,20 +104,22 @@ function AppContent(): React.JSX.Element {
         <StatusBar style="light" />
         <Tab.Navigator
           screenOptions={({ route }) => ({
+            // Federal navy command bar — official, daylight-readable, white title.
             headerStyle: {
-              backgroundColor: C.bgPanel,
-              borderBottomColor: C.border,
-              borderBottomWidth: 1,
+              backgroundColor: C.govBlue,
+              borderBottomColor: C.brand,
+              borderBottomWidth: 2,
               elevation: 0,
               shadowOpacity: 0,
             },
-            headerTintColor: C.textHi,
+            headerTintColor: C.textInv,
             headerRight: () => <LangToggle />,
             headerTitleStyle: {
-              fontWeight: '700',
+              fontWeight: '800',
               fontSize: 17,
-              letterSpacing: 0.2,
-              color: C.textHi,
+              letterSpacing: 0.6,
+              textTransform: 'uppercase',
+              color: C.textInv,
             },
             tabBarStyle: {
               backgroundColor: C.bgPanel,
@@ -138,12 +153,17 @@ function AppContent(): React.JSX.Element {
           <Tab.Screen
             name="Home"
             component={HomeScreen}
-            options={{ title: t('tabs.homeTitle'), tabBarLabel: t('tabs.home') }}
-          />
-          <Tab.Screen
-            name="Report"
-            component={ReportScreen}
-            options={{ title: t('tabs.reportTitle'), tabBarLabel: t('tabs.report') }}
+            options={{
+              title: t('tabs.homeTitle'),
+              tabBarLabel: t('tabs.home'),
+              headerTitleAlign: 'left',
+              // 報 brand mark (matches the web wordmark), top-left of "Report Safe".
+              headerLeft: () => (
+                <View style={BM.mark}>
+                  <Text style={BM.markText}>報</Text>
+                </View>
+              ),
+            }}
           />
           <Tab.Screen
             name="Family"
@@ -151,8 +171,20 @@ function AppContent(): React.JSX.Element {
             options={{ title: t('tabs.familyTitle'), tabBarLabel: t('tabs.family') }}
           />
           <Tab.Screen
+            name="Report"
+            component={ReportScreen}
+            options={{
+              title: t('tabs.reportTitle'),
+              tabBarLabel: t('tabs.report'),
+              // Core action — centered + raised + emphasized (mobile wireframe:
+              // "REPORT 放中間：最大按鈕"). Navigation behaviour is unchanged.
+              tabBarButton: (props) => <ReportTabButton {...props} />,
+            }}
+          />
+          {/* Shelter info (always viewable). The live map lives on Home. */}
+          <Tab.Screen
             name="Map"
-            component={MapScreen}
+            component={ShelterScreen}
             options={{ title: t('tabs.mapTitle'), tabBarLabel: t('tabs.shelters') }}
           />
           <Tab.Screen
@@ -166,6 +198,53 @@ function AppContent(): React.JSX.Element {
     </View>
   );
 }
+
+/**
+ * Center "REPORT" tab — the core action, rendered as a raised, emphasized
+ * circular button per the mobile wireframe. Reuses the tab's real onPress so
+ * navigation/accessibility are unchanged; only the visual treatment differs.
+ */
+function ReportTabButton({ accessibilityState, onPress }: BottomTabBarButtonProps): React.JSX.Element {
+  const focused = !!accessibilityState?.selected;
+  return (
+    <View style={CTB.slot} pointerEvents="box-none">
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityState={accessibilityState}
+        onPress={onPress}
+        activeOpacity={0.85}
+        style={[CTB.btn, focused && CTB.btnOn]}
+      >
+        <Ionicons name="megaphone" size={26} color={C.textInv} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const BM = StyleSheet.create({
+  mark: {
+    marginLeft: 14, marginRight: 6, width: 28, height: 28, borderRadius: 6,
+    backgroundColor: C.textInv, alignItems: 'center', justifyContent: 'center',
+  },
+  markText: { color: C.govBlue, fontSize: 16, fontWeight: '900', lineHeight: 20 },
+});
+
+const CTB = StyleSheet.create({
+  slot: { flex: 1, alignItems: 'center', justifyContent: 'flex-start' },
+  btn: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: C.govBlue,
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ translateY: -16 }],
+    borderWidth: 4,
+    borderColor: C.bgPanel,
+    ...SHADOW.raised,
+  },
+  btnOn: { backgroundColor: C.brand }, // deep navy ink when focused
+});
 
 /**
  * Floating amber banner shown when a confirmed loved one enters a disaster zone

@@ -63,9 +63,13 @@ export default function FamilyScreen(): React.JSX.Element {
   // Refresh links whenever the tab regains focus (new confirmations, status changes).
   useFocusEffect(useCallback(() => { loadLinks(); }, [loadLinks]));
 
-  const confirmed = links.filter((l) => l.link_status === 'confirmed');
-  const incoming  = links.filter((l) => l.link_status === 'pending' && l.is_incoming);
-  const outgoing  = links.filter((l) => l.link_status === 'pending' && !l.is_incoming);
+  const confirmed: LovedOne[] = [];
+  const incoming:  LovedOne[] = [];
+  const outgoing:  LovedOne[] = [];
+  for (const l of links) {
+    if (l.link_status === 'confirmed') confirmed.push(l);
+    else if (l.link_status === 'pending') (l.is_incoming ? incoming : outgoing).push(l);
+  }
 
   async function onAdd(): Promise<void> {
     const phone = addPhone.trim();

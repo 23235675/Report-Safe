@@ -11,7 +11,7 @@
     "db:up": "docker compose -f ../docker-compose.yml up -d mongo",
     "db:down": "docker compose -f ../docker-compose.yml down",
     "db:reset": "node src/db/reset.js",
-    "db:generate": "node src/db/generateData.js"
+    "db:generate": "node scripts/generateData.js"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",

@@ -5,44 +5,47 @@
 
 const BASE = import.meta.env.VITE_API_BASE_URL || '';
 
-// Per-user tokens (issued at registration). Access tokens EXPIRE; the refresh
-// token mints a new pair via POST /api/users/token/refresh.
-const TOKEN_KEY   = 'rs_token';
-const REFRESH_KEY = 'rs_refresh';
+// H3: the access token lives in MEMORY only (never localStorage), so an XSS
+// can't read it; the long-lived refresh token is an httpOnly cookie the server
+// set, invisible to JS. On reload the access token is gone — initAuth() mints a
+// fresh one from the cookie. (Legacy localStorage tokens are purged below.)
+let accessToken = null;
+try { localStorage.removeItem('rs_token'); localStorage.removeItem('rs_refresh'); } catch { /* ignore */ }
 
-export function setAuthToken(t) { try { localStorage.setItem(TOKEN_KEY, t); } catch { /* ignore */ } }
-/** Store a full token session from a register/refresh response. */
-export function setAuthSession({ access_token, refresh_token } = {}) {
-  try {
-    if (access_token)  localStorage.setItem(TOKEN_KEY, access_token);
-    if (refresh_token) localStorage.setItem(REFRESH_KEY, refresh_token);
-  } catch { /* ignore */ }
+/** Store the access token from a register/login/refresh response (refresh = cookie). */
+export function setAuthSession({ access_token } = {}) {
+  if (access_token) accessToken = access_token;
 }
-export function clearAuthToken() {
-  try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(REFRESH_KEY); } catch { /* ignore */ }
-}
-function getToken()        { try { return localStorage.getItem(TOKEN_KEY); }   catch { return null; } }
-function getRefreshToken() { try { return localStorage.getItem(REFRESH_KEY); } catch { return null; } }
+export function clearAuthToken() { accessToken = null; }
+function getToken() { return accessToken; }
 function authHeader() {
   const t = getToken();
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-/** Exchange the stored refresh token for a new access+refresh pair. */
+/**
+ * Exchange the httpOnly refresh cookie for a fresh access token. Same-origin, so
+ * the cookie rides along automatically (no body needed). Returns false when there
+ * is no valid cookie (logged out).
+ */
 export async function refreshAccessToken() {
-  const refresh_token = getRefreshToken();
-  if (!refresh_token) return false;
   try {
     const res = await fetch(`${BASE}/api/users/token/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token }),
+      credentials: 'same-origin',
+      body: '{}',
     });
     if (!res.ok) { clearAuthToken(); return false; }
     const body = await res.json();
     setAuthSession(body);
     return true;
   } catch { return false; }
+}
+
+/** Restore the session on app load by minting an access token from the cookie. */
+export async function initAuth() {
+  return refreshAccessToken();
 }
 
 async function request(path, options = {}, _retried = false) {
@@ -72,27 +75,47 @@ async function request(path, options = {}, _retried = false) {
   return body;
 }
 
+// L7: the server now returns a uniform { ok, data, meta } envelope. These
+// wrappers re-expose `data` under the legacy key each view already reads (and
+// lift meta fields like total/next_cursor to the top level), so the API is
+// uniform while the Vue views need no changes.
+function reshape(body, key) {
+  return { ...body, [key]: body?.data, ...(body?.meta || {}) };
+}
+
 export async function submitReport(report) {
-  return request('/api/reports', { method: 'POST', body: JSON.stringify(report) });
+  // C1: report writes are authenticated. Attach the user's token so the server
+  // can derive identity; request() transparently refreshes once on expiry.
+  // L7: expose the created id (now under data.id) as res.id for callers.
+  const b = await request('/api/reports', {
+    method: 'POST',
+    headers: authHeader(),
+    body: JSON.stringify(report),
+  });
+  return { ...b, id: b?.data?.id };
 }
 
 export async function searchByName(q) {
-  return request(`/api/reports/search?q=${encodeURIComponent(q)}`);
+  return reshape(await request(`/api/reports/search?q=${encodeURIComponent(q)}`), 'results');
+}
+
+export async function getPeople({ limit = 50, offset = 0 } = {}) {
+  return reshape(await request(`/api/reports/people?limit=${limit}&offset=${offset}`), 'people');
 }
 
 export async function getRescueView(lat, lng, radius, token) {
-  return request(
+  return reshape(await request(
     `/api/reports/rescue?lat=${lat}&lng=${lng}&radius=${radius}`,
     { headers: { Authorization: `Bearer ${token}` } }
-  );
+  ), 'results');
 }
 
 export async function getStats({ excludeWeb = false } = {}) {
-  return request(`/api/reports/stats${excludeWeb ? '?exclude_web=true' : ''}`);
+  return reshape(await request(`/api/reports/stats${excludeWeb ? '?exclude_web=true' : ''}`), 'stats');
 }
 
 export async function getDisasters() {
-  return request('/api/disasters');
+  return reshape(await request('/api/disasters'), 'disasters');
 }
 
 export async function triggerDisaster(payload, token) {
@@ -100,6 +123,33 @@ export async function triggerDisaster(payload, token) {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify(payload),
+  });
+}
+
+/* ── Community First Responder (CFR) — gov dispatcher console ───────────────── */
+
+/** Dispatch a 999/CAD incident (the integration seam; gov token). */
+export async function createIncident(payload, token) {
+  return request('/api/incidents', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Live dispatcher board — active incidents + per-incident responder counts. */
+export async function getActiveIncidents(token) {
+  return reshape(await request('/api/incidents/active', {
+    headers: { Authorization: `Bearer ${token}` },
+  }), 'incidents');
+}
+
+/** Resolve / stand down an incident (gov token). */
+export async function resolveIncident(id, token, status = 'resolved') {
+  return request(`/api/incidents/${id}/resolve`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ status }),
   });
 }
 
@@ -111,7 +161,7 @@ export async function getShelters({ lat, lng, radius, disaster_id, source } = {}
   if (disaster_id)        params.set('disaster_id', disaster_id);
   if (source)             params.set('source', source);
   const qs = params.toString();
-  return request(`/api/shelters${qs ? `?${qs}` : ''}`);
+  return reshape(await request(`/api/shelters${qs ? `?${qs}` : ''}`), 'shelters');
 }
 
 export async function createShelter(payload, token) {
@@ -154,7 +204,7 @@ export async function listSafePlaces({ lat, lng, radius } = {}) {
   if (lng != null) params.set('lng', lng);
   if (radius != null) params.set('radius', radius);
   const qs = params.toString();
-  return request(`/api/safe-places${qs ? `?${qs}` : ''}`);
+  return reshape(await request(`/api/safe-places${qs ? `?${qs}` : ''}`), 'safe_places');
 }
 
 /** Any logged-in user (incl. citizens) can suggest a safe place. */
@@ -168,9 +218,9 @@ export async function createSafePlace(payload) {
 
 /** Moderation queue — pending safe places awaiting gov/volunteer review. */
 export async function listPendingSafePlaces(token) {
-  return request('/api/safe-places/pending', {
+  return reshape(await request('/api/safe-places/pending', {
     headers: { Authorization: `Bearer ${token}` },
-  });
+  }), 'safe_places');
 }
 
 /** Approve or decline a pending safe place (gov/volunteer). status: 'approved'|'rejected'. */
@@ -183,7 +233,7 @@ export async function moderateSafePlace(id, status, token) {
 }
 
 export async function getUserProfile(phone) {
-  return request(`/api/users/${encodeURIComponent(phone)}/profile`, { headers: authHeader() });
+  return reshape(await request(`/api/users/${encodeURIComponent(phone)}/profile`, { headers: authHeader() }), 'user');
 }
 
 /* ── Account links ("loved ones") ──────────────────────────────────────────── */
@@ -212,7 +262,7 @@ export function getUserToken() { return getToken(); }
 export async function listLovedOnes() {
   const uid = currentUserId();
   if (!uid) return { ok: true, links: [] };
-  return request(`/api/users/${uid}/links`, { headers: authHeader() });
+  return reshape(await request(`/api/users/${uid}/links`, { headers: authHeader() }), 'links');
 }
 
 /** Send a link request to another registered user by phone (they must confirm). */
@@ -273,16 +323,19 @@ export async function adminLogin(phone, password) {
   return request('/api/admin/login', { method: 'POST', body: JSON.stringify({ phone, password }) });
 }
 
-export async function adminGetStats()     { return adminRequest('/api/admin/stats'); }
+// L7: admin list endpoints return { ok, data, meta }; re-expose data as `rows`
+// and lift meta.total / meta.next_cursor so AdminView (res.rows / res.total) is
+// unchanged. adminGetStats returns the stats object directly.
+export async function adminGetStats()     { return (await adminRequest('/api/admin/stats')).data; }
 export async function adminGetAudit(params = {}) {
   const qs = new URLSearchParams(params).toString();
-  return adminRequest(`/api/admin/audit${qs ? `?${qs}` : ''}`);
+  return reshape(await adminRequest(`/api/admin/audit${qs ? `?${qs}` : ''}`), 'rows');
 }
 
 // Users
 export async function adminListUsers(params = {}) {
   const qs = new URLSearchParams(params).toString();
-  return adminRequest(`/api/admin/users${qs ? `?${qs}` : ''}`);
+  return reshape(await adminRequest(`/api/admin/users${qs ? `?${qs}` : ''}`), 'rows');
 }
 export async function adminCreateUser(data)     { return adminRequest('/api/admin/users', { method: 'POST', body: JSON.stringify(data) }); }
 export async function adminUpdateUser(id, data) { return adminRequest(`/api/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
@@ -291,7 +344,7 @@ export async function adminDeleteUser(id)       { return adminRequest(`/api/admi
 // Reports
 export async function adminListReports(params = {}) {
   const qs = new URLSearchParams(params).toString();
-  return adminRequest(`/api/admin/reports${qs ? `?${qs}` : ''}`);
+  return reshape(await adminRequest(`/api/admin/reports${qs ? `?${qs}` : ''}`), 'rows');
 }
 export async function adminCreateReport(data)     { return adminRequest('/api/admin/reports', { method: 'POST', body: JSON.stringify(data) }); }
 export async function adminUpdateReport(id, data) { return adminRequest(`/api/admin/reports/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
@@ -300,7 +353,7 @@ export async function adminDeleteReport(id)       { return adminRequest(`/api/ad
 // Disasters
 export async function adminListDisasters(params = {}) {
   const qs = new URLSearchParams(params).toString();
-  return adminRequest(`/api/admin/disasters${qs ? `?${qs}` : ''}`);
+  return reshape(await adminRequest(`/api/admin/disasters${qs ? `?${qs}` : ''}`), 'rows');
 }
 export async function adminCreateDisaster(data)         { return adminRequest('/api/admin/disasters', { method: 'POST', body: JSON.stringify(data) }); }
 export async function adminUpdateDisaster(id, data)     { return adminRequest(`/api/admin/disasters/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
@@ -309,7 +362,7 @@ export async function adminDeleteDisaster(id)           { return adminRequest(`/
 // Links
 export async function adminListLinks(params = {}) {
   const qs = new URLSearchParams(params).toString();
-  return adminRequest(`/api/admin/links${qs ? `?${qs}` : ''}`);
+  return reshape(await adminRequest(`/api/admin/links${qs ? `?${qs}` : ''}`), 'rows');
 }
 export async function adminUpdateLink(id, data) { return adminRequest(`/api/admin/links/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
 export async function adminDeleteLink(id)       { return adminRequest(`/api/admin/links/${id}`, { method: 'DELETE' }); }
@@ -317,6 +370,6 @@ export async function adminDeleteLink(id)       { return adminRequest(`/api/admi
 // Devices
 export async function adminListDevices(params = {}) {
   const qs = new URLSearchParams(params).toString();
-  return adminRequest(`/api/admin/devices${qs ? `?${qs}` : ''}`);
+  return reshape(await adminRequest(`/api/admin/devices${qs ? `?${qs}` : ''}`), 'rows');
 }
 export async function adminDeleteDevice(id) { return adminRequest(`/api/admin/devices/${id}`, { method: 'DELETE' }); }

@@ -3,36 +3,54 @@ import { ref, onMounted } from 'vue';
 import { registerUser, loginUser, setAuthSession, clearAuthToken } from '../api.js';
 import { isValidHKID, normalizeHKID, normalizePhone } from '../hkid.js';
 import AppIcon from '../components/AppIcon.vue';
+import { genderIcon } from '../iconography.js';
 import { t } from '../i18n/index.js';
 
 const USER_KEY = 'rs_user';
 
-const savedUser  = ref(JSON.parse(localStorage.getItem(USER_KEY) || 'null'));
-// 'login' | 'register'  — only relevant when no savedUser.
+function readSavedUser() {
+  try { return JSON.parse(localStorage.getItem(USER_KEY) || 'null'); }
+  catch { localStorage.removeItem(USER_KEY); return null; }
+}
+const savedUser  = ref(readSavedUser());
 const mode       = ref('login');
 const loginPhone = ref('');
-const form       = ref({ phone: '', name: '', personal_id: '', email: '', privacy_consent: false });
+const form       = ref({ phone: '', name: '', gender: '', personal_id: '', email: '', privacy_consent: false });
 const loading    = ref(false);
 const error      = ref('');
 const success    = ref('');
 
-/** Keep only the last 8 digits as the user types. */
-function onLoginPhoneInput(e) { loginPhone.value = e.target.value.replace(/\D/g, '').slice(0, 8); }
-function onPhoneInput(e)      { form.value.phone = e.target.value.replace(/\D/g, '').slice(0, 8); }
+// 使用精準的正則過濾，並直接用 v-model 綁定，避免游標跳動
+function onLoginPhoneInput(e) {
+  const cleaned = e.target.value.replace(/\D/g, '').slice(0, 8);
+  loginPhone.value = cleaned;
+  e.target.value = cleaned; // 強制讓 DOM 的值與 ref 同步
+}
+
+function onPhoneInput(e) {
+  const cleaned = e.target.value.replace(/\D/g, '').slice(0, 8);
+  form.value.phone = cleaned;
+  e.target.value = cleaned;
+}
+
+// 實時將 HKID 改為大寫，優化填寫體驗
+function onHkidInput(e) {
+  form.value.personal_id = e.target.value.toUpperCase().replace(/\s/g, '');
+}
 
 function applySession(res) {
   savedUser.value = res.user;
   localStorage.setItem(USER_KEY, JSON.stringify(res.user));
-  setAuthSession(res); // persists access + refresh tokens (kept forever until sign out)
+  setAuthSession(res);
+  window.dispatchEvent(new Event('rs-auth-changed'));
 }
 
 async function login() {
   error.value = ''; success.value = '';
-  const digits = loginPhone.value.replace(/\D/g, '');
-  if (digits.length < 8) { error.value = t('account.errPhone'); return; }
+  if (loginPhone.value.length < 8) { error.value = t('account.errPhone'); return; }
   loading.value = true;
   try {
-    applySession(await loginUser(normalizePhone(digits)));
+    applySession(await loginUser(normalizePhone(loginPhone.value)));
     success.value = t('account.signedIn');
   } catch (e) {
     error.value = e?.status === 404
@@ -45,9 +63,9 @@ async function login() {
 
 async function register() {
   error.value = ''; success.value = '';
-  const digits = form.value.phone.replace(/\D/g, '');
-  if (digits.length < 8)        { error.value = t('account.errPhone'); return; }
+  if (form.value.phone.length < 8)        { error.value = t('account.errPhone'); return; }
   if (!form.value.name.trim())  { error.value = t('account.errFullName'); return; }
+  if (!form.value.gender) { error.value = t('account.errGender'); return; }
   if (!form.value.personal_id.trim()) { error.value = t('account.errHkidRequired'); return; }
   if (!isValidHKID(form.value.personal_id)) {
     error.value = t('account.errHkidFormat'); return;
@@ -56,8 +74,9 @@ async function register() {
   loading.value = true;
   try {
     applySession(await registerUser({
-      phone:           normalizePhone(digits),
+      phone:           normalizePhone(form.value.phone),
       name:            form.value.name.trim(),
+      gender:          form.value.gender,
       personal_id:     normalizeHKID(form.value.personal_id),
       email:           form.value.email || null,
       privacy_consent: form.value.privacy_consent,
@@ -75,16 +94,15 @@ function logout() {
   savedUser.value = null;
   localStorage.removeItem(USER_KEY);
   clearAuthToken();
+  window.dispatchEvent(new Event('rs-auth-changed'));
   loginPhone.value = '';
-  form.value = { phone: '', name: '', personal_id: '', email: '', privacy_consent: false };
+  form.value = { phone: '', name: '', gender: '', personal_id: '', email: '', privacy_consent: false };
   mode.value = 'login';
   success.value = '';
   error.value = '';
 }
 
 function switchMode(m) { mode.value = m; error.value = ''; success.value = ''; }
-
-onMounted(() => {});
 </script>
 
 <template>
@@ -97,10 +115,9 @@ onMounted(() => {});
     <div v-if="error"   class="msg msg-error msg-row"><AppIcon name="alert-circle" :size="16" /><span>{{ error }}</span></div>
     <div v-if="success" class="msg msg-success msg-row"><AppIcon name="checkmark-circle" :size="16" /><span>{{ success }}</span></div>
 
-    <!-- ════ SIGNED IN: profile ════ -->
     <div v-if="savedUser" class="account-card">
       <div class="ac-head">
-        <div class="ac-avatar">{{ (savedUser.name || savedUser.phone || '?').charAt(0).toUpperCase() }}</div>
+        <div class="ac-avatar"><AppIcon :name="genderIcon(savedUser.gender)" :size="24" /></div>
         <div class="ac-identity">
           <span class="ac-name">{{ savedUser.name || $t('account.unnamed') }}</span>
           <span class="ac-phone">{{ savedUser.phone }}</span>
@@ -123,7 +140,6 @@ onMounted(() => {});
       </div>
     </div>
 
-    <!-- ════ LOGIN BOX ════ -->
     <div v-else-if="mode === 'login'" class="auth-card">
       <div class="auth-head">
         <AppIcon name="person-circle" :size="32" style="color: var(--gov-blue);" />
@@ -148,7 +164,6 @@ onMounted(() => {});
       </div>
     </div>
 
-    <!-- ════ REGISTER BOX ════ -->
     <div v-else class="auth-card">
       <div class="auth-head">
         <AppIcon name="person-circle" :size="32" style="color: var(--gov-blue);" />
@@ -168,8 +183,16 @@ onMounted(() => {});
           <input v-model="form.name" class="field-input" :placeholder="$t('account.fullNamePlaceholder')" />
         </label>
         <label class="field">
+          <span class="field-lbl">{{ $t('account.genderStar') }}</span>
+          <select v-model="form.gender" class="field-input">
+            <option value="" disabled>{{ $t('account.genderSelect') }}</option>
+            <option value="male">{{ $t('account.genderMale') }}</option>
+            <option value="female">{{ $t('account.genderFemale') }}</option>
+          </select>
+        </label>
+        <label class="field">
           <span class="field-lbl">{{ $t('account.hkidStar') }} <span class="field-hint">{{ $t('account.hkidHint') }}</span></span>
-          <input v-model="form.personal_id" class="field-input font-mono" placeholder="A123456" autocomplete="off" style="text-transform: uppercase;" />
+          <input :value="form.personal_id" @input="onHkidInput" class="field-input font-mono" placeholder="A123456" autocomplete="off" style="text-transform: uppercase;" />
         </label>
         <label class="field">
           <span class="field-lbl">{{ $t('account.email') }} <span class="field-hint">{{ $t('account.emailHint') }}</span></span>
@@ -177,9 +200,7 @@ onMounted(() => {});
         </label>
         <label class="field consent-field">
           <input v-model="form.privacy_consent" type="checkbox" class="consent-check" />
-          <span class="consent-text">
-            {{ $t('account.consent') }}
-          </span>
+          <span class="consent-text">{{ $t('account.consent') }}</span>
         </label>
         <button type="submit" :disabled="loading" class="btn btn-primary btn-block">
           <AppIcon v-if="!loading" name="checkmark" :size="15" /> {{ loading ? $t('account.creating') : $t('account.createAccount') }}
@@ -191,12 +212,9 @@ onMounted(() => {});
       </div>
     </div>
 
-    <!-- Privacy note -->
     <div class="privacy-note">
       <span class="pn-title inline-ico"><AppIcon name="shield-checkmark" :size="15" style="color: var(--gov-blue);" /> {{ $t('account.privacyTitle') }}</span>
-      <p class="pn-body">
-        {{ $t('account.privacyBody') }}
-      </p>
+      <p class="pn-body">{{ $t('account.privacyBody') }}</p>
     </div>
   </div>
 </template>
@@ -205,7 +223,7 @@ onMounted(() => {});
 .account-page { display: flex; flex-direction: column; gap: var(--sp-5); max-width: 600px; }
 
 /* Login / register box */
-.auth-card { background: var(--bg-panel); border: 1px solid var(--border-line); border-radius: var(--radius-lg); padding: var(--sp-5); max-width: 420px; }
+.auth-card { background: var(--bg-panel); border: 1px solid var(--border-line); border-radius: var(--radius-lg); padding: var(--sp-6); max-width: 560px; width: 100%; margin: 0 auto; }
 .auth-head { text-align: center; margin-bottom: var(--sp-4); }
 .auth-title { font-size: 19px; font-weight: 800; color: var(--text-hi); margin: var(--sp-2) 0 2px; }
 .auth-sub { font-size: 13px; color: var(--text-lo); margin: 0; }

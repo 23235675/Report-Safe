@@ -1,113 +1,116 @@
 /**
- * Report Safe — Mobile Design Tokens v3
- * Government EOC — Light Theme
- * Aligned with web design system v4 (Inter, white panels, gov blue)
+ * Report Safe — Mobile Design Tokens "Pine"
+ * Aligned 1:1 with the citizen web app palette (web/src/assets/main.css :root):
+ * Pine-Green brand/authority (#0F766E) + the shared status hues, so mobile and
+ * web read as one product. Squared corners, flat surfaces, crisp borders,
+ * daylight-readable. Same token keys as before, so every screen re-skins with no
+ * behaviour change. Fonts stay the system default.
  */
 
 export const C = {
-  /* Canvas layers */
-  bgCanvas: '#F8FAFC',
+  /* Canvas layers — cool "ink" neutrals with a faint indigo undertone (web) */
+  bgCanvas: '#F7F8FB',
   bgPanel:  '#FFFFFF',
-  bgRaised: '#F1F5F9',
-  bgHover:  '#E2E8F0',
+  bgRaised: '#EFF1F6',
+  bgHover:  '#E4E7F0',
 
   /* Text */
-  textHi:  '#0F172A',
-  textMd:  '#334155',
-  textLo:  '#64748B',
+  textHi:  '#15182B',
+  textMd:  '#353A52',
+  textLo:  '#646A80',
   textInv: '#FFFFFF',
 
   /* Borders */
-  border:       '#E2E8F0',
-  borderStrong: '#CBD5E1',
+  border:       '#E2E5EE',
+  borderStrong: '#CBD0DE',
 
-  /* Brand / Government blue */
-  brand:      '#1E3A5F',
-  govBlue:    '#2563EB',
-  govBlueDim: '#EFF6FF',
+  /* Authority — Pine Green (web --brand / --gov-blue). The single accent hue;
+     token name kept as govBlue for back-compat. White text clears AA on fills. */
+  brand:      '#022C2A',
+  govBlue:    '#0F766E',
+  govBlueDim: '#F2F8F7',
 
-  /* Action amber — warm primary CTA (submit / search).
-     Deepened to #B45309 so white text on the amber button clears WCAG AA. */
-  amber:       '#B45309',
-  amberDim:    '#FFFBEB',
-  amberBorder: '#FDE68A',
+  /* Action — slate secondary CTA (web --amber, kept neutral so green stays the
+     one accent). */
+  amber:       '#334155',
+  amberDim:    '#F1F5F9',
+  amberBorder: '#CBD5E1',
 
-  /* Status colours deepened one notch so small text clears WCAG AA on the
-     pale *-dim tints (was ~3:1); same hues, matches web main.css tokens. */
+  /* Status hues — mirror web :root exactly (citizen UI ↔ admin parity). */
 
   /* Status: Safe — green */
-  safe:        '#15803D',
-  safeDim:     '#F0FDF4',
-  safeBorder:  '#BBF7D0',
+  safe:        '#1a7a3f',
+  safeDim:     '#e8f9ee',
+  safeBorder:  '#a7e0bd',
 
-  /* Status: Injured — amber */
-  injured:        '#A16207',
-  injuredDim:     '#FEFCE8',
-  injuredBorder:  '#FDE68A',
+  /* Status: Injured — amber/brown */
+  injured:        '#9a5f00',
+  injuredDim:     '#fff4e0',
+  injuredBorder:  '#f0d49a',
 
   /* Status: Need Help / Critical — red */
-  critical:        '#DC2626',
-  criticalDim:     '#FEF2F2',
-  criticalBorder:  '#FECACA',
+  critical:        '#c0392b',
+  criticalDim:     '#fde8e8',
+  criticalBorder:  '#f3b0b0',
 
-  /* Status: Awaiting Response — orange */
-  awaiting:        '#C2410C',
-  awaitingDim:     '#FFF7ED',
-  awaitingBorder:  '#FED7AA',
+  /* Status: Awaiting Response — amber */
+  awaiting:        '#9a5f00',
+  awaitingDim:     '#fff4e0',
+  awaitingBorder:  '#f0d49a',
 
-  /* Status: Potentially Missing — rose */
-  potMissing:        '#9F1239',
-  potMissingDim:     '#FFF1F2',
-  potMissingBorder:  '#FECDD3',
+  /* Status: Potentially Missing — amber */
+  potMissing:        '#9a5f00',
+  potMissingDim:     '#fff4e0',
+  potMissingBorder:  '#f0d49a',
 
-  /* Status: Missing / Unknown — slate */
-  missing:        '#475569',
-  missingDim:     '#F8FAFC',
-  missingBorder:  '#CBD5E1',
+  /* Status: Missing / Unknown — red */
+  missing:        '#c0392b',
+  missingDim:     '#fde8e8',
+  missingBorder:  '#f3b0b0',
 
-  /* Status: Rescued — cyan */
-  rescued:        '#0E7490',
-  rescuedDim:     '#F0F9FF',
-  rescuedBorder:  '#BAE6FD',
+  /* Status: Rescued — blue */
+  rescued:        '#1a7abf',
+  rescuedDim:     '#e8f4fd',
+  rescuedBorder:  '#b3dcf3',
 
-  /* Status: Deceased — dark gray */
-  deceased:        '#374151',
-  deceasedDim:     '#F9FAFB',
-  deceasedBorder:  '#D1D5DB',
+  /* Status: Deceased — gray */
+  deceased:        '#555555',
+  deceasedDim:     '#f0f0f0',
+  deceasedBorder:  '#d0d0d0',
 
-  /* Disaster */
-  disaster:        '#DC2626',
-  disasterDim:     '#FEF2F2',
-  disasterBorder:  '#FECACA',
+  /* Disaster — near-black navy (web --disaster) */
+  disaster:        '#0F172A',
+  disasterDim:     '#F1F5F9',
+  disasterBorder:  '#CBD5E1',
 
   /* Elevation */
-  shadowSm: 'rgba(0,0,0,0.10)',
+  shadowSm: 'rgba(2,44,42,0.12)',
 } as const;
 
-/** Corner radius scale (8-pt aligned). */
+/** Corner radius scale — squared/official. Chips stay pill (`pill`). */
 export const R = {
-  sm:   8,
-  md:   12,
-  lg:   16,
-  xl:   20,
+  sm:   4,
+  md:   6,
+  lg:   8,
+  xl:   10,
   pill: 999,
 } as const;
 
-/** Soft elevation presets — tinted, never harsh. Spread into a style. */
+/** Flat-ish elevation presets — navy-tinted, government-restrained. */
 export const SHADOW = {
   card: {
-    shadowColor:   '#0F172A',
-    shadowOffset:  { width: 0, height: 2 },
+    shadowColor:   '#022C2A',
+    shadowOffset:  { width: 0, height: 1 },
     shadowOpacity: 0.06,
-    shadowRadius:  8,
-    elevation:     2,
+    shadowRadius:  3,
+    elevation:     1,
   },
   raised: {
-    shadowColor:   '#0F172A',
-    shadowOffset:  { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius:  16,
-    elevation:     5,
+    shadowColor:   '#022C2A',
+    shadowOffset:  { width: 0, height: 4 },
+    shadowOpacity: 0.14,
+    shadowRadius:  10,
+    elevation:     4,
   },
 } as const;
 
@@ -226,6 +229,6 @@ export const VISIBILITY: Record<VisibilityTier, {
   rescue: {
     icon: 'lock-closed', label: 'Rescue-only · exact GPS', short: 'Rescue-only',
     detail: 'Exact GPS and medical notes are visible to authorised rescue teams only.',
-    color: C.govBlue, dim: C.govBlueDim, border: '#BFDBFE', // = web --gov-blue-border
+    color: C.govBlue, dim: C.govBlueDim, border: '#99CBC8', // pine-tint border (web --gov-blue-border)
   },
 };

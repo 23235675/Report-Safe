@@ -3,17 +3,15 @@ import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, ActivityIndicator, Switch,
 } from 'react-native';
-import * as Location from 'expo-location';
 import { randomUUID } from 'expo-crypto';
 import { Ionicons } from '@expo/vector-icons';
 import { submitReport } from '../services/syncService';
 import type { PendingReport, ReportStatus } from '../api/apiClient';
 import { isValidHKID, normalizeHKID } from '../utils/hkid';
+import { resolveLocation } from '../utils/location';
 import { C, R, SHADOW, statusColor, statusDim, STATUS_ICON } from '../theme';
 import VisibilityChip from '../components/VisibilityChip';
 import { useTranslation } from '../i18n';
-
-const DEFAULT_LOCATION = { lat: 22.3, lng: 114.1 };
 
 type StatusOption = {
   value:  ReportStatus;
@@ -73,17 +71,6 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
       setStatus('safe');
     }
   }, [isProxy]);
-
-  async function resolveLocation(): Promise<{ lat: number; lng: number }> {
-    try {
-      const perm = await Location.requestForegroundPermissionsAsync();
-      if (perm.status !== 'granted') return DEFAULT_LOCATION;
-      const pos = await Location.getCurrentPositionAsync({});
-      return { lat: pos.coords.latitude, lng: pos.coords.longitude };
-    } catch {
-      return DEFAULT_LOCATION;
-    }
-  }
 
   function resetForm(): void {
     setSubjectName('');
@@ -323,6 +310,12 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
           placeholderTextColor={C.textLo}
         />
 
+        {/* Location — auto-detected on submit (wireframe: "Location [Auto Detect]") */}
+        <View style={S.locRow}>
+          <Ionicons name="location" size={16} color={C.govBlue} />
+          <Text style={S.locText}>{t('report.locationAuto')}</Text>
+        </View>
+
         {/* Submit */}
         <TouchableOpacity
           style={[S.submitBtn, submitting && S.submitDisabled]}
@@ -342,23 +335,26 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
           )}
         </TouchableOpacity>
 
-        {message ? (
+        {message ? (() => {
+          const mc = msgColors(message.kind);
+          return (
           <View style={[S.msgBox, {
-            backgroundColor: msgColors(message.kind).bg,
-            borderColor:     msgColors(message.kind).border,
+            backgroundColor: mc.bg,
+            borderColor:     mc.border,
           }]}>
             <Ionicons
               name={message.kind === 'error' ? 'alert-circle'
                   : message.kind === 'success' ? 'checkmark-circle'
                   : message.kind === 'warn' ? 'cloud-offline' : 'information-circle'}
               size={16}
-              color={msgColors(message.kind).text}
+              color={mc.text}
             />
-            <Text style={[S.msgText, { color: msgColors(message.kind).text }]}>
+            <Text style={[S.msgText, { color: mc.text }]}>
               {message.text}
             </Text>
           </View>
-        ) : null}
+          );
+        })() : null}
 
         {/* Privacy tiers this report will be visible under */}
         <View style={S.privacyBox}>
@@ -424,6 +420,13 @@ const S = StyleSheet.create({
     borderRadius: R.sm, padding: 14, fontSize: 16, color: C.textHi,
   },
   textarea: { height: 96, textAlignVertical: 'top' },
+
+  locRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginTop: 20, padding: 12, borderRadius: R.sm,
+    backgroundColor: C.govBlueDim, borderWidth: 1, borderColor: C.border,
+  },
+  locText: { flex: 1, fontSize: 12, color: C.textMd, lineHeight: 17 },
 
   submitBtn: {
     flexDirection: 'row', gap: 8, backgroundColor: C.amber, height: 54,

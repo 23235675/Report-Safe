@@ -19,14 +19,23 @@ function isOnlyDupKey(err) {
  * Seeds exactly two things (everything else comes from real usage so the
  * app relies fully on the database):
  *   1. Active HK disasters (HKO-style incidents)
- *   2. ~10,000 randomly generated HK user accounts
+ *   2. A small set of randomly generated HK user accounts (default 100)
  *
- * No seeded reports. No seeded shelters. Override the user volume with
- * SEED_USER_COUNT.
+ * No seeded reports. No seeded shelters. (M8) The default is 100 — not 10,000 —
+ * so first boot can't exhaust the Cosmos Free Tier RU budget; override with
+ * SEED_USER_COUNT. Seeding is gated by SEED_DATA: off by default in production
+ * (set SEED_DATA=true to opt in), on by default in dev/test.
  */
 
-const USER_COUNT = Number(process.env.SEED_USER_COUNT) || 10000;
+const USER_COUNT = Number(process.env.SEED_USER_COUNT) || 100;
 const BATCH_SIZE = 1000;
+
+/** Whether to seed at all (M8). Production opts IN; everywhere else opts OUT only via SEED_DATA=false. */
+function seedingEnabled() {
+  if (process.env.SEED_DATA === 'false') return false;
+  if (process.env.NODE_ENV === 'production') return process.env.SEED_DATA === 'true';
+  return true;
+}
 
 // ── Active disasters: Hong Kong incidents ───────────────────────────
 const DISASTERS = [
@@ -60,6 +69,35 @@ const DISASTERS = [
     radius_km: 6,
     description: 'Landslip Warning — slope failure reported near Po Shan Road, Mid-Levels.',
   },
+];
+
+// ── CFR: public AED registry (Hong Kong) ─────────────────────────────
+// Seeded near the seeded disaster/incident centroids so the responder map has
+// something to show. A real NEAR/government registry import replaces this later
+// (same shape, source:'gov_registry').
+const AEDS = [
+  { name: 'MTR Central Station — Concourse', lat: 22.3019, lng: 114.1681, address: 'Central Station', floor: 'Concourse', available_hours: 'Train service hours' },
+  { name: 'IFC Mall — Level 1 Concierge',    lat: 22.2851, lng: 114.1588, address: '8 Finance St, Central', floor: 'L1', available_hours: '10:00–22:00' },
+  { name: 'Statue Square — Public Pavilion', lat: 22.2809, lng: 114.1602, address: 'Statue Square, Central', floor: 'G', available_hours: '24h' },
+  { name: 'Admiralty Centre — Lobby',        lat: 22.2790, lng: 114.1647, address: '18 Harcourt Rd', floor: 'G', available_hours: '07:00–23:00' },
+  { name: 'Sheung Wan MTR — Exit A',         lat: 22.2866, lng: 114.1520, address: 'Sheung Wan Station', floor: 'Concourse', available_hours: 'Train service hours' },
+  { name: 'Hong Kong City Hall — Foyer',     lat: 22.2820, lng: 114.1640, address: '5 Edinburgh Pl', floor: 'G', available_hours: '09:00–21:00' },
+  { name: 'Kowloon — MegaBox L1 Info Desk',  lat: 22.3214, lng: 114.2099, address: '38 Wang Chiu Rd, Kowloon Bay', floor: 'L1', available_hours: '11:00–22:00' },
+  { name: 'Kowloon Bay MTR — Concourse',     lat: 22.3236, lng: 114.2143, address: 'Kowloon Bay Station', floor: 'Concourse', available_hours: 'Train service hours' },
+  { name: 'Telford Plaza — Atrium',          lat: 22.3231, lng: 114.2127, address: '33 Wai Yip St', floor: 'L1', available_hours: '10:00–22:00' },
+  { name: 'Mid-Levels — Central Escalator',  lat: 22.2820, lng: 114.1545, address: 'Central–Mid-Levels Escalator', floor: 'Street', available_hours: '06:00–24:00' },
+];
+
+// ── CFR: a small set of opt-in responders with fixed test phones ─────
+// Each gets a device_push_token at a known location so the matcher can find
+// them. Platform 'expo' → remote push is skipped (no native handle in dev), but
+// the socket alert + the matching logic exercise fully. 'government' role
+// responders also receive residential (non-public) incidents.
+const RESPONDERS = [
+  { phone: '+85251110001', name: 'CFR Alice Chan',  role: 'citizen',    skills: ['cpr', 'aed'], radius: 1.5, lat: 22.3025, lng: 114.1775 }, // ~by Central incident
+  { phone: '+85251110002', name: 'CFR Bobby Wong',  role: 'citizen',    skills: ['cpr', 'aed'], radius: 0.8, lat: 22.3010, lng: 114.1760 },
+  { phone: '+85251110003', name: 'CFR Carol Lam',   role: 'citizen',    skills: ['cpr', 'fire'], radius: 1.5, lat: 22.3355, lng: 114.1920 }, // ~by Kowloon fire
+  { phone: '+85251110004', name: 'CFR Dr. Dorothy', role: 'government', skills: ['cpr', 'aed'], radius: 2.0, lat: 22.3030, lng: 114.1780 }, // verified — gets residential
 ];
 
 // ── Random HK user generation ────────────────────────────────────────
@@ -127,6 +165,7 @@ function buildUser(now, usedPhones, usedIds) {
     id: crypto.randomUUID(),
     phone,
     name,
+    gender: Math.random() < 0.5 ? 'male' : 'female',
     email,
     personal_id: personalId,
     user_type: userType,
@@ -139,7 +178,7 @@ function buildUser(now, usedPhones, usedIds) {
 /** Batched bulk insert — ~10k rows in a handful of unordered insertMany calls. */
 async function insertUserBatch(users) {
   const docs = users.map((u) => ({
-    _id: u.id, phone: u.phone, name: u.name, email: u.email,
+    _id: u.id, phone: u.phone, name: u.name, gender: u.gender, email: u.email,
     personal_id: u.personal_id, user_type: u.user_type, role: u.role,
     privacy_consent: u.privacy_consent, created_at: u.created_at, updated_at: u.created_at,
   }));
@@ -155,6 +194,10 @@ async function insertUserBatch(users) {
 async function seed() {
   try {
     const summary = { seeded: false, disasters: 0, users: 0 };
+    if (!seedingEnabled()) {
+      console.log('[db/seed] skipped (SEED_DATA gate) — set SEED_DATA=true to seed demo data');
+      return { ...summary, skipped: true };
+    }
 
     // Disasters — only if none exist yet.
     const dCount = await collection('disasters').countDocuments({});
@@ -191,6 +234,59 @@ async function seed() {
       console.log(`[db/seed] generated ${USER_COUNT} HK user accounts`);
     }
 
+    // CFR AEDs — only if none exist yet.
+    const aedCount = await collection('aed_locations').countDocuments({});
+    if (aedCount === 0) {
+      const now = Date.now();
+      const docs = AEDS.map((a) => ({
+        _id: crypto.randomUUID(), name: a.name, lat: a.lat, lng: a.lng,
+        address: a.address ?? null, floor: a.floor ?? null,
+        available_hours: a.available_hours ?? null, source: 'seed', active: true, created_at: now,
+      }));
+      try {
+        await collection('aed_locations').insertMany(docs, { ordered: false });
+      } catch (err) {
+        if (!isOnlyDupKey(err)) throw err;
+      }
+      summary.aeds = AEDS.length;
+      summary.seeded = true;
+      console.log(`[db/seed] seeded ${AEDS.length} AED locations`);
+    }
+
+    // CFR opt-in responders — only if none opted in yet. Each gets a device
+    // location so the incident matcher can find them.
+    const responderCount = await collection('users').countDocuments({ responder_opt_in: true });
+    if (responderCount === 0) {
+      const now = Date.now();
+      for (const r of RESPONDERS) {
+        const userId = crypto.randomUUID();
+        // Upsert the user by phone (idempotent across boots).
+        await collection('users').updateOne(
+          { phone: r.phone },
+          {
+            $setOnInsert: { _id: userId, phone: r.phone, user_type: 'mobile', created_at: now },
+            $set: {
+              name: r.name, role: r.role, privacy_consent: true,
+              personal_id: fakeHKID(),
+              responder_opt_in: true, responder_skills: r.skills, responder_max_radius_km: r.radius,
+              updated_at: now,
+            },
+          },
+          { upsert: true }
+        );
+        const saved = await collection('users').findOne({ phone: r.phone }, { projection: { _id: 1 } });
+        // Device location row (the matcher reads location from here).
+        await collection('device_push_tokens').updateOne(
+          { token: `seed-cfr-${r.phone}` },
+          { $set: { platform: 'expo', lat: r.lat, lng: r.lng, user_id: saved._id, updated_at: now }, $setOnInsert: { _id: crypto.randomUUID(), created_at: now } },
+          { upsert: true }
+        );
+      }
+      summary.responders = RESPONDERS.length;
+      summary.seeded = true;
+      console.log(`[db/seed] seeded ${RESPONDERS.length} opt-in CFR responders`);
+    }
+
     return summary;
   } catch (err) {
     console.error('[db/seed] seeding failed:', err);
@@ -198,4 +294,4 @@ async function seed() {
   }
 }
 
-module.exports = { seed, DISASTERS, USER_COUNT };
+module.exports = { seed, DISASTERS, USER_COUNT, AEDS, RESPONDERS };

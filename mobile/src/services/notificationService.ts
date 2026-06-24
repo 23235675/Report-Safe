@@ -2,7 +2,8 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import type { Disaster } from '../api/apiClient';
 import { registerDeviceToken } from '../api/apiClient';
-import { translateStandalone, disasterTypeLabelStandalone } from '../i18n';
+import { translateStandalone, disasterTypeLabelStandalone, incidentTypeLabelStandalone } from '../i18n';
+import type { Incident } from '../api/apiClient';
 
 /**
  * Local disaster notifications (in-app + OS banner).
@@ -18,6 +19,7 @@ import { translateStandalone, disasterTypeLabelStandalone } from '../i18n';
  */
 
 const ANDROID_CHANNEL_ID = 'disaster-alerts';
+const INCIDENT_CHANNEL_ID = 'incident-alerts';
 
 let configured = false;
 
@@ -46,6 +48,13 @@ export async function configure(): Promise<void> {
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#DC2626',
+      });
+      // Distinct, unmistakable channel for responder dispatch alerts.
+      await Notifications.setNotificationChannelAsync(INCIDENT_CHANNEL_ID, {
+        name: 'Responder Alerts',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 400, 200, 400],
+        lightColor: '#16A34A',
       });
     }
   } catch (err) {
@@ -192,6 +201,9 @@ export async function notifyDisaster(disaster: Disaster): Promise<void> {
           disaster.description ||
           translateStandalone('notify.disasterBody'),
         sound: true,
+        // Carry the id so tapping this banner flags the disaster and routes
+        // straight into the gate (mirrors the remote-push payload).
+        data: { disasterId: disaster.id, type: 'disaster_alert' },
         ...(Platform.OS === 'android' ? { vibrate: [0, 250, 250, 250] } : {}),
       },
       trigger: null, // deliver immediately
@@ -201,12 +213,63 @@ export async function notifyDisaster(disaster: Disaster): Promise<void> {
   }
 }
 
+/**
+ * CFR: present a local notification that a nearby emergency needs this
+ * responder. Typed `incident_alert` so a tap opens the incident screen; it is
+ * NON-gating (never enters disaster mode).
+ */
+export async function notifyIncident(incident: Incident): Promise<void> {
+  try {
+    const type = incidentTypeLabelStandalone(incident.type) || 'Emergency';
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: translateStandalone('notify.incidentTitle', { type }),
+        body: translateStandalone('notify.incidentBody'),
+        sound: true,
+        data: { incidentId: incident.id, type: 'incident_alert' },
+        ...(Platform.OS === 'android' ? { vibrate: [0, 400, 200, 400] } : {}),
+      },
+      trigger: null,
+    });
+  } catch (err) {
+    console.warn('[notificationService.notifyIncident] failed:', err);
+  }
+}
+
+/**
+ * CFR: subscribe to incident-notification taps (foreground/background/cold
+ * start). Surfaces the incidentId so the caller can open the incident screen.
+ * @returns an unsubscribe function
+ */
+export function addIncidentTapListener(handler: (incidentId: string) => void): () => void {
+  try {
+    const extract = (response: Notifications.NotificationResponse | null): string | null => {
+      const data = response?.notification?.request?.content?.data as { incidentId?: string; type?: string } | undefined;
+      return data?.type === 'incident_alert' && data?.incidentId ? data.incidentId : null;
+    };
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const id = extract(response);
+      if (id) handler(id);
+    });
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => { const id = extract(response); if (id) handler(id); })
+      .catch(() => {});
+    return () => sub.remove();
+  } catch (err) {
+    console.warn('[notificationService.addIncidentTapListener] failed:', err);
+    return () => {};
+  }
+}
+
 export const notificationService = {
   configure,
   requestPermissions,
   registerForRemotePush,
   addDisasterTapListener,
+  addIncidentTapListener,
   notifyDisaster,
   notifyLovedOne,
+  notifyIncident,
   ANDROID_CHANNEL_ID,
+  INCIDENT_CHANNEL_ID,
 };

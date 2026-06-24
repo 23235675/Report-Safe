@@ -125,6 +125,9 @@ const ReportSchema = z.object({
   lat:           latSchema.optional().nullable(),
   lng:           lngSchema.optional().nullable(),
   medical_notes: z.string().max(2000).optional().nullable(),
+  // Optional triage/urgency hint (0–5). Web proxy form maps Low/Med/High → 1/3/5;
+  // absent on existing/mobile reports (back-compatible).
+  severity:      z.number().int().min(0).max(5).optional().nullable(),
   // phone + personal_id are MANDATORY in the client forms; the server stays
   // lenient on absence (never-lose-a-report: legacy outbox/mesh-relayed
   // reports predating this requirement must not be rejected and dropped).
@@ -219,6 +222,7 @@ const ShelterUpdateSchema = z.object({
 const UserRegisterSchema = z.object({
   phone:           phoneSchema,
   name:            z.string().min(1, 'full name is required').max(255),
+  gender:          z.enum(['male', 'female'], { required_error: 'gender is required' }),
   personal_id:     personalIdSchema,  // REQUIRED, very lenient validation
   email:           z.string().email().optional().nullable(),
   user_type:       z.enum(['mobile', 'web']).default('mobile'),
@@ -232,6 +236,7 @@ const UserRegisterSchema = z.object({
 /** Validates PATCH /api/users/:id body. */
 const UserUpdateSchema = z.object({
   name:            z.string().min(1).max(255).optional().nullable(),
+  gender:          z.enum(['male', 'female']).optional().nullable(),
   email:           z.string().email().optional().nullable(),
   personal_id:     personalIdSchema.optional().nullable(),
   privacy_consent: z.boolean().optional(),
@@ -276,8 +281,77 @@ const DeviceRegisterSchema = z.object({
   lng:      lngSchema.optional().nullable(),
 });
 
+// ── Community First Responder (CFR) ──────────────────────────────────
+/** Skills a responder can register; an incident type maps to one of these. */
+const RESPONDER_SKILLS = ['cpr', 'aed', 'fire'];
+/** Incident types a 999/CAD dispatch can carry. */
+const INCIDENT_TYPES = ['cardiac_arrest', 'fire', 'trauma', 'other'];
+
+/**
+ * Validates POST /api/incidents — a 999/CAD dispatch needing nearby responders.
+ * This is the single government-API integration seam: a real CAD webhook posts
+ * the same shape the gov-console "simulate dispatch" button does.
+ * `is_public` false = residential → restricted to verified (government) responders.
+ */
+const IncidentCreateSchema = z.object({
+  type:      z.enum(['cardiac_arrest', 'fire', 'trauma', 'other']),
+  lat:       latSchema,
+  lng:       lngSchema,
+  address:   z.string().max(500).optional().nullable(),
+  is_public: z.boolean().default(true),
+  notes:     z.string().max(1000).optional().nullable(), // dispatcher notes — NEVER patient PII
+  source:    z.enum(['manual', 'mock_feed', 'gov_cad']).default('manual'),
+});
+
+/** Validates POST /api/incidents/:id/respond — a responder's status update. */
+const IncidentRespondSchema = z.object({
+  status:      z.enum(['enroute', 'onscene', 'declined', 'stood_down']),
+  lat:         latSchema.optional().nullable(),
+  lng:         lngSchema.optional().nullable(),
+  eta_seconds: z.number().int().min(0).max(7200).optional().nullable(),
+});
+
+/** Validates PATCH /api/users/:id/responder — opt-in profile. */
+const ResponderProfileSchema = z.object({
+  responder_opt_in:        z.boolean(),
+  responder_skills:        z.array(z.enum(['cpr', 'aed', 'fire'])).max(3).optional().default([]),
+  // 0.4 walk / 0.8 bike / 1.5 drive — a single number, not a transport state machine.
+  responder_max_radius_km: z.number().positive().max(5).optional().default(1.0),
+});
+
+/** Validates the query string of GET /api/aed (nearest public AEDs). */
+const AedQuerySchema = z.object({
+  lat:    z.coerce.number().min(-90).max(90),
+  lng:    z.coerce.number().min(-180).max(180),
+  radius: z.coerce.number().positive().max(50).default(2),
+});
+
+/** Validates POST /api/missing-persons (open a case). */
+const MissingPersonCreateSchema = z.object({
+  report_id:     z.string().min(1).optional().nullable(),
+  name:          z.string().min(1).max(120),
+  notes:         z.string().max(2000).optional().nullable(),
+  last_seen_lat: latSchema.optional().nullable(),
+  last_seen_lng: lngSchema.optional().nullable(),
+});
+
+/** Validates PUT /api/missing-persons/:id (update a case). */
+const MissingPersonUpdateSchema = z.object({
+  case_status: z.enum(['active', 'investigating', 'found', 'closed']).optional(),
+  notes:       z.string().max(2000).optional().nullable(),
+});
+
 module.exports = {
   STATUS_VALUES,
+  RESPONDER_SKILLS,
+  INCIDENT_TYPES,
+  IncidentCreateSchema,
+  IncidentRespondSchema,
+  ResponderProfileSchema,
+  AedQuerySchema,
+  normalizePhone,
+  MissingPersonCreateSchema,
+  MissingPersonUpdateSchema,
   isValidHKID,
   isValidHKIDChecksum,
   hkidIsValid,

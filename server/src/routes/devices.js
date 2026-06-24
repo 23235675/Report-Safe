@@ -67,9 +67,19 @@ module.exports = function createDevicesRouter() {
   });
 
   // DELETE /api/devices/:token — unregister (logout / notifications disabled).
-  router.delete('/:token', deviceLimiter, async (req, res) => {
+  // Owner-scoped (B21/M3): only the user the handle is registered to — or a
+  // gov/admin token — may remove it, so learning a token from logs/capture no
+  // longer lets anyone silence that device's life-safety pushes.
+  router.delete('/:token', deviceLimiter, authenticate, async (req, res) => {
     try {
-      await collection('device_push_tokens').deleteOne({ token: req.params.token });
+      const tokens = collection('device_push_tokens');
+      const doc = await tokens.findOne({ token: req.params.token }, { projection: { user_id: 1 } });
+      if (!doc) return res.json({ ok: true }); // already gone — idempotent
+      const isGov = req.auth.kind === 'gov';
+      if (!isGov && doc.user_id !== req.auth.userId) {
+        return res.status(403).json({ error: 'Forbidden — you may only unregister your own device.' });
+      }
+      await tokens.deleteOne({ token: req.params.token });
       return res.json({ ok: true });
     } catch (err) {
       console.error('[devices DELETE /:token] failed:', err);

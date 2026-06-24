@@ -23,15 +23,21 @@ const COLLECTIONS = [
   'disasters',
   'shelters',
   'status_history',
-  'rescue_requests',
-  'team_assignments',
-  'missing_person_cases',
+  'missing_person_cases', // used by /api/missing-persons (B19)
   'audit_logs',
   'users',
   'account_links',
   'safe_places',
   'device_push_tokens',
+  'incidents',           // CFR: 999/CAD point dispatches needing nearby responders
+  'incident_responses',  // CFR: one row per responder per incident
+  'aed_locations',       // CFR: public AED registry (seed now, gov import later)
 ];
+
+// L2: collections that were created + indexed but never read/written. Dropped on
+// boot (idempotent) so they stop wasting Cosmos RU + index budget. missing_person_cases
+// is NOT here — it's now live (B19).
+const DEAD_COLLECTIONS = ['rescue_requests', 'team_assignments'];
 
 /** Ensure a collection exists (ignore "already exists"). */
 async function ensureCollection(db, name) {
@@ -51,24 +57,21 @@ async function setup() {
     await ensureCollection(db, name);
   }
 
+  // L2: drop dead collections from existing deployments (idempotent, no-op if absent).
+  for (const name of DEAD_COLLECTIONS) {
+    await db.collection(name).drop().catch(() => {});
+  }
+
   // ── Cosmos order-by guard ────────────────────────────────────────
-  // Azure Cosmos DB for MongoDB (RU-based) only allows `.sort()` on an INDEXED
-  // path — an unindexed sort throws "The index path corresponding to the
-  // specified order-by item is excluded." (400). Routes sort on assorted fields
-  // (started_at, created_at, updated_at, name, …), so a per-field index list is
-  // easy to fall out of sync. A wildcard index makes every field sortable and
-  // covers all current + future sorts. createIndex is idempotent; on a plain
-  // local mongod this is simply a (harmless) wildcard index.
+  // Azure Cosmos DB for MongoDB (RU-based) only allows find().sort() on an
+  // INDEXED path. Rather than a wildcard index on EVERY field (M5: that
+  // amplifies write-RU and bloats the index on the write-hot collections),
+  // each field a route actually sorts on is indexed explicitly below. Computed
+  // sort keys used in aggregation pipelines ($sort on $addFields output, e.g.
+  // admin reports/devices) are engine-side and never needed the wildcard.
+  // Drop any pre-existing wildcard index left over from before M5.
   for (const name of COLLECTIONS) {
-    try {
-      await db.collection(name).createIndex({ '$**': 1 }, { name: 'idx_wildcard' });
-    } catch (err) {
-      // Non-fatal: specific per-field indexes below still cover the hot paths.
-      if (!/already exists|same name/i.test(err.message || '')) {
-        // eslint-disable-next-line no-console
-        console.warn(`[db/setup] wildcard index on ${name} skipped:`, err.message);
-      }
-    }
+    await db.collection(name).dropIndex('idx_wildcard').catch(() => {});
   }
 
   // ── reports ──────────────────────────────────────────────────────
@@ -87,10 +90,29 @@ async function setup() {
   ]);
 
   // ── disasters ────────────────────────────────────────────────────
+  // Partial-unique (type) among ACTIVE disasters (M4/B11): a DB-level guard
+  // against two instances / two rapid triggers both inserting the same active
+  // hazard. The app-level findDuplicateActive (type + 30km) still runs first;
+  // this catches the race it can't. Deactivating (active=false) drops the row
+  // from the filter, so the same type can be re-triggered later.
   await db.collection('disasters').createIndexes([
     { key: { active: 1 }, name: 'idx_disasters_active' },
     { key: { lat: 1, lng: 1 }, name: 'idx_disasters_lat_lng' },
+    { key: { started_at: -1 }, name: 'idx_disasters_started' }, // GET / sort
   ]);
+  // Partial-unique (type) among ACTIVE disasters (M4). Best-effort: an EXISTING
+  // database may already hold two active disasters of the same type, which would
+  // make this index build fail — don't let that block startup. The app-level
+  // findDuplicateActive guard still prevents new duplicates; the index is just a
+  // race backstop. (Clean up dup actives, then it builds on the next boot.)
+  try {
+    await db.collection('disasters').createIndex(
+      { type: 1 },
+      { name: 'idx_disasters_type_active_unique', unique: true, partialFilterExpression: { active: true } }
+    );
+  } catch (err) {
+    console.warn('[db/setup] disaster partial-unique index skipped (existing duplicate active types?):', err.message);
+  }
 
   // ── shelters ─────────────────────────────────────────────────────
   await db.collection('shelters').createIndexes([
@@ -98,20 +120,23 @@ async function setup() {
     { key: { lat: 1, lng: 1 }, name: 'idx_shelters_lat_lng' },
     { key: { disaster_id: 1 }, name: 'idx_shelters_disaster' },
     { key: { source: 1 }, name: 'idx_shelters_source' },
+    { key: { name: 1 }, name: 'idx_shelters_name' }, // non-geo list sort
   ]);
 
   // ── status_history (write-only audit trail; never read by the app) ─
   await db.collection('status_history').createIndex({ report_id: 1 }, { name: 'idx_status_hist_report' });
 
-  // ── rescue_requests / team_assignments ───────────────────────────
-  await db.collection('rescue_requests').createIndex({ report_id: 1 }, { name: 'idx_rescue_req_report' });
-  await db.collection('team_assignments').createIndex({ report_id: 1 }, { name: 'idx_team_assign_report' });
-
   // ── missing_person_cases ─────────────────────────────────────────
-  await db.collection('missing_person_cases').createIndex({ case_status: 1 }, { name: 'idx_missing_case_status' });
+  await db.collection('missing_person_cases').createIndexes([
+    { key: { case_status: 1 }, name: 'idx_missing_case_status' },
+    { key: { created_at: -1 }, name: 'idx_missing_created' }, // list sort
+  ]);
 
   // ── audit_logs ───────────────────────────────────────────────────
-  await db.collection('audit_logs').createIndex({ entity: 1, entity_id: 1 }, { name: 'idx_audit_entity' });
+  await db.collection('audit_logs').createIndexes([
+    { key: { entity: 1, entity_id: 1 }, name: 'idx_audit_entity' },
+    { key: { created_at: -1 }, name: 'idx_audit_created' }, // admin audit list sort
+  ]);
 
   // ── users ────────────────────────────────────────────────────────
   // phone is globally unique. personal_id (HKID) is unique among accounts that
@@ -124,7 +149,23 @@ async function setup() {
     { key: { personal_id: 1 }, name: 'idx_users_personal_id', unique: true, sparse: true },
     { key: { access_token_hash: 1 }, name: 'idx_users_access_token' },
     { key: { refresh_token_hash: 1 }, name: 'idx_users_refresh_token' },
+    { key: { prev_refresh_token_hash: 1 }, name: 'idx_users_prev_refresh' }, // H4 reuse-detection lookup
+    { key: { created_at: -1 }, name: 'idx_users_created' }, // admin users list sort
+    { key: { name: 1 }, name: 'idx_users_name' }, // H7 anchored name-prefix search
   ]);
+  // CFR: the incident matcher queries { responder_opt_in:true, responder_skills:<skill> }
+  // on every dispatch. PARTIAL on opt-in keeps the index tiny (only responders —
+  // a small subset) and turns a full users scan into an index lookup. Best-effort:
+  // a Cosmos tier without partial-index support won't block boot (query still
+  // works, just scans) — same defensive pattern as the disasters partial index.
+  try {
+    await db.collection('users').createIndex(
+      { responder_opt_in: 1, responder_skills: 1 },
+      { name: 'idx_users_responder', partialFilterExpression: { responder_opt_in: true } }
+    );
+  } catch (err) {
+    console.warn('[db/setup] responder partial index skipped:', err.message);
+  }
 
   // ── account_links ────────────────────────────────────────────────
   // One link per ordered (a,b) pair — the compound unique mirrors the SQL
@@ -133,6 +174,7 @@ async function setup() {
     { key: { user_a_id: 1, user_b_id: 1 }, name: 'idx_links_pair', unique: true },
     { key: { user_a_id: 1 }, name: 'idx_links_user_a' },
     { key: { user_b_id: 1 }, name: 'idx_links_user_b' },
+    { key: { created_at: -1 }, name: 'idx_links_created' }, // admin links list sort
   ]);
 
   // ── safe_places ──────────────────────────────────────────────────
@@ -141,6 +183,7 @@ async function setup() {
     { key: { disaster_id: 1 }, name: 'idx_safe_places_disaster' },
     { key: { active: 1 }, name: 'idx_safe_places_active' },
     { key: { created_by_user_id: 1 }, name: 'idx_safe_places_creator' },
+    { key: { created_at: -1 }, name: 'idx_safe_places_created' }, // list sort
   ]);
 
   // ── device_push_tokens ───────────────────────────────────────────
@@ -149,6 +192,31 @@ async function setup() {
     { key: { token: 1 }, name: 'idx_device_tokens_token', unique: true },
     { key: { lat: 1, lng: 1 }, name: 'idx_device_tokens_lat_lng' },
     { key: { user_id: 1 }, name: 'idx_device_tokens_user' },
+    { key: { updated_at: -1 }, name: 'idx_device_tokens_updated' }, // admin devices list sort
+  ]);
+
+  // ── incidents (CFR) ──────────────────────────────────────────────
+  // 999/CAD point dispatches. Same lat/lng bounding-box geo pattern as the
+  // other collections; status drives the active-board filter.
+  await db.collection('incidents').createIndexes([
+    { key: { status: 1 }, name: 'idx_incidents_status' },
+    { key: { lat: 1, lng: 1 }, name: 'idx_incidents_lat_lng' },
+    { key: { created_at: -1 }, name: 'idx_incidents_created' }, // board sort
+  ]);
+
+  // ── incident_responses (CFR) ─────────────────────────────────────
+  // One response row per (incident, responder). The compound unique mirrors the
+  // upsert target so a responder can't create two rows for the same incident.
+  await db.collection('incident_responses').createIndexes([
+    { key: { incident_id: 1 }, name: 'idx_inc_resp_incident' },
+    { key: { incident_id: 1, user_id: 1 }, name: 'idx_inc_resp_pair', unique: true },
+    { key: { user_id: 1 }, name: 'idx_inc_resp_user' },
+  ]);
+
+  // ── aed_locations (CFR) ──────────────────────────────────────────
+  await db.collection('aed_locations').createIndexes([
+    { key: { lat: 1, lng: 1 }, name: 'idx_aed_lat_lng' },
+    { key: { active: 1 }, name: 'idx_aed_active' },
   ]);
 
   console.log('[db/setup] MongoDB collections + indexes ready');

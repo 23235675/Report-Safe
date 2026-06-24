@@ -121,10 +121,11 @@ export function useOutbox() {
         markSent(report.id);
         delivered++;
       } catch (err) {
-        // A 4xx means the server received it and permanently refused (bad data) —
-        // retrying never succeeds, so drop it instead of clogging the queue
-        // forever. Only transient failures (offline / 5xx) stay queued.
-        if (err?.status >= 400 && err?.status < 500) {
+        // Only a real validation failure (400/422) is permanent — retrying never
+        // succeeds, so drop it. Everything else (401/403 auth, 429 throttle, 5xx,
+        // offline) is TRANSIENT and stays queued (H1) so a NAT'd 429 or an expired
+        // token can't silently lose a legitimate report.
+        if (err?.status === 400 || err?.status === 422) {
           console.warn('[useOutbox.retryAll] dropping permanently-rejected report:', err.message);
           markSent(report.id);
         } else {

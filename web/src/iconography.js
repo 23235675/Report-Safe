@@ -53,7 +53,7 @@ export const STATUS_COLOR = {
   awaiting_response:   'var(--awaiting)',
   potentially_missing: 'var(--pot-missing)',
   missing:             'var(--missing)',
-  verified_missing:    'var(--pot-missing)',
+  verified_missing:    'var(--need-help)',
   rescued:             'var(--rescued)',
   deceased:            'var(--deceased)',
 };
@@ -66,9 +66,29 @@ export const STATUS_DIM = {
   awaiting_response:   'var(--awaiting-dim)',
   potentially_missing: 'var(--pot-missing-dim)',
   missing:             'var(--missing-dim)',
-  verified_missing:    'var(--pot-missing-dim)',
+  verified_missing:    'var(--need-help-dim)',
   rescued:             'var(--rescued-dim)',
   deceased:            'var(--deceased-dim)',
+};
+
+/* Status → vivid colour (Gov EOC dashboard only — the rest of the app uses
+ * the monochrome STATUS_COLOR/STATUS_DIM tokens above). Aligned to the Admin
+ * console's status palette (AdminView.vue .st-* classes) so both privileged
+ * dashboards read the same way. Opt in via the `vivid` prop on
+ * StatusIcon/StatusBadge. */
+// Safe = green, Rescued = blue. Every other status is red, graduated by
+// importance: the more important the status, the darker the red.
+// missing > need_help > injured > potentially_missing > awaiting_response > deceased
+export const STATUS_COLOR_VIVID = {
+  safe:                '#1a7a3f', // green
+  rescued:             '#1a7abf', // blue
+  missing:             '#5c0d0d', // darkest red — most important
+  verified_missing:    '#5c0d0d',
+  need_help:           '#7d1818',
+  injured:             '#9c2424',
+  potentially_missing: '#b53636',
+  awaiting_response:   '#c75050',
+  deceased:            '#cf6a6a', // lightest red — least important
 };
 
 /* Status → existing badge class in main.css. */
@@ -101,18 +121,46 @@ export const SHELTER_ICON = {
   assembly: 'flag',
 };
 
+/* User gender → avatar icon (Mars/Venus). Falls back to a neutral person. */
+export function genderIcon(g) {
+  const k = String(g ?? '').toLowerCase();
+  return k === 'male' ? 'male' : k === 'female' ? 'female' : 'person';
+}
+
 export function statusIcon(s)  { return STATUS_ICON[s]  || 'ellipse'; }
 export function statusColor(s) { return STATUS_COLOR[s] || 'var(--missing)'; }
 export function statusDim(s)   { return STATUS_DIM[s]   || 'var(--bg-raised)'; }
 export function statusLabel(s) { return STATUS_LABEL[s] || (s || '').replace(/_/g, ' '); }
 export function shelterIcon(t) { return SHELTER_ICON[t] || 'business'; }
 
+/**
+ * The backend sends `severity` as EITHER a 1–5 number (3, 5) OR a string label
+ * ("moderate", "high"). Normalise to one ordered scale so labels, colours, and
+ * any sort agree — otherwise a string severity fails every numeric comparison
+ * (`"high" < 3` is NaN) and silently buckets as the highest tier.
+ */
+export function severityRank(s) {
+  if (typeof s === 'number' && Number.isFinite(s)) return s;
+  switch (String(s ?? '').toLowerCase()) {
+    case 'low':
+    case 'minor':    return 2;
+    case 'medium':
+    case 'moderate': return 3;
+    case 'high':
+    case 'severe':   return 4;
+    case 'extreme':
+    case 'critical': return 5;
+    default:         return 0;
+  }
+}
+
 /* Disaster severity → { label, icon, colorVar, dimVar } (matches mobile). */
 export function severityInfo(s) {
-  if (!s || s < 3) return { label: 'Minor',    cls: 'sev-minor',    colorVar: 'var(--safe)',     dimVar: 'var(--safe-dim)' };
-  if (s < 4)       return { label: 'Moderate', cls: 'sev-moderate', colorVar: 'var(--injured)',  dimVar: 'var(--injured-dim)' };
-  if (s < 5)       return { label: 'Severe',   cls: 'sev-severe',   colorVar: 'var(--awaiting)', dimVar: 'var(--awaiting-dim)' };
-  return             { label: 'Extreme',  cls: 'sev-extreme',  colorVar: 'var(--need-help)', dimVar: 'var(--need-help-dim)' };
+  const r = severityRank(s);
+  if (r < 3) return { label: 'Minor',    cls: 'sev-minor',    colorVar: 'var(--safe)',     dimVar: 'var(--safe-dim)' };
+  if (r < 4) return { label: 'Moderate', cls: 'sev-moderate', colorVar: 'var(--injured)',  dimVar: 'var(--injured-dim)' };
+  if (r < 5) return { label: 'Severe',   cls: 'sev-severe',   colorVar: 'var(--awaiting)', dimVar: 'var(--awaiting-dim)' };
+  return       { label: 'Extreme',  cls: 'sev-extreme',  colorVar: 'var(--need-help)', dimVar: 'var(--need-help-dim)' };
 }
 
 /**

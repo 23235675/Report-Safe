@@ -2,12 +2,12 @@
 # Report Safe — production stack (Azure-friendly)
 #
 #   Caddy (HTTPS) ──► server-1 ─┐
-#                  └► server-2 ─┴► Azure PostgreSQL (managed, external)
+#                  └► server-2 ─┴► Azure Cosmos DB for MongoDB (managed, external)
 #                                  Redis (cross-instance Socket.IO + rate limit)
 #
-# PostgreSQL is NOT in this file: use your managed Azure Database for
-# PostgreSQL. Provide its connection details via the .env file referenced below
-# (DATABASE_URL + PGSSL=true).
+# The DATABASE is NOT in this file: use a managed Azure Cosmos DB for MongoDB
+# (or any MongoDB). Provide its connection string via the .env file referenced
+# below (MONGODB_URI + MONGODB_DB). See DEPLOYMENT.md for the full env table.
 #
 # Bring up:   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 # Scale note: server-1 / server-2 are explicit so Caddy can name them as
@@ -23,6 +23,11 @@ services:
     env_file: .env.prod
     environment:
       INSTANCE_ID: server-1
+      # Production-safe defaults (override in .env.prod). M2: OTP on; M8: no demo
+      # seed; H2: one proxy hop (Caddy). See DEPLOYMENT.md.
+      OTP_ENABLED: "true"
+      SEED_DATA: "false"
+      TRUST_PROXY_HOPS: "1"
     depends_on:
       - redis
     restart: unless-stopped
@@ -35,6 +40,9 @@ services:
     env_file: .env.prod
     environment:
       INSTANCE_ID: server-2
+      OTP_ENABLED: "true"
+      SEED_DATA: "false"
+      TRUST_PROXY_HOPS: "1"
     depends_on:
       - server-1
       - redis

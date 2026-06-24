@@ -10,6 +10,7 @@
 import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { userStorage } from '../db/userStorage';
 import { messages, type Locale } from './messages';
+import { severityBucket } from '../utils/severity';
 
 const STORAGE_KEY = 'rs_lang';
 const SUPPORTED: Locale[] = ['en', 'zh'];
@@ -66,6 +67,13 @@ export function disasterTypeLabelStandalone(type: string | null | undefined, loc
   return found ?? (type ? type.charAt(0).toUpperCase() + type.slice(1) : '');
 }
 
+/** Localized incident-type label (CFR), usable outside React. */
+export function incidentTypeLabelStandalone(type: string | null | undefined, locale: Locale = currentLocale()): string {
+  const key = (type || '').toLowerCase();
+  const found = resolve(locale, `incidentType.${key}`) ?? resolve('en', `incidentType.${key}`);
+  return found ?? (type ? type.charAt(0).toUpperCase() + type.slice(1) : '');
+}
+
 export interface I18n {
   locale: Locale;
   t: (key: string, params?: Record<string, string | number>) => string;
@@ -75,8 +83,8 @@ export interface I18n {
   statusLabel: (s: string | null | undefined) => string;
   /** Disaster type → localized label (falls back to Capitalised raw type). */
   disasterTypeLabel: (type: string | null | undefined) => string;
-  /** Numeric severity → localized label. */
-  severityLabel: (s: number | null | undefined) => string;
+  /** Severity (number OR string label) → localized label. */
+  severityLabel: (s: number | string | null | undefined) => string;
 }
 
 const I18nContext = createContext<I18n | null>(null);
@@ -107,10 +115,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }): R
         const found = resolve(locale, `disasterType.${key}`) ?? resolve('en', `disasterType.${key}`);
         return found ?? (type ? type.charAt(0).toUpperCase() + type.slice(1) : '');
       },
-      severityLabel: (s) => {
-        const k = !s || s < 3 ? 'minor' : s < 4 ? 'moderate' : s < 5 ? 'severe' : 'extreme';
-        return t(`severity.${k}`);
-      },
+      severityLabel: (s) => t(`severity.${severityBucket(s)}`),
     };
   }, [locale, setLocale]);
 
@@ -133,6 +138,6 @@ export function useTranslation(): I18n {
     statusLabel: (s) => (s ? (resolve('en', `status.${s}`) ?? s.replace(/_/g, ' ')) : ''),
     disasterTypeLabel: (type) =>
       (type ? resolve('en', `disasterType.${type.toLowerCase()}`) ?? (type.charAt(0).toUpperCase() + type.slice(1)) : ''),
-    severityLabel: (s) => t(`severity.${!s || s < 3 ? 'minor' : s < 4 ? 'moderate' : s < 5 ? 'severe' : 'extreme'}`),
+    severityLabel: (s) => t(`severity.${severityBucket(s)}`),
   };
 }

@@ -50,19 +50,19 @@ describe('otpService (unit)', () => {
     const p = '+85290001111';
     const { dev_code } = await otpService.requestOtp(p);
     expect(dev_code).toMatch(/^\d{6}$/);
-    expect(otpService.verifyOtp(p, dev_code)).toBe(true);
+    expect(await otpService.verifyOtp(p, dev_code)).toBe(true);
     // consumed — a second verify with the same code fails
-    expect(otpService.verifyOtp(p, dev_code)).toBe(false);
+    expect(await otpService.verifyOtp(p, dev_code)).toBe(false);
   });
 
   it('rejects a wrong code', async () => {
     const p = '+85290002222';
     await otpService.requestOtp(p);
-    expect(otpService.verifyOtp(p, '000000')).toBe(false);
+    expect(await otpService.verifyOtp(p, '000000')).toBe(false);
   });
 
-  it('rejects when no code was requested', () => {
-    expect(otpService.verifyOtp('+85299999999', '123456')).toBe(false);
+  it('rejects when no code was requested', async () => {
+    expect(await otpService.verifyOtp('+85299999999', '123456')).toBe(false);
   });
 });
 
@@ -88,7 +88,7 @@ describe('register/login OTP gating (HTTP)', () => {
     const p = phone();
     const otpRes = await post('/api/users/request-otp', { phone: p });
     expect(otpRes.status).toBe(200);
-    const { dev_code, enabled } = await otpRes.json();
+    const { dev_code, enabled } = (await otpRes.json()).data;
     expect(enabled).toBe(true);
     expect(dev_code).toMatch(/^\d{6}$/);
 

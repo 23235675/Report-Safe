@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router';
 import { getShelters, createShelter, updateShelter, deleteShelter, getDisasters, getUserToken, getCurrentUser, createSafePlace, listPendingSafePlaces, moderateSafePlace } from '../api.js';
 import { GOV_TOKEN_KEY } from '../router/index.js';
 import AppIcon from '../components/AppIcon.vue';
-import { shelterIcon, DISASTER_ICON } from '../iconography.js';
+import { shelterIcon } from '../iconography.js';
 import { t, shelterTypeLabel, sourceLabel, disasterTypeLabel } from '../i18n/index.js';
 
 const route    = useRoute();
@@ -42,6 +42,7 @@ function useMyLocation() {
   navigator.geolocation.getCurrentPosition(
     (pos) => { safeForm.value.lat = pos.coords.latitude.toFixed(5); safeForm.value.lng = pos.coords.longitude.toFixed(5); },
     () => { safeError.value = t('shelters.errGeoFailed'); },
+    { timeout: 8000 }, // without this getCurrentPosition can wait indefinitely
   );
 }
 
@@ -49,14 +50,31 @@ async function saveSafePlace() {
   safeError.value = '';
   if (!safeForm.value.name.trim()) { safeError.value = t('shelters.errNameRequired'); return; }
   if (safeForm.value.lat === '' || safeForm.value.lng === '') { safeError.value = t('shelters.errLocationRequired'); return; }
+  // Validate the numbers client-side so the user gets a clear message instead of
+  // the server's generic "validation failed": NaN/out-of-range coordinates (a
+  // bad parse serialises to null) and a non-positive-integer capacity are all
+  // rejected server-side.
+  const lat = Number(safeForm.value.lat);
+  const lng = Number(safeForm.value.lng);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90 ||
+      !Number.isFinite(lng) || lng < -180 || lng > 180) {
+    safeError.value = t('shelters.errCoordsInvalid'); return;
+  }
+  let capacity = null;
+  if (String(safeForm.value.capacity).trim()) {
+    capacity = Number(safeForm.value.capacity);
+    if (!Number.isInteger(capacity) || capacity <= 0) {
+      safeError.value = t('shelters.errCapacityInvalid'); return;
+    }
+  }
   safeSaving.value = true;
   try {
     await createSafePlace({
       name: safeForm.value.name.trim(),
-      lat: Number(safeForm.value.lat),
-      lng: Number(safeForm.value.lng),
+      lat,
+      lng,
       description: safeForm.value.description.trim() || null,
-      capacity: safeForm.value.capacity ? Number(safeForm.value.capacity) : null,
+      capacity,
       disaster_id: filterDisaster.value || null,
     });
     showSafeForm.value = false;
@@ -105,6 +123,21 @@ function capacityClass(s) {
 function capacityPct(s) {
   if (!s.capacity) return null;
   return Math.round((s.current_count / s.capacity) * 100);
+}
+
+// Available beds (wireframe) = capacity − current occupancy. Null when no capacity set.
+function bedsFree(s) {
+  if (!s.capacity) return null;
+  return Math.max(0, Number(s.capacity) - Number(s.current_count || 0));
+}
+
+// Occupancy "Status" (wireframe) — derived from capacity, not a stored field.
+function statusInfo(s) {
+  if (!s.capacity) return null;
+  const cls = capacityClass(s);
+  if (cls === 'cap-critical') return { label: t('shelters.statusFull'), cls: 'st-full' };
+  if (cls === 'cap-high')     return { label: t('shelters.statusNearFull'), cls: 'st-near' };
+  return { label: t('shelters.statusAvailable'), cls: 'st-ok' };
 }
 
 // Pending safe-place moderation queue (gov/volunteer only).
@@ -163,12 +196,21 @@ function openEdit(s) {
 
 async function save() {
   formError.value = '';
+
+  // 針對後端常見的 Validation Failed 做前端預驗證機制
+  if (!form.value.name?.trim()) { formError.value = t('shelters.errNameRequired'); return; }
+  const lat = Number(form.value.lat);
+  const lng = Number(form.value.lng);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
+    formError.value = t('shelters.errCoordsInvalid'); return;
+  }
+
   saving.value = true;
   try {
     const payload = {
-      name: form.value.name,
-      lat: Number(form.value.lat),
-      lng: Number(form.value.lng),
+      name: form.value.name.trim(),
+      lat,
+      lng,
       source: form.value.source,
       type: form.value.type,
       capacity: form.value.capacity ? Number(form.value.capacity) : null,
@@ -220,8 +262,11 @@ async function remove(id) {
   }
 }
 
-onMounted(load);
-watch([filterSource, filterDisaster], load);
+// 移除原本的 onMounted(load) 避免重複打 API
+// 改用 watch 帶上 immediate: true，在組件掛載時會自動且只執行一次 load
+watch([filterSource, filterDisaster], () => {
+  load();
+}, { immediate: true });
 </script>
 
 <template>
@@ -276,7 +321,7 @@ watch([filterSource, filterDisaster], load);
         </div>
         <div class="pending-actions">
           <button class="btn btn-sm approve-btn" @click="reviewPlace(p.id, 'approved')"><AppIcon name="checkmark" :size="14" /> {{ $t('shelters.approve') }}</button>
-          <button class="btn btn-sm btn-ghost" style="color: var(--need-help);" @click="reviewPlace(p.id, 'rejected')"><AppIcon name="close" :size="14" /> {{ $t('shelters.decline') }}</button>
+          <button class="btn btn-sm btn-ghost" @click="reviewPlace(p.id, 'rejected')"><AppIcon name="close" :size="14" /> {{ $t('shelters.decline') }}</button>
         </div>
       </div>
     </div>
@@ -304,13 +349,10 @@ watch([filterSource, filterDisaster], load);
             <td><span class="type-badge inline-ico" :class="`type-${s.type}`"><AppIcon :name="shelterIcon(s.type)" :size="13" /> {{ shelterTypeLabel(s.type) }}</span></td>
             <td><span class="source-badge" :class="`src-${s.source || 'government'}`">{{ sourceLabel(s.source) }}</span></td>
             <td>
-              <div v-if="s.capacity" class="cap-cell" :class="capacityClass(s)">
+              <template v-if="s.capacity">
                 <span class="cap-nums">{{ s.current_count }}/{{ s.capacity }}</span>
-                <div class="cap-bar-wrap">
-                  <div class="cap-bar" :style="{ width: `${Math.min(capacityPct(s), 100)}%` }"></div>
-                </div>
-                <span class="cap-pct">{{ capacityPct(s) }}%</span>
-              </div>
+                <span class="beds-free">{{ $t('shelters.bedsFree', { n: bedsFree(s) }) }}</span>
+              </template>
               <span v-else class="text-lo">—</span>
             </td>
             <td><span class="text-mono text-sm">{{ s.phone || '—' }}</span></td>
@@ -318,7 +360,7 @@ watch([filterSource, filterDisaster], load);
             <td v-if="canManage" class="actions-cell">
               <button @click="openCapacity(s)" class="btn-sm btn-outline"><AppIcon name="people" :size="13" /> {{ $t('shelters.capacity') }}</button>
               <button @click="openEdit(s)" class="btn-sm btn-outline"><AppIcon name="create" :size="13" /> {{ $t('common.edit') }}</button>
-              <button @click="remove(s.id)" class="btn-sm btn-danger" :aria-label="$t('common.remove')"><AppIcon name="close" :size="13" /></button>
+              <button @click="remove(s.id)" class="btn-sm btn-outline" :aria-label="$t('common.remove')"><AppIcon name="close" :size="13" /></button>
             </td>
           </tr>
         </tbody>
@@ -491,45 +533,40 @@ watch([filterSource, filterDisaster], load);
 .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
 
 /* Pending safe-place moderation queue */
-.pending-panel { background: var(--awaiting-dim); border: 1px solid var(--awaiting-border); border-radius: var(--radius-md); padding: var(--sp-3); }
-.pending-head { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--awaiting); margin-bottom: var(--sp-2); }
-.pending-row { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) 0; border-top: 1px solid var(--awaiting-border); }
+.pending-panel { background: var(--bg-panel); border: 1px solid var(--border-strong); border-left: 3px solid var(--gov-blue); border-radius: var(--radius-sm); padding: var(--sp-3); }
+.pending-head { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--gov-blue-text); margin-bottom: var(--sp-2); text-transform: uppercase; letter-spacing: 0.04em; font-family: var(--font-mono); }
+.pending-row { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) 0; border-top: 1px solid var(--border-line); }
 .pending-info { flex: 1; min-width: 0; }
 .pending-name { font-weight: 600; color: var(--text-hi); }
 .pending-meta { font-size: 12px; color: var(--text-lo); margin-top: 2px; }
 .pending-desc { font-size: 12px; color: var(--text-md); margin-top: 2px; }
 .pending-actions { display: flex; gap: var(--sp-2); flex-shrink: 0; }
-.approve-btn { background: var(--safe); color: #fff; border: none; gap: 4px; }
-.approve-btn:hover { filter: brightness(0.95); }
+.approve-btn { background: var(--gov-blue); color: #fff; border: none; gap: 4px; }
+.approve-btn:hover { background: var(--accent-hover); }
 
 .toolbar { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .filter-ico { color: var(--text-lo); display: inline-flex; flex-shrink: 0; }
 .filters { display: flex; gap: var(--sp-2); flex-wrap: wrap; flex: 1; }
 .filter-sel { padding: 6px 10px; border: 1px solid var(--border-line); border-radius: var(--radius-sm); background: var(--bg-panel); color: var(--text-hi); font-size: 13px; cursor: pointer; }
 
-.table-wrap { background: var(--bg-panel); border: 1px solid var(--border-line); border-radius: var(--radius-md); overflow: auto; }
-.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.data-table th { padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-lo); background: var(--bg-raised); border-bottom: 1px solid var(--border-line); white-space: nowrap; }
-.data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-line); vertical-align: middle; }
+.table-wrap { background: var(--bg-panel); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.data-table th { padding: 8px 12px; text-align: left; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #ffffff; background: var(--accent-hover); border-bottom: 1px solid var(--accent-active); white-space: nowrap; font-family: var(--font-mono); }
+.data-table td { padding: 14px 14px; border-bottom: 1px solid var(--border-line); vertical-align: middle; }
 .data-table tr:last-child td { border-bottom: none; }
 .data-table tr:hover td { background: var(--bg-raised); }
 
 .shelter-name { display: block; font-weight: 600; color: var(--text-hi); }
 .shelter-addr { display: block; font-size: 11px; color: var(--text-lo); margin-top: 2px; }
 
-.type-badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: capitalize; }
-.type-shelter  { background: var(--gov-blue-dim); color: var(--gov-blue-text); }
-.type-hospital { background: var(--need-help-dim); color: var(--need-help); }
-.type-clinic   { background: var(--injured-dim);   color: var(--injured); }
-.type-assembly { background: var(--safe-dim);       color: var(--safe); }
+/* Type & source as plain text — no pills, no containers, nothing eye-catching. */
+.type-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text-hi); text-transform: capitalize; }
+.type-shelter, .type-hospital, .type-clinic, .type-assembly { background: none; color: var(--text-hi); }
 
-.source-badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: capitalize; }
-.src-government { background: var(--bg-raised); color: var(--text-md); border: 1px solid var(--border-strong); }
-.src-volunteer  { background: var(--rescued-dim);  color: var(--rescued); }
-.src-citizen    { background: var(--safe-dim);      color: var(--safe); }
+.source-badge { font-size: 13px; color: var(--text-md); text-transform: capitalize; }
+.src-government, .src-volunteer, .src-citizen { background: none; border: none; color: var(--text-md); }
 
-.cap-cell { display: flex; align-items: center; gap: var(--sp-2); }
-.cap-nums  { font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
+.cap-nums  { display: block; font-family: var(--font-mono); font-size: 13px; color: var(--text-hi); white-space: nowrap; }
 .cap-bar-wrap { flex: 1; max-width: 60px; height: 4px; background: var(--border-line); border-radius: 2px; overflow: hidden; }
 .cap-bar { height: 100%; border-radius: 2px; transition: width 0.3s; }
 .cap-pct { font-size: 11px; color: var(--text-lo); white-space: nowrap; }
@@ -539,7 +576,15 @@ watch([filterSource, filterDisaster], load);
 .cap-critical .cap-bar { background: var(--need-help); }
 .cap-critical .cap-nums { color: var(--need-help); font-weight: 700; }
 
-.actions-cell { display: flex; gap: var(--sp-1); white-space: nowrap; }
+.beds-free { display: block; font-size: 11px; color: var(--text-lo); white-space: nowrap; margin-top: 2px; }
+.st-pill { padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.st-ok   { background: var(--safe-dim);      color: var(--safe); }
+.st-near { background: var(--injured-dim);   color: var(--injured); }
+.st-full { background: var(--need-help-dim); color: var(--need-help); }
+
+/* Actions stacked top-to-bottom to keep the column narrow. */
+.actions-cell { display: flex; flex-direction: column; gap: var(--sp-1); white-space: nowrap; align-items: stretch; }
+.actions-cell .btn-sm { justify-content: center; }
 .btn-sm { padding: 3px 8px; border-radius: var(--radius-sm); font-size: 11px; font-weight: 600; cursor: pointer; border: none; }
 .btn-outline { background: var(--bg-raised); color: var(--text-md); border: 1px solid var(--border-strong); }
 .btn-outline:hover { border-color: var(--gov-blue); color: var(--gov-blue); }

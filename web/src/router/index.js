@@ -7,6 +7,7 @@ import SheltersView from '../views/SheltersView.vue';
 import AccountView  from '../views/AccountView.vue';
 import StatusView   from '../views/StatusView.vue';
 import AdminView    from '../views/AdminView.vue';
+import AboutView    from '../views/AboutView.vue';
 
 const GOV_TOKEN_KEY = 'gov_token';
 
@@ -17,6 +18,7 @@ const routes = [
   { path: '/family', name: 'family', component: FamilyView },
   { path: '/shelters', name: 'shelters', component: SheltersView },
   { path: '/account', name: 'account', component: AccountView },
+  { path: '/about', name: 'about', component: AboutView },
   {
     path: '/gov',
     name: 'gov',

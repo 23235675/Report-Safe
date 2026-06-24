@@ -129,23 +129,55 @@ function buildLovedOnePayload(platform, disaster, affectedName) {
 }
 
 /**
+ * CFR: platform-specific "a nearby emergency needs you" notification for an
+ * opted-in responder. Typed `incident_alert` so the app routes it to the
+ * responder screen — it is NON-gating (never enters disaster mode). Carries
+ * incidentId so a tap (incl. cold-start) opens that incident.
+ */
+function buildResponderPayload(platform, incident) {
+  const label = incident.type === 'cardiac_arrest' ? 'Cardiac arrest'
+    : incident.type === 'fire' ? 'Fire'
+    : incident.type === 'trauma' ? 'Trauma' : 'Emergency';
+  const title = `🚑 ${label} nearby — help needed now`;
+  const body = 'Someone near you needs help before the ambulance arrives. Tap to respond.';
+
+  if (platform === 'ios') {
+    return {
+      format: 'apple',
+      json: JSON.stringify({
+        aps: { alert: { title, body }, sound: 'default', 'mutable-content': 1 },
+        incidentId: incident.id,
+        type: 'incident_alert',
+      }),
+    };
+  }
+  // android (FCM legacy JSON) — also the default for unknown native handles
+  return {
+    format: 'gcm',
+    json: JSON.stringify({
+      notification: { title, body },
+      data: { incidentId: String(incident.id), type: 'incident_alert' },
+      priority: 'high',
+    }),
+  };
+}
+
+/**
  * Direct-send one notification to a single device handle.
  * @returns {Promise<{ok:boolean, stale:boolean}>} ok = delivered to the hub
  *   (not an end-to-end receipt); stale = the handle is gone and should be pruned.
  */
-async function sendToDevice({ endpoint, keyName, key, hub }, device, payload) {
+async function sendToDevice({ url, authorization }, device, payload) {
   // Expo Go tokens (ExponentPushToken[...]) are not FCM/APNs handles and can't
   // be sent via Azure NH — they require Expo's own push service. Skip cleanly.
   if (device.platform === 'expo') return { ok: false, stale: false };
 
-  const sbEndpoint = endpoint.replace(/^sb:\/\//, 'https://').replace(/\/$/, '');
-  const url = `${sbEndpoint}/${hub}/messages/?api-version=${API_VERSION}&direct`;
   const { format, json } = payload;
 
   const res = await fetch(url, {
     method: 'POST',
     headers: {
-      Authorization: createSasToken(`${sbEndpoint}/${hub}`, keyName, key),
+      Authorization: authorization,
       'Content-Type': format === 'apple' ? 'application/json' : 'application/json;charset=utf-8',
       'ServiceBusNotification-Format': format,
       'ServiceBusNotification-DeviceHandle': device.token,
@@ -186,8 +218,18 @@ async function dispatchPush(devices, payloadFor, logLabel, logMeta = {}) {
     return { configured: false, sent: 0, failed: 0, skipped: devices.length, deadTokens: [] };
   }
 
+  // Per-batch constants (endpoint/hub/key are fixed for the whole fan-out): build
+  // the request URL and SAS token ONCE rather than recomputing them for every
+  // device. The SAS token's 1h TTL covers the entire (concurrent, sub-second)
+  // batch, so every handle is authorized identically to the prior per-device path.
+  const sbEndpoint = ctx.endpoint.replace(/^sb:\/\//, 'https://').replace(/\/$/, '');
+  const sendCtx = {
+    url: `${sbEndpoint}/${ctx.hub}/messages/?api-version=${API_VERSION}&direct`,
+    authorization: createSasToken(`${sbEndpoint}/${ctx.hub}`, ctx.keyName, ctx.key),
+  };
+
   const results = await Promise.allSettled(
-    devices.map((d) => sendToDevice(ctx, d, payloadFor(d)))
+    devices.map((d) => sendToDevice(sendCtx, d, payloadFor(d)))
   );
 
   let sent = 0, failed = 0, skipped = 0;
@@ -243,12 +285,29 @@ async function sendLovedOneAlert(disaster, recipients) {
   );
 }
 
+/**
+ * CFR: push an incident alert to the device handles of matched responders (the
+ * closed-app path; the socket covers open apps). Graceful no-op when unconfigured.
+ * @param {object} incident
+ * @param {Array<{token:string, platform:string}>} devices
+ */
+async function sendResponderAlert(incident, devices) {
+  return dispatchPush(
+    devices,
+    (d) => buildResponderPayload(d.platform, incident),
+    'push_responder_sent',
+    { incidentId: incident.id }
+  );
+}
+
 module.exports = {
   isConfigured,
   sendDisasterPush,
   sendLovedOneAlert,
+  sendResponderAlert,
   parseConnectionString,
   createSasToken,
   buildPayload,
   buildLovedOnePayload,
+  buildResponderPayload,
 };
