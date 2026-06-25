@@ -223,7 +223,14 @@ export const messages = {
       noPeople: 'No reports filed yet.',
       colName: 'Name',
       colPhone: 'Phone',
+      colGender: 'Gender',
       colStatus: 'Status',
+      colCount: 'Count',
+      colShare: 'Share',
+      genderMale: 'Male',
+      genderFemale: 'Female',
+      showAll: 'Show all',
+      filteredBy: 'Showing: {label}',
     },
 
     about: {
@@ -621,7 +628,14 @@ export const messages = {
       noPeople: '尚未有人提交報告。',
       colName: '姓名',
       colPhone: '電話',
+      colGender: '性別',
       colStatus: '狀態',
+      colCount: '人數',
+      colShare: '比例',
+      genderMale: '男',
+      genderFemale: '女',
+      showAll: '顯示全部',
+      filteredBy: '顯示：{label}',
     },
 
     about: {

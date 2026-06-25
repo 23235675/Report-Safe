@@ -174,14 +174,16 @@ module.exports = function createReportsRouter(io) {
     }
   });
 
-  // GET /api/reports/people?limit=&offset= — public Status Overview roster
-  // (name + masked phone + status, no auth required).
+  // GET /api/reports/people?limit=&offset=&status= — public Status Overview roster
+  // (name + masked phone + gender + status, no auth required). Optional `status`
+  // filters to one bucket (drives the dashcard click-through).
   router.get('/people', async (req, res) => {
     try {
       const limit = req.query.limit;
       const offset = req.query.offset;
-      const { rows, total } = await reportStore.listPeople({ limit, offset });
-      return res.json({ ok: true, data: rows, meta: { limit, offset, total } });
+      const status = req.query.status || undefined;
+      const { rows, total } = await reportStore.listPeople({ limit, offset, status });
+      return res.json({ ok: true, data: rows, meta: { limit, offset, total, status } });
     } catch (err) {
       console.error('[routes/reports GET /people] failed to list people:', err);
       return res.status(500).json({ error: 'Internal server error' });

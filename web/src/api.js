@@ -99,8 +99,9 @@ export async function searchByName(q) {
   return reshape(await request(`/api/reports/search?q=${encodeURIComponent(q)}`), 'results');
 }
 
-export async function getPeople({ limit = 50, offset = 0 } = {}) {
-  return reshape(await request(`/api/reports/people?limit=${limit}&offset=${offset}`), 'people');
+export async function getPeople({ limit = 50, offset = 0, status = null } = {}) {
+  const q = `/api/reports/people?limit=${limit}&offset=${offset}${status ? `&status=${encodeURIComponent(status)}` : ''}`;
+  return reshape(await request(q), 'people');
 }
 
 export async function getRescueView(lat, lng, radius, token) {

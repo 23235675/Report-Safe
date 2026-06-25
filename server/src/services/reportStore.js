@@ -286,10 +286,11 @@ async function searchByName(queryStr, { limit = 100, offset = 0 } = {}) {
  * Status Overview roster. Same masked-phone privacy tier as searchByName:
  * never the full phone, never exact GPS.
  */
-async function listPeople({ limit = 50, offset = 0 } = {}) {
+async function listPeople({ limit = 50, offset = 0, status = null } = {}) {
   try {
     const lim = Math.min(Math.max(Number(limit) || 50, 1), 100);
     const off = Math.max(Number(offset) || 0, 0);
+    const statusFilter = status ? String(status) : null;
 
     // ponytail: scan cap on latest-reports, matches the bound used by getRescueView.
     const reports = await collection('reports')
@@ -305,13 +306,17 @@ async function listPeople({ limit = 50, offset = 0 } = {}) {
       if (uid && !latest.has(uid)) latest.set(uid, r);
     }
 
-    const allIds = [...latest.keys()];
+    // Optional filter: only people whose latest status matches (drives the
+    // Status Overview dashcard click-through).
+    const allIds = statusFilter
+      ? [...latest.keys()].filter((uid) => (latest.get(uid).status || null) === statusFilter)
+      : [...latest.keys()];
     const pageIds = allIds.slice(off, off + lim);
     if (pageIds.length === 0) return { rows: [], total: allIds.length };
 
     const users = await collection('users')
       .find({ _id: { $in: pageIds } })
-      .project({ _id: 1, name: 1, phone: 1 })
+      .project({ _id: 1, name: 1, phone: 1, gender: 1 })
       .toArray();
     const userMap = new Map(users.map((u) => [u._id, u]));
 
@@ -324,6 +329,7 @@ async function listPeople({ limit = 50, offset = 0 } = {}) {
           id: uid,
           name: u.name,
           phone_masked: maskPhone(u.phone),
+          gender: u.gender || null,
           status: r.status || null,
           updated_at: r.updated_at != null ? Number(r.updated_at) : null,
         };
