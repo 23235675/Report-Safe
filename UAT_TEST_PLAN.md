@@ -57,6 +57,19 @@ End-to-end, role-based acceptance scenarios written from the **user's** point of
 - AC2 Aggregate counts remain consistent (the user's reports are anonymized, not deleted).
 - AC3 The deleted user's device no longer receives pushes.
 
+### UAT-C8 — Opt in as a Community First Responder (999 / CPR)
+**Pre:** signed in on mobile. **Steps:** open Account → enable "Community First Responder" → pick skills (e.g. CPR) and a max travel radius → save.
+- AC1 Opt-in is **explicit** (off by default); skills and radius are saved.
+- AC2 Opting back out clears the responder skills and stops the nearby feed.
+- AC3 Only an opted-in responder can ever see the nearby-incident feed.
+
+### UAT-C9 — Respond to a nearby emergency (the minutes that matter)
+**Pre:** opted-in responder; an active incident is dispatched within the user's radius. **Steps:** open Home → see the alert on the live map / "Nearby Emergency Need" → tap **Respond** → set *En route*, then *On scene*.
+- AC1 The Home map shows the active incident pin (and nearby need / in-zone shelters) with an expand-to-full-screen option.
+- AC2 A **public** incident shows type + location only — no victim PII; a **residential** incident appears only to verified (gov) responders.
+- AC3 The responder's live position is shared with the team **only** while *en route* / *on scene*; *Decline* dismisses without sharing.
+- AC4 Incident detail surfaces the nearest AEDs and the co-responder roster.
+
 ---
 
 ## Persona 2 — Family member (web proxy)
@@ -129,7 +142,13 @@ End-to-end, role-based acceptance scenarios written from the **user's** point of
 - AC1 The disaster is marked ended; clients clear it (mobile on next refresh, web immediately).
 - AC2 The same type can be triggered again afterward.
 
-### UAT-G6 — Forgery resistance (the core security promise)
+### UAT-G6 — Dispatch a CFR incident (999 / CAD)
+**Steps:** create an emergency incident (type, location, public/residential) with the gov credential.
+- AC1 The incident is created and broadcast to opted-in responders **within its radius** only.
+- AC2 A **residential** (non-public) incident is withheld from ordinary responders and shown only to verified (gov) responders.
+- AC3 The dispatch and the later resolution are recorded in the audit trail; once resolved, it disappears from responders' nearby feed.
+
+### UAT-G7 — Forgery resistance (the core security promise)
 **Steps:** attempt to submit reports from an **unauthenticated** client, and attempt to submit reports attributing them to **another** person/HKID as a normal user.
 - AC1 Unauthenticated report submission is rejected.
 - AC2 A normal user cannot set another person's identity/status — the server attributes the report to the actual submitter.
@@ -189,10 +208,10 @@ End-to-end, role-based acceptance scenarios written from the **user's** point of
 
 | Area | Owner | Result | Date |
 |------|-------|--------|------|
-| Citizen journeys (C1–C7) | | | |
+| Citizen journeys (C1–C9) | | | |
 | Family journeys (F1–F4) | | | |
 | Volunteer journeys (V1–V2) | | | |
-| Government journeys (G1–G6) | | | |
+| Government journeys (G1–G7) | | | |
 | Super-admin journeys (S1–S3) | | | |
 | End-to-end (E2E-1…4) | | | |
 

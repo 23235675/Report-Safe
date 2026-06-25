@@ -163,6 +163,13 @@ when `HKID_STRICT=true`.
 - Prevents confusion and ensures every device in the zone commits to a status
 - A **single** safety report clears the gate for **every** overlapping disaster zone the device is currently inside (declaring yourself safe is a statement about you, not one disaster) — acknowledgement persists across app restarts
 
+### Community First Responder (999 / CPR Dispatch)
+- **Crowdsourced emergency response:** opted-in users near a medical emergency (e.g. cardiac arrest) are alerted to respond and start CPR before the ambulance arrives — the minutes that matter most.
+- **Explicit opt-in (PDPO):** users opt in as responders and set their skills + max travel radius (`PATCH /api/users/:id/responder`). Non-responders never receive the incident feed.
+- **Incident lifecycle:** a 999/CAD-style dispatch creates an incident (`POST /api/incidents`); nearby opted-in responders see it (`GET /api/incidents/nearby`), accept and share live position while `enroute`/`onscene` (`POST /api/incidents/:id/respond`), and gov resolves it (`POST /api/incidents/:id/resolve`).
+- **Privacy-gated:** residential incidents (`is_public=false`) are visible only to verified (gov) responders; public incidents carry **only type + location**, never PII. Responder positions are shared with the team only while actively responding.
+- **Nearest AEDs + co-responder roster** are returned with incident detail (`GET /api/incidents/:id`) so responders can grab a defibrillator en route.
+
 ### Never Lose Data
 - Mobile always writes to SQLite before sending network request
 - 3-layer sync fallback ensures delivery
@@ -179,6 +186,11 @@ when `HKID_STRICT=true`.
 - Mobile devices register their native push handle + location (`POST /api/devices/register`); a disaster trigger **direct-sends only to handles inside the radius** (`server/src/lib/pushService.js`).
 - **Graceful degradation:** with no `AZURE_NH_*` env config the push path is a clean no-op — local + socket notifications still work, and all tests pass without Azure.
 - Requires a dev/production mobile build (Expo Go can't expose native handles). See [DEPLOYMENT_AZURE.md](DEPLOYMENT_AZURE.md).
+
+### Unified UI + Live Map (Web + Mobile)
+- **Shared "Pine" design system** across web and mobile so both surfaces read as one product (aligned tokens: brand, status hues, neutrals).
+- **Live map on the mobile Home** (Leaflet + OpenStreetMap in a WebView — no Google Maps key/billing): active incidents, nearby need, and in-zone shelters as pins, with an expand-to-full-screen view.
+- **Shelters tab** (`ShelterScreen`): shelter info with capacity / beds-free for everyone, plus a safe-place request queue for gov/volunteer managers.
 
 ### PDPO Compliant (HK Privacy Law)
 - Consent required at registration
@@ -224,6 +236,13 @@ when `HKID_STRICT=true`.
 | POST | `/api/disasters/trigger` | Bearer | Trigger disaster (gov only) |
 | POST | `/api/devices/register` | Optional | Register native push handle + location |
 | DELETE | `/api/devices/:token` | — | Unregister a push device |
+| POST | `/api/incidents` | Bearer | Create + dispatch a CFR incident (gov/CAD) |
+| GET | `/api/incidents/active` | Bearer | Active incidents (gov) |
+| GET | `/api/incidents/nearby?lat&lng&radius` | Token | Nearby active incidents (opted-in responders only) |
+| GET | `/api/incidents/:id` | Token | Incident detail + nearest AEDs + co-responder roster |
+| POST | `/api/incidents/:id/respond` | Token | Responder sets status (`enroute`/`onscene`/`declined`) |
+| POST | `/api/incidents/:id/resolve` | Bearer | Resolve an incident (gov) |
+| PATCH | `/api/users/:id/responder` | Token | Opt in/out as a Community First Responder (skills + radius) |
 | GET/POST | `/api/shelters` | — | List / register shelters |
 | GET/POST/PUT/DELETE | `/api/safe-places` | Varies | Community-submitted safe places (moderation queue) |
 | GET | `/api/safe-places/pending` | Admin | Moderation queue |
@@ -263,7 +282,7 @@ npm test
 Recent correctness fixes applied to **both** client surfaces unless noted:
 
 - **Severity now handles string *and* numeric values.** The API returns `severity` as either a `1–5` number or a label (`"moderate"`, `"high"`). Clients previously did numeric-only comparisons, so string severities failed (`"high" < 3` → `NaN`) and were mislabelled "Extreme" with the wrong colour — and on mobile the disaster-gate "most severe first" sort became non-deterministic. A shared `severityRank`/`severityKey` helper now normalises both forms (`web/src/iconography.js`, `mobile/src/utils/severity.ts`).
-- **Safe-place form validation.** Suggesting a safe place with non-numeric coordinates, an out-of-range lat/lng, or a zero/decimal capacity surfaced the server's generic *"validation failed"*. Both clients now validate client-side with a clear message before submitting (`SheltersView.vue`, `mobile/.../MapScreen.tsx`).
+- **Safe-place form validation.** Suggesting a safe place with non-numeric coordinates, an out-of-range lat/lng, or a zero/decimal capacity surfaced the server's generic *"validation failed"*. Both clients now validate client-side with a clear message before submitting (`SheltersView.vue`, `mobile/.../ShelterScreen.tsx`).
 - **Location lookups can no longer hang.** Geolocation calls had no timeout and never resolve without a GPS fix (the disaster case), trapping a safety report on the spinner. All call sites now cap the wait and fall back to last-known → HK-centre (mobile `resolveLocation` util; web `getCurrentPosition({ timeout })`).
 - **Corrupt stored profile no longer crashes the Account screen.** The `JSON.parse` of the saved user is now guarded on both clients.
 - **Mobile:** one safety report clears every overlapping disaster zone (see Disaster-Mode Gate); local disaster notifications carry the `disasterId` so a tap routes into the gate.
@@ -300,6 +319,27 @@ LOG_LEVEL=info
 > The server loads `server/.env` relative to its own location, so
 > `node server/src/index.js` works from any directory (not just `cd server`).
 
+## Azure Cost Guardrails (Free Tier)
+
+The Azure deployment is designed to sit inside the **Cosmos DB free tier** (1,000 RU/s + 25 GB) at **$0**. Two settings keep it there:
+
+1. **One database with shared (database-level) throughput = 1,000 RU/s manual.** All collections share this single bucket. Do **not** give collections their own (dedicated) throughput — 13 collections × 400 RU/s min would be ~5,200 RU/s and bill for everything over 1,000. The app's `setup.js` only calls `db.createCollection(name)` with no throughput option, so every collection auto-inherits the shared bucket.
+2. **Account `totalThroughputLimit = 1000`.** This is the hard enforcement: the shared DB already reserves all 1,000 RU/s, so any attempt to add a dedicated-throughput collection (min +400) would exceed the cap and **Azure rejects it** — from code, the portal, or CLI alike. No discipline required; don't remove this cap.
+
+```bash
+# Recreate the database with shared throughput (one-time, destructive — reseeds from setup/seed on boot)
+az cosmosdb mongodb database delete -g <rg> -a <account> -n <db> --yes
+az cosmosdb mongodb database create -g <rg> -a <account> -n <db> --throughput 1000
+
+# Hard-cap the account so it can never over-provision
+az resource update --ids "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.DocumentDB/databaseAccounts/<account>" \
+  --set "properties.capacity={\"totalThroughputLimit\":1000}" --latest-include-preview
+```
+
+> **Capped, not unlimited:** at 1,000 RU/s the DB throttles (HTTP 429) under heavy load instead of billing — the app's outbox retries handle 429. Lift the cap only if you intentionally want to pay for more throughput.
+
+**Other Azure resources:** keep the **Notification Hubs** namespace on the **Free** tier (1M pushes/mo). Prod skips demo seeding unless `SEED_DATA=true`. Add a low **Cost Management → Budget** ($1, alert at 80%) as a billing tripwire.
+
 ## Next Steps
 
 - **Deploy:** See [DEPLOYMENT.md](DEPLOYMENT.md) for the environment-variable reference, then [DEPLOYMENT_AZURE.md](DEPLOYMENT_AZURE.md) for the full Azure runbook (managed Cosmos DB for MongoDB, HTTPS via Caddy, multi-instance scaling, Notification Hubs push, backups)
@@ -311,6 +351,9 @@ LOG_LEVEL=info
 - **Questions:** See `CLAUDE.md` (architecture) or `PRE_TEST_READINESS_ASSESSMENT.md` (security details)
 - **Issues:** Report on GitHub
 - **Security:** Email security@
+
+
+Don't remove the totalThroughputLimit = 1000
 
 ---
 

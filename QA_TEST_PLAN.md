@@ -235,7 +235,24 @@ How to read: each row is one case. "Expected" is the pass condition. Automated c
 | S5 | P1 | `npm audit --audit-level=high --omit=dev` | no high/critical |
 | S6 | P1 | gitleaks + CodeQL | no leaked secrets / no high SAST findings |
 
+## T. Community First Responder — CFR / 999 / CPR dispatch
+
+| ID | P | Case | Steps | Expected | Auto |
+|----|---|------|-------|----------|------|
+| T1 | P1 | Opt in as responder | `PATCH /api/users/:id/responder` `responder_opt_in:true` + skills + `responder_max_radius_km` | 200; opt-in, skills, radius stored; opting out clears skills | incidentRoutes |
+| T2 | P0 | Nearby feed consent-gated (PDPO) | `GET /api/incidents/nearby` as a user who has **not** opted in | 200 + **empty** list (non-responders never receive the feed) | incidentRoutes |
+| T3 | P0 | Nearby feed requires user auth | call `/nearby` with gov token / no token | 403 "Only a responder (user)" / 401 | incidentRoutes |
+| T4 | P1 | Nearby = active + in-radius only | seed active + resolved incidents; opted-in user nearby | only `active` within radius, distance-sorted; radius capped at 20 km; missing lat/lng → 400 | incidentRoutes |
+| T5 | P0 | Residential incident privacy gate | `is_public:false` incident; opted-in **non-gov** responder vs gov/`government` user | hidden from public responder; visible only to verified (gov) responders | incidentRoutes |
+| T6 | P0 | No PII in the feed | inspect `/nearby` payload | only `id/type/lat/lng/is_public/status/created_at/distance_km` — never names, phones, HKID | incidentRoutes |
+| T7 | P1 | Dispatch an incident (gov/CAD) | `POST /api/incidents` gov token | 201; audit-logged; broadcast to in-radius responders | incidentRoutes/incidentEngine |
+| T8 | P1 | Respond sets status | `POST /api/incidents/:id/respond` `enroute`/`onscene`/`declined` | status recorded; live position shared **only** while `enroute`/`onscene`; `declined` dismisses | incidentRoutes |
+| T9 | P1 | Incident detail + AEDs + roster | `GET /api/incidents/:id` (responder) | detail + nearest active AEDs + co-responder roster; positions only for actively-responding peers | incidentRoutes |
+| T10 | P1 | Resolve (gov) | `POST /api/incidents/:id/resolve` gov | incident closed; drops out of the `/nearby` feed | incidentRoutes |
+| T11 | P2 | Mobile Home live map | open Home as opted-in responder | live map renders active-incident + nearby-need pins (+ shelter pins in a disaster zone); expand → full-screen modal | manual |
+| T12 | P2 | ShelterScreen manager queue | open Shelters as gov/volunteer | toggle between shelter info and the safe-place request queue; citizens see info only | manual |
+
 ---
 
 ### Suggested execution order
-1. **S1–S6** (gates green) → 2. **A, B, C, D** (auth + the core never-lose/cannot-forge invariants) → 3. **E, F, G** (disaster path) → 4. **H–N** (feature breadth + PDPO) → 5. **O–R** (security/ops/i18n) → 6. **Q** (only when deploying >1 instance).
+1. **S1–S6** (gates green) → 2. **A, B, C, D** (auth + the core never-lose/cannot-forge invariants) → 3. **E, F, G** (disaster path) → 4. **H–N, T** (feature breadth + PDPO + CFR) → 5. **O–R** (security/ops/i18n) → 6. **Q** (only when deploying >1 instance).
