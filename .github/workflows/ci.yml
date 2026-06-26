@@ -44,12 +44,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint server (eslint)
-        # Legacy .eslintrc.json → pin eslint 8 + disable flat-config lookup.
-        # Scoped to production source; test files allow looser style.
-        env:
-          ESLINT_USE_FLAT_CONFIG: "false"
-        run: npx --yes eslint@8 "server/src/**/*.js"
+      - name: Lint (eslint flat config — server + web + mobile)
+        run: npm run lint
 
       - name: Run test suite (Vitest against ephemeral MongoDB + Redis)
         run: npm test

@@ -68,7 +68,7 @@ describe('otpService (unit)', () => {
 
 describe('register/login OTP gating (HTTP)', () => {
   const reg = (p, extra = {}) => post('/api/users/register', {
-    phone: p, name: 'OTP Tester', personal_id: 'A123456', privacy_consent: true, ...extra,
+    phone: p, name: 'OTP Tester', gender: 'male', personal_id: 'A123456', privacy_consent: true, ...extra,
   });
 
   it('OTP off (default): register succeeds with no otp', async () => {

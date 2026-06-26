@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref } from 'vue';
 import { registerUser, loginUser, setAuthSession, clearAuthToken } from '../api.js';
 import { isValidHKID, normalizeHKID, normalizePhone } from '../hkid.js';
 import AppIcon from '../components/AppIcon.vue';

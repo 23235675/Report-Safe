@@ -6,7 +6,6 @@ import { useOutbox } from '../composables/useOutbox.js';
 import { isValidHKID, normalizeHKID } from '../hkid.js';
 import AppIcon from '../components/AppIcon.vue';
 import VisibilityChip from '../components/VisibilityChip.vue';
-import { statusIcon } from '../iconography.js';
 import { t } from '../i18n/index.js';
 
 const route = useRoute();

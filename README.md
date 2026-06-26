@@ -100,6 +100,7 @@ curl -X POST http://localhost:3001/api/users/register \
   -d '{
     "phone": "+85291234567",
     "name": "Mei Wong",
+    "gender": "female",
     "personal_id": "A123456(3)",
     "privacy_consent": true,
     "user_type": "mobile"
@@ -144,7 +145,7 @@ curl -X POST http://localhost:3001/api/users/request-otp \
 # 2) include it on register/login
 curl -X POST http://localhost:3001/api/users/register \
   -H "Content-Type: application/json" \
-  -d '{ "phone":"+85291234567","name":"Mei","personal_id":"A123456","privacy_consent":true,"otp":"123456" }'
+  -d '{ "phone":"+85291234567","name":"Mei","gender":"female","personal_id":"A123456","privacy_consent":true,"otp":"123456" }'
 ```
 
 Wire a real SMS provider in `server/src/lib/otpService.js` (`sendSms`) for
@@ -321,12 +322,21 @@ LOG_LEVEL=info
 
 ## Azure Cost Guardrails (Free Tier)
 
-The Azure deployment is designed to sit inside the **Cosmos DB free tier** (1,000 RU/s + 25 GB) at **$0**. Two settings keep it there:
+The Azure deployment is designed to sit inside the **Cosmos DB free tier** (1,000 RU/s + 25 GB) at **$0**. Three things keep it there — and **#1 is mandatory**: without it the provisioned 1,000 RU/s is billed against the generic ~100 RU/s account grant (the #1 cause of surprise Cosmos charges).
 
-1. **One database with shared (database-level) throughput = 1,000 RU/s manual.** All collections share this single bucket. Do **not** give collections their own (dedicated) throughput — 13 collections × 400 RU/s min would be ~5,200 RU/s and bill for everything over 1,000. The app's `setup.js` only calls `db.createCollection(name)` with no throughput option, so every collection auto-inherits the shared bucket.
-2. **Account `totalThroughputLimit = 1000`.** This is the hard enforcement: the shared DB already reserves all 1,000 RU/s, so any attempt to add a dedicated-throughput collection (min +400) would exceed the cap and **Azure rejects it** — from code, the portal, or CLI alike. No discipline required; don't remove this cap.
+1. **Free Tier must be ENABLED on the account.** The 1,000 RU/s + 25 GB are free *only* if the account was created with `--enable-free-tier true`. It is set **at creation only** (cannot be toggled later) and is limited to **one free-tier account per subscription**. Verify: `az cosmosdb show -g <rg> -n <account> --query enableFreeTier` must return `true`; if `false`, the account must be recreated (commands below).
+2. **One database with shared (database-level) throughput = 1,000 RU/s manual.** All collections share this single bucket. Do **not** give collections their own (dedicated) throughput — 13 collections × 400 RU/s min would be ~5,200 RU/s and bill for everything over 1,000. The app's `setup.js` only calls `db.createCollection(name)` with no throughput option, so every collection auto-inherits the shared bucket.
+3. **Account `totalThroughputLimit = 1000`.** This is the hard enforcement: the shared DB already reserves all 1,000 RU/s, so any attempt to add a dedicated-throughput collection (min +400) would exceed the cap and **Azure rejects it** — from code, the portal, or CLI alike. No discipline required; don't remove this cap.
 
 ```bash
+# 0. Verify Free Tier is ON (the step whose absence causes the billing overage).
+az cosmosdb show -g <rg> -n <account> --query enableFreeTier        # must print: true
+
+# 0b. If false, recreate the account WITH Free Tier (destructive; one free-tier
+#     account per subscription). Collections/indexes + seed auto-create on boot.
+az cosmosdb create -g <rg> -n <account> --kind MongoDB --server-version 7.0 \
+  --enable-free-tier true --default-consistency-level Session
+
 # Recreate the database with shared throughput (one-time, destructive — reseeds from setup/seed on boot)
 az cosmosdb mongodb database delete -g <rg> -a <account> -n <db> --yes
 az cosmosdb mongodb database create -g <rg> -a <account> -n <db> --throughput 1000
@@ -343,12 +353,12 @@ az resource update --ids "/subscriptions/<sub>/resourceGroups/<rg>/providers/Mic
 ## Next Steps
 
 - **Deploy:** See [DEPLOYMENT.md](DEPLOYMENT.md) for the environment-variable reference, then [DEPLOYMENT_AZURE.md](DEPLOYMENT_AZURE.md) for the full Azure runbook (managed Cosmos DB for MongoDB, HTTPS via Caddy, multi-instance scaling, Notification Hubs push, backups)
-- **QA Testing:** Follow [PROJECT_WORKFLOW_ASSESSMENT.md](PROJECT_WORKFLOW_ASSESSMENT.md) for testing checklist, load testing, and security audit
+- **QA Testing:** Follow [QA_TEST_PLAN.md](QA_TEST_PLAN.md) (functional checklist) and [UAT_TEST_PLAN.md](UAT_TEST_PLAN.md) (user-acceptance scenarios)
 - **Production:** Monitoring (Azure Monitor / Log Analytics), on-call rotation, runbooks
 
 ## Support
 
-- **Questions:** See `CLAUDE.md` (architecture) or `PRE_TEST_READINESS_ASSESSMENT.md` (security details)
+- **Questions:** See [CLAUDE.md](CLAUDE.md) (architecture, endpoints, guardrails) or [QA_TEST_PLAN.md](QA_TEST_PLAN.md) (test checklist)
 - **Issues:** Report on GitHub
 - **Security:** Email security@
 

@@ -146,22 +146,6 @@ export function statusDim(status: string): string {
   }
 }
 
-/** Map a report status string to its border color. */
-export function statusBorder(status: string): string {
-  switch (status) {
-    case 'safe':                return C.safeBorder;
-    case 'injured':             return C.injuredBorder;
-    case 'need_help':           return C.criticalBorder;
-    case 'awaiting_response':   return C.awaitingBorder;
-    case 'potentially_missing': return C.potMissingBorder;
-    case 'missing':             return C.missingBorder;
-    case 'verified_missing':    return C.potMissingBorder;
-    case 'rescued':             return C.rescuedBorder;
-    case 'deceased':            return C.deceasedBorder;
-    default:                    return C.border;
-  }
-}
-
 /** Ionicons glyph name for each report status — instantly recognizable. */
 export const STATUS_ICON: Record<string, string> = {
   safe:                'checkmark-circle',
@@ -182,18 +166,6 @@ export const DISASTER_ICON: Record<string, string> = {
   flood:      'water',
   fire:       'flame',
   tsunami:    'water',
-};
-
-export const STATUS_LABEL: Record<string, string> = {
-  safe:                'Safe',
-  injured:             'Injured',
-  need_help:           'Need Help',
-  awaiting_response:   'Awaiting Response',
-  potentially_missing: 'Pot. Missing',
-  missing:             'Missing',
-  verified_missing:    'Verified Missing',
-  rescued:             'Rescued',
-  deceased:            'Deceased',
 };
 
 /**

@@ -252,10 +252,6 @@ const accountedPct = computed(() => {
   return s.total ? Math.round((s.checked_in / s.total) * 100) : 0;
 });
 
-const missingPersons = computed(() =>
-  allResults.value.filter((x) => ['potentially_missing', 'missing'].includes(x.status))
-);
-
 const selectedDisasterId = ref(null);
 const activeDisaster = computed(() => {
   if (selectedDisasterId.value) return disasters.value.find((d) => d.id === selectedDisasterId.value) || null;
@@ -335,11 +331,6 @@ async function fetchAll() {
   } finally {
     loading.value = false;
   }
-}
-
-function onRadiusInput() {
-  if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(fetchAll, 500);
 }
 
 async function submitToken() {

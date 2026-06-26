@@ -69,7 +69,6 @@ const SHELTER_NAMES = ['Community Centre', 'School Gym', 'Government Building', 
 const SHELTER_TYPES = ['shelter', 'hospital', 'clinic', 'assembly'];
 
 function hkPhone() { return `+852${rnd(50000000, 99999999)}`; }
-function hkid() { return `${pick('ABCKMNPRSTVWXYZ'.split(''))}${rnd(100000, 999999)}(${rnd(0, 9)})`; }
 function distanceKm(aLat, aLng, bLat, bLng) {
   const R = 6371, dLat = ((bLat - aLat) * Math.PI) / 180, dLng = ((bLng - aLng) * Math.PI) / 180;
   const s = Math.sin(dLat / 2) ** 2 + Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;

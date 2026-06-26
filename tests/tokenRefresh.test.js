@@ -30,7 +30,7 @@ const j = (path, body) => fetch(`${base}${path}`, {
 
 async function register() {
   const { body } = await j('/api/users/register', {
-    phone: '98765432', name: 'Rotater', personal_id: 'A1234567', privacy_consent: true,
+    phone: '98765432', name: 'Rotater', gender: 'male', personal_id: 'A1234567', privacy_consent: true,
   });
   return body; // { access_token, refresh_token, ... }
 }
@@ -52,7 +52,7 @@ describe('H4: refresh rotation + reuse detection', () => {
   it('H3: register sets an httpOnly refresh cookie that refresh accepts without a body', async () => {
     const reg = await fetch(`${base}/api/users/register`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: '98765433', name: 'Cookie', personal_id: 'A1234568', privacy_consent: true }),
+      body: JSON.stringify({ phone: '98765433', name: 'Cookie', gender: 'female', personal_id: 'A1234568', privacy_consent: true }),
     });
     const setCookie = reg.headers.get('set-cookie') || '';
     expect(setCookie).toMatch(/rs_refresh=/);

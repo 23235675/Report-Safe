@@ -1,34 +1,28 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import HomeView     from '../views/HomeView.vue';
-import ReportView   from '../views/ReportView.vue';
-import FamilyView   from '../views/FamilyView.vue';
-import GovView      from '../views/GovView.vue';
-import SheltersView from '../views/SheltersView.vue';
-import AccountView  from '../views/AccountView.vue';
-import StatusView   from '../views/StatusView.vue';
-import AdminView    from '../views/AdminView.vue';
-import AboutView    from '../views/AboutView.vue';
 
 const GOV_TOKEN_KEY = 'gov_token';
 
+// Lazy route components: Vite emits one chunk per view, so the initial bundle
+// no longer ships every screen (notably GovView's Leaflet map and AdminView)
+// up front — they load on navigation.
 const routes = [
-  { path: '/', name: 'home', component: HomeView },
-  { path: '/status', name: 'status', component: StatusView },
-  { path: '/report', name: 'report', component: ReportView },
-  { path: '/family', name: 'family', component: FamilyView },
-  { path: '/shelters', name: 'shelters', component: SheltersView },
-  { path: '/account', name: 'account', component: AccountView },
-  { path: '/about', name: 'about', component: AboutView },
+  { path: '/', name: 'home', component: () => import('../views/HomeView.vue') },
+  { path: '/status', name: 'status', component: () => import('../views/StatusView.vue') },
+  { path: '/report', name: 'report', component: () => import('../views/ReportView.vue') },
+  { path: '/family', name: 'family', component: () => import('../views/FamilyView.vue') },
+  { path: '/shelters', name: 'shelters', component: () => import('../views/SheltersView.vue') },
+  { path: '/account', name: 'account', component: () => import('../views/AccountView.vue') },
+  { path: '/about', name: 'about', component: () => import('../views/AboutView.vue') },
   {
     path: '/gov',
     name: 'gov',
-    component: GovView,
+    component: () => import('../views/GovView.vue'),
     meta: { requiresToken: true },
   },
   {
     path: '/admin',
     name: 'admin',
-    component: AdminView,
+    component: () => import('../views/AdminView.vue'),
     // AdminView manages its own auth (super_admin login / session), so no
     // router-level guard here — it shows the login form when unauthenticated.
     meta: { adminRoute: true },

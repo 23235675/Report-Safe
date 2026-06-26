@@ -444,6 +444,10 @@ function triggerManual(payload, io) {
  * @param {import('socket.io').Server} io
  */
 function startPolling(io) {
+  // No mock feed → disasters are gov/route-driven (triggerManual), so an idle
+  // poll timer would only spin a leader-lock check every tick for nothing.
+  // Skip it entirely (mirrors incidentEngine.startPolling).
+  if (process.env.ENABLE_MOCK_FEEDS !== 'true') return;
   const { runIfLeader } = require('../lib/leaderLock');
   const interval = Number(process.env.DISASTER_POLL_INTERVAL_MS) || 30000;
   const ttl = Math.ceil(interval * 1.1); // hold slightly past one tick (C4)

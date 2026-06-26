@@ -5,7 +5,7 @@
  *
  * PRODUCTION MIGRATION PATH:
  *   In PostgreSQL + PostGIS these computations move into the database via
- *   ST_DWithin / ST_Distance / ST_Azimuth. The function signatures below stay
+ *   ST_DWithin / ST_Distance. The function signatures below stay
  *   identical so the service layer does not change.
  */
 
@@ -18,15 +18,6 @@ const EARTH_RADIUS_KM = 6371;
  */
 function toRadians(deg) {
   return (deg * Math.PI) / 180;
-}
-
-/**
- * Convert radians to degrees.
- * @param {number} rad
- * @returns {number}
- */
-function toDegrees(rad) {
-  return (rad * 180) / Math.PI;
 }
 
 /**
@@ -64,27 +55,8 @@ function isWithinRadius(point, center, radiusKm) {
   return distance <= radiusKm;
 }
 
-/**
- * Initial bearing (forward azimuth) from `from` to `to`.
- * @param {{lat:number,lng:number}} from
- * @param {{lat:number,lng:number}} to
- * @returns {number} bearing in degrees, normalised to [0,360), 0 = North
- */
-function bearingTo(from, to) {
-  const lat1 = toRadians(from.lat);
-  const lat2 = toRadians(to.lat);
-  const dLng = toRadians(to.lng - from.lng);
-  const y = Math.sin(dLng) * Math.cos(lat2);
-  const x =
-    Math.cos(lat1) * Math.sin(lat2) -
-    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-  const bearing = toDegrees(Math.atan2(y, x));
-  return (bearing + 360) % 360;
-}
-
 module.exports = {
   EARTH_RADIUS_KM,
   haversineKm,
   isWithinRadius,
-  bearingTo,
 };

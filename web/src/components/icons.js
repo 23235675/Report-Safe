@@ -114,6 +114,3 @@ export const ICONS = {
   'resize': '<path d="M4 9V4h5M20 15v5h-5M15 4h5v5M9 20H4v-5"/>',
   'wifi': '<path d="M5 12.5a10 10 0 0 1 14 0M7.5 15.5a6 6 0 0 1 9 0"/><circle cx="12" cy="18.5" r="1.1" fill="currentColor" stroke="none"/>',
 };
-
-/** Names that render as a solid/filled glyph (used for sizing hints only). */
-export const FILLED_ICONS = new Set(['star']);

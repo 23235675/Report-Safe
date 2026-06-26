@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { userStorage } from '../db/userStorage';
-import { setAuthSession, clearAuthSession, loginUser, registerUser, getCurrentUser, setResponderProfile } from '../api/apiClient';
+import { setAuthSession, clearAuthSession, loginUser, registerUser, setResponderProfile } from '../api/apiClient';
 import { isValidHKID, normalizeHKID, normalizePhone } from '../utils/hkid';
 import { C, R, SHADOW } from '../theme';
 import { useTranslation } from '../i18n';

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { getShelters, createShelter, updateShelter, deleteShelter, getDisasters, getUserToken, getCurrentUser, createSafePlace, listPendingSafePlaces, moderateSafePlace } from '../api.js';
 import { GOV_TOKEN_KEY } from '../router/index.js';
@@ -112,32 +112,10 @@ const filtered = computed(() => {
   return list;
 });
 
-function capacityClass(s) {
-  if (!s.capacity) return '';
-  const ratio = s.current_count / s.capacity;
-  if (ratio >= 0.9) return 'cap-critical';
-  if (ratio >= 0.7) return 'cap-high';
-  return 'cap-ok';
-}
-
-function capacityPct(s) {
-  if (!s.capacity) return null;
-  return Math.round((s.current_count / s.capacity) * 100);
-}
-
 // Available beds (wireframe) = capacity − current occupancy. Null when no capacity set.
 function bedsFree(s) {
   if (!s.capacity) return null;
   return Math.max(0, Number(s.capacity) - Number(s.current_count || 0));
-}
-
-// Occupancy "Status" (wireframe) — derived from capacity, not a stored field.
-function statusInfo(s) {
-  if (!s.capacity) return null;
-  const cls = capacityClass(s);
-  if (cls === 'cap-critical') return { label: t('shelters.statusFull'), cls: 'st-full' };
-  if (cls === 'cap-high')     return { label: t('shelters.statusNearFull'), cls: 'st-near' };
-  return { label: t('shelters.statusAvailable'), cls: 'st-ok' };
 }
 
 // Pending safe-place moderation queue (gov/volunteer only).

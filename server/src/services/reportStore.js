@@ -602,11 +602,18 @@ async function finalizePendingErasures(userId) {
     ? { _id: userId }
     : { deletion_state: 'pending' };
   const pending = await collection('users').find(filter, { projection: { _id: 1 } }).limit(500).toArray();
-  for (const { _id } of pending) {
-    await collection('account_links').deleteMany({ $or: [{ user_a_id: _id }, { user_b_id: _id }] });
-    await collection('device_push_tokens').deleteMany({ user_id: _id });
-    await collection('safe_places').deleteMany({ created_by_user_id: _id });
-    await collection('users').deleteOne({ _id });
+  const ids = pending.map((p) => p._id);
+  if (ids.length) {
+    // Emulate the SQL FK cascades in BULK: one deleteMany per related collection
+    // (was a per-user serial loop = ids.length × 4 round-trips). Dependents go
+    // concurrently; the user docs are deleted LAST so a crash mid-cascade leaves
+    // the tombstone for the next sweep — same idempotent guarantee, fewer ops/RU.
+    await Promise.all([
+      collection('account_links').deleteMany({ $or: [{ user_a_id: { $in: ids } }, { user_b_id: { $in: ids } }] }),
+      collection('device_push_tokens').deleteMany({ user_id: { $in: ids } }),
+      collection('safe_places').deleteMany({ created_by_user_id: { $in: ids } }),
+    ]);
+    await collection('users').deleteMany({ _id: { $in: ids } });
   }
   return { finalized: pending.length };
 }

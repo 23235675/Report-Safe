@@ -8,7 +8,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 const express = require('express');
 const { setup } = require('../server/src/db/setup');
 const { collection, closeDb } = require('../server/src/db/mongo');
-const { hashToken, hashPassword, generateTokenPair } = require('../server/src/lib/authGuard');
+const { hashToken, hashPassword } = require('../server/src/lib/authGuard');
 const createAdminRouter = require('../server/src/routes/admin');
 
 let server, base;

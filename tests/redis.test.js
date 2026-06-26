@@ -11,8 +11,6 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
  *   4. Graceful shutdown disconnects clients cleanly
  */
 const skip = !process.env.REDIS_HOST && !process.env.REDIS_URL;
-
-const redis = require('redis');
 const { connectRedisPair, isRedisConfigured, createRedisClient } = require('../server/src/lib/redisClient');
 const { createRedisRateLimiter, setRedisClient } = require('../server/src/lib/rateLimit');
 
@@ -103,9 +101,11 @@ describe.skipIf(skip)('Redis pair — connectRedisPair()', () => {
     expect(pair.sub).toBeDefined();
 
     // Verify pub/sub actually work across the pair.
-    const received = await new Promise(async (resolve) => {
-      await pair.sub.subscribe('test:channel', (msg) => resolve(msg));
-      await pair.pub.publish('test:channel', 'hello');
+    const received = await new Promise((resolve, reject) => {
+      pair.sub
+        .subscribe('test:channel', (msg) => resolve(msg))
+        .then(() => pair.pub.publish('test:channel', 'hello'))
+        .catch(reject);
     });
     expect(received).toBe('hello');
 

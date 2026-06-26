@@ -307,8 +307,6 @@ function fmt(ts) {
 }
 function shortId(id) { return id ? id.split('-')[0] : '—'; }
 const currentRows = computed(() => rows.value[activeTab.value] ?? []);
-const canHaveForms = computed(() => ['users','reports','disasters'].includes(activeTab.value));
-const canSearch    = computed(() => ['users','reports','links'].includes(activeTab.value));
 const canPage      = computed(() => ['users','reports','links','devices'].includes(activeTab.value));
 const total        = computed(() => totals.value[activeTab.value] ?? currentRows.value.length);
 </script>

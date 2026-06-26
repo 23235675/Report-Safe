@@ -26,8 +26,11 @@ Redis for multi-instance scaling, and Azure Notification Hubs for remote push.
 
 ## 1. Azure Cosmos DB for MongoDB (managed)
 
-Create (or reuse) an **Azure Cosmos DB for MongoDB** account (RU-based,
-Serverless is the cheapest for low/spiky load; API version 7.0). Then:
+Create an **Azure Cosmos DB for MongoDB** account (RU-based, API version 7.0)
+**with Free Tier enabled** (`--enable-free-tier true` — set at creation only,
+one per subscription). Free Tier waives the first **1,000 RU/s + 25 GB**, so the
+provisioned-throughput DB below runs at **$0**; without it that throughput is
+billed against the generic ~100 RU/s grant. Then:
 
 1. **Networking** — under *Networking*, allow your app host's IP, or enable
    "Allow access from Azure portal / Azure datacenters" for a quick start.
@@ -42,9 +45,10 @@ Geo queries use a lat/lng bounding-box prefilter + JS haversine (`lib/geo.js`),
 so **no PostGIS/2dsphere is required**. Name search uses `$regex` (Cosmos
 RU-based has no `$text` index) — the same fallback behaviour as before.
 
-> Cost note: this replaced an oversized Azure Database for PostgreSQL. Cosmos
-> Serverless bills per-request; a small deployment stays near $0. Keep the
-> Notification Hub on the **Free** tier (1M pushes/mo).
+> Cost note: this replaced an oversized Azure Database for PostgreSQL. With Free
+> Tier enabled, the provisioned 1,000 RU/s + 25 GB are **$0** — see README
+> "Azure Cost Guardrails" for the verify step and the throughput cap that keeps
+> it there. Keep the Notification Hub on the **Free** tier (1M pushes/mo).
 
 ---
 
@@ -204,7 +208,9 @@ curl -X POST https://reportsafe.example.com/api/disasters/trigger \
   (it is, here), then it's shared. Raise for a real surge.
 - **Zero-downtime deploy** — `docker compose up -d --build` recreates one
   service at a time; Caddy's health checks route around a draining instance.
-- **Scaling the DB** — Cosmos Serverless autoscales per-request; if geo radius
-  queries get hot under heavy load, switch the bounding-box prefilter in
+- **Scaling the DB** — the DB runs on provisioned shared throughput (1,000 RU/s,
+  free-tier). Under sustained load you'll see HTTP 429 (the outbox retries handle
+  it); raise throughput only if you intend to pay past the free 1,000. If geo
+  radius queries get hot, switch the bounding-box prefilter in
   `reportStore.js`/`triggerEngine.js` to a `2dsphere` GeoJSON index (store a
   `location` point alongside lat/lng) for true server-side geo indexing.

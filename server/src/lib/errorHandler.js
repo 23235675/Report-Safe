@@ -8,7 +8,7 @@ const { logger } = require('./logger');
  * thrown error becomes a clean JSON envelope with the request id — never a
  * stack trace leaked to the client. Register as the final app.use().
  */
-function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-vars
+function errorHandler(err, req, res, next) {
   logger.error('unhandled_error', {
     reqId: req.id,
     method: req.method,

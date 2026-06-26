@@ -2,19 +2,6 @@
 
 const { z } = require('zod');
 
-/** All allowed report status values — single source of truth across server + clients. */
-const STATUS_VALUES = [
-  'safe',
-  'injured',
-  'need_help',
-  'awaiting_response',
-  'potentially_missing',
-  'missing',
-  'verified_missing',
-  'rescued',
-  'deceased',
-];
-
 const latSchema = z.number().min(-90).max(90);
 const lngSchema = z.number().min(-180).max(180);
 
@@ -282,11 +269,6 @@ const DeviceRegisterSchema = z.object({
 });
 
 // ── Community First Responder (CFR) ──────────────────────────────────
-/** Skills a responder can register; an incident type maps to one of these. */
-const RESPONDER_SKILLS = ['cpr', 'aed', 'fire'];
-/** Incident types a 999/CAD dispatch can carry. */
-const INCIDENT_TYPES = ['cardiac_arrest', 'fire', 'trauma', 'other'];
-
 /**
  * Validates POST /api/incidents — a 999/CAD dispatch needing nearby responders.
  * This is the single government-API integration seam: a real CAD webhook posts
@@ -342,9 +324,6 @@ const MissingPersonUpdateSchema = z.object({
 });
 
 module.exports = {
-  STATUS_VALUES,
-  RESPONDER_SKILLS,
-  INCIDENT_TYPES,
   IncidentCreateSchema,
   IncidentRespondSchema,
   ResponderProfileSchema,

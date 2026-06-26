@@ -104,10 +104,10 @@ describe('UserRegisterSchema — registration requires phone + name + HKID + con
 
   it('accepts lenient HKID formats (1+ letter + 6+ digits)', () => {
     const tests = [
-      { phone: '+85291234567', name: 'Mei Wong', personal_id: 'A123456', privacy_consent: true },     // minimal
-      { phone: '+85291234567', name: 'Mei Wong', personal_id: 'AB1234567', privacy_consent: true },   // 2 letters
-      { phone: '+85291234567', name: 'Mei Wong', personal_id: '1A234567', privacy_consent: true },    // digit first
-      { phone: '+85291234567', name: 'Mei Wong', personal_id: 'A1234567890', privacy_consent: true }, // 10 chars
+      { phone: '+85291234567', name: 'Mei Wong', gender: 'female', personal_id: 'A123456', privacy_consent: true },     // minimal
+      { phone: '+85291234567', name: 'Mei Wong', gender: 'female', personal_id: 'AB1234567', privacy_consent: true },   // 2 letters
+      { phone: '+85291234567', name: 'Mei Wong', gender: 'female', personal_id: '1A234567', privacy_consent: true },    // digit first
+      { phone: '+85291234567', name: 'Mei Wong', gender: 'female', personal_id: 'A1234567890', privacy_consent: true }, // 10 chars
     ];
     tests.forEach((t) => {
       const r = UserRegisterSchema.safeParse(t);
@@ -115,8 +115,13 @@ describe('UserRegisterSchema — registration requires phone + name + HKID + con
     });
   });
 
+  it('requires gender', () => {
+    const r = UserRegisterSchema.safeParse({ phone: '+85291234567', name: 'Mei Wong', personal_id: 'A123456(3)', privacy_consent: true });
+    expect(r.success).toBe(false);  // missing gender
+  });
+
   it('requires privacy_consent = true (PDPO DPP1)', () => {
-    const base = { phone: '+85291234567', name: 'Mei Wong', personal_id: 'A123456(3)' };
+    const base = { phone: '+85291234567', name: 'Mei Wong', gender: 'female', personal_id: 'A123456(3)' };
     expect(UserRegisterSchema.safeParse(base).success).toBe(false); // missing consent
     expect(UserRegisterSchema.safeParse({ ...base, privacy_consent: false }).success).toBe(false);
     expect(UserRegisterSchema.safeParse({ ...base, privacy_consent: true }).success).toBe(true);
@@ -126,6 +131,7 @@ describe('UserRegisterSchema — registration requires phone + name + HKID + con
     const r = UserRegisterSchema.safeParse({
       phone: '+85291234567',
       name: 'Mei Wong',
+      gender: 'female',
       personal_id: 'A123456(3)',
       privacy_consent: true,
     });

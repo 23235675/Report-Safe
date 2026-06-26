@@ -99,11 +99,6 @@ export function severityKey(s) {
   return 'extreme';
 }
 
-/** Composable form for components that prefer the Composition API. */
-export function useI18n() {
-  return { locale, t, setLocale, toggleLocale, disasterTypeLabel, shelterTypeLabel, sourceLabel, severityKey };
-}
-
 /** Vue plugin: register `$t` and `$locale` so every template can use them. */
 export default {
   install(app) {
