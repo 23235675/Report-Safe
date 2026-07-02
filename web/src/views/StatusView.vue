@@ -147,9 +147,9 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="callout-card callout-disasters">
-          <AppIcon name="warning" :size="22" style="color: var(--need-help);" />
+          <AppIcon name="warning" :size="22" style="color: var(--text-lo);" />
           <div class="callout-body">
-            <span class="callout-val" style="color: var(--need-help);">{{ stats.active_disasters }}</span>
+            <span class="callout-val">{{ stats.active_disasters }}</span>
             <span class="callout-lbl">{{ $t('statusView.activeDisasters') }}</span>
           </div>
         </div>
@@ -181,8 +181,7 @@ onUnmounted(() => {
               >
                 <td>
                   <span class="st-cell">
-                    <span class="st-dot" :style="{ background: cat.color }"></span>
-                    <AppIcon :name="cat.icon" :size="14" :style="{ color: cat.color }" />
+                    <AppIcon :name="cat.icon" :size="14" style="color: var(--text-lo);" />
                     <span class="st-name">{{ cat.label }}</span>
                   </span>
                 </td>
@@ -190,7 +189,7 @@ onUnmounted(() => {
                 <td>
                   <div class="share-cell">
                     <div class="share-bar">
-                      <div class="share-fill" :style="{ width: pct(cat.val || 0) + '%', background: cat.color }"></div>
+                      <div class="share-fill" :style="{ width: pct(cat.val || 0) + '%' }"></div>
                     </div>
                     <span class="share-pct">{{ pct(cat.val || 0) }}%</span>
                   </div>
@@ -282,12 +281,11 @@ onUnmounted(() => {
 .status-row.is-active td { background: var(--gov-blue-dim); }
 .status-row.is-active td:first-child { box-shadow: inset 3px 0 0 var(--gov-blue); }
 .st-cell  { display: inline-flex; align-items: center; gap: 8px; }
-.st-dot   { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .st-name  { font-weight: 600; color: var(--text-hi); }
 .st-count { font-family: var(--font-mono); font-weight: 700; color: var(--text-hi); }
 .share-cell { display: flex; align-items: center; gap: var(--sp-3); }
 .share-bar  { flex: 1; max-width: 220px; height: 6px; background: var(--bg-raised); border: 1px solid var(--border-line); border-radius: 3px; overflow: hidden; }
-.share-fill { height: 100%; transition: width 0.4s ease; min-width: 2px; }
+.share-fill { height: 100%; transition: width 0.4s ease; min-width: 2px; background: var(--gov-blue); }
 .share-pct  { font-family: var(--font-mono); font-size: 12px; color: var(--text-lo); width: 42px; text-align: right; }
 
 .section-block { display: flex; flex-direction: column; gap: var(--sp-3); }

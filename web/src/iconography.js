@@ -186,11 +186,11 @@ export const VISIBILITY = {
   coarse: {
     key: 'coarse', icon: 'globe-outline', label: 'Public · ~1 km', short: 'Public ~1 km',
     detail: 'Public & family see an approximate location only (±1 km). Medical notes hidden.',
-    colorVar: 'var(--missing)', dimVar: 'var(--missing-dim)', borderVar: 'var(--missing-border)',
+    colorVar: '#4b5563', dimVar: '#f3f4f6', borderVar: '#d1d5db',
   },
   rescue: {
     key: 'rescue', icon: 'lock-closed', label: 'Rescue-only · exact GPS', short: 'Rescue-only',
     detail: 'Exact GPS and medical notes are visible to authorised rescue teams only.',
-    colorVar: 'var(--gov-blue)', dimVar: 'var(--gov-blue-dim)', borderVar: 'var(--gov-blue-border)',
+    colorVar: '#374151', dimVar: '#e5e7eb', borderVar: '#9ca3af',
   },
 };
