@@ -359,10 +359,10 @@ function relativeTime(ts) {
           </div>
 
           <div class="pane-navigation-tabs">
-            <button :class="{ active: activeSection === 'rescue-queue' }" @click="activeSection = 'rescue-queue'">TRIAGE</button>
-            <button :class="{ active: activeSection === 'incidents' }" @click="activeSection = 'incidents'">DISASTERS</button>
-            <button :class="{ active: activeSection === 'cfr' }" @click="activeSection = 'cfr'">DISPATCH</button>
-            <button :class="{ active: activeSection === 'tools' }" @click="activeSection = 'tools'">LAYERS</button>
+            <button :class="{ active: activeSection === 'rescue-queue' }" :aria-pressed="activeSection === 'rescue-queue'" @click="activeSection = 'rescue-queue'">TRIAGE</button>
+            <button :class="{ active: activeSection === 'incidents' }" :aria-pressed="activeSection === 'incidents'" @click="activeSection = 'incidents'">DISASTERS</button>
+            <button :class="{ active: activeSection === 'cfr' }" :aria-pressed="activeSection === 'cfr'" @click="activeSection = 'cfr'">DISPATCH</button>
+            <button :class="{ active: activeSection === 'tools' }" :aria-pressed="activeSection === 'tools'" @click="activeSection = 'tools'">LAYERS</button>
           </div>
 
           <div class="pane-inner-scroller">
@@ -383,7 +383,14 @@ function relativeTime(ts) {
 
             <!-- DISASTERS -->
             <div v-if="activeSection === 'incidents'" class="sub-wrapper">
-              <div v-for="d in disasters" :key="d.id" class="cyber-list-row" :class="{ active: activeDisaster?.id === d.id }" @click="selectDisaster(d)">
+              <div
+                v-for="d in disasters" :key="d.id"
+                class="cyber-list-row" :class="{ active: activeDisaster?.id === d.id }"
+                role="button" tabindex="0"
+                @click="selectDisaster(d)"
+                @keydown.enter.prevent="selectDisaster(d)"
+                @keydown.space.prevent="selectDisaster(d)"
+              >
                 <div class="row-flex-meta"><strong>{{ d.type }}</strong><span>{{ d.radius_km }} KM</span></div>
                 <div class="row-flex-desc">{{ d.description }}</div>
               </div>
@@ -423,8 +430,8 @@ function relativeTime(ts) {
 
           <div class="gis-map-viewport">
             <div class="map-scope-toggle">
-              <button :class="{ active: mapScope === 'all' }" @click="mapScope = 'all'">ALL</button>
-              <button :class="{ active: mapScope === 'disaster' }" @click="mapScope = 'disaster'">BY DISASTER</button>
+              <button :class="{ active: mapScope === 'all' }" :aria-pressed="mapScope === 'all'" @click="mapScope = 'all'">ALL</button>
+              <button :class="{ active: mapScope === 'disaster' }" :aria-pressed="mapScope === 'disaster'" @click="mapScope = 'disaster'">BY DISASTER</button>
             </div>
             <LeafletMap ref="leafletMapRef" :reports="mapReports" :disasters="mapDisasterZones" :shelters="mapShelters" :layers="mapLayers" @markerClick="onMarkerClick" @move="onMapMove" />
           </div>
@@ -438,7 +445,7 @@ function relativeTime(ts) {
           <div v-if="selectedPerson" class="pane-sub-segment separation-border">
             <div class="pane-header-strip highlight-alert-bg">
               <span class="pane-title">PERSON DETAILS</span>
-              <button class="dismiss-btn" @click="selectedPersonId = null">×</button>
+              <button class="dismiss-btn" aria-label="Close person details" @click="selectedPersonId = null">×</button>
             </div>
             <div class="inspector-profile-card">
               <div class="profile-summary-row">
@@ -450,9 +457,9 @@ function relativeTime(ts) {
               </div>
               <div class="profile-technical-sheet">
                 <div class="sheet-data-node"><span>LAT / LNG</span><strong>{{ selectedPerson.lat?.toFixed(4) }}, {{ selectedPerson.lng?.toFixed(4) }}</strong></div>
-                <div class="sheet-data-node"><span>SCAN RADIUS DISTANCE</span><strong>{{ selectedPerson.distance_km?.toFixed(2) }} KM</strong></div>
+                <div class="sheet-data-node"><span>DISTANCE FROM CENTER</span><strong>{{ selectedPerson.distance_km?.toFixed(2) }} KM</strong></div>
                 <div class="sheet-data-node"><span>UPDATED</span><strong>{{ relativeTime(selectedPerson.updated_at) }}</strong></div>
-                <div class="sheet-data-node"><span>PHONE</span><strong>{{ selectedPerson.phone || 'DISCONNECTED' }}</strong></div>
+                <div class="sheet-data-node"><span>PHONE</span><strong>{{ selectedPerson.phone || 'NOT PROVIDED' }}</strong></div>
                 <div v-if="selectedPerson.medical_notes" class="medical-directive-alert">
                   <span class="directive-lbl">MEDICAL NOTES</span>
                   <p class="directive-body">{{ selectedPerson.medical_notes }}</p>
@@ -487,7 +494,14 @@ function relativeTime(ts) {
               </span>
             </div>
             <div class="facility-list">
-              <div v-for="s in shelters" :key="s.id" class="facility-row" @click="locateShelter(s)">
+              <div
+                v-for="s in shelters" :key="s.id"
+                class="facility-row"
+                role="button" tabindex="0"
+                @click="locateShelter(s)"
+                @keydown.enter.prevent="locateShelter(s)"
+                @keydown.space.prevent="locateShelter(s)"
+              >
                 <span class="facility-name">{{ s.name }}</span>
                 <span class="facility-meta">{{ s.type }}<template v-if="s.capacity"> · {{ s.capacity }}</template></span>
               </div>
@@ -497,7 +511,7 @@ function relativeTime(ts) {
 
           <div class="pane-sub-segment variable-growth-fill">
             <div class="pane-header-strip"><span class="pane-title">ACTIVITY LOG</span></div>
-            <div class="live-stream-logger">
+            <div class="live-stream-logger" role="log" aria-live="polite">
               <div v-for="(a, i) in alerts" :key="i" class="stream-line-node" :class="a.level">
                 <span class="line-timestamp">[{{ a.ts }}]</span>
                 <span class="line-message-body">{{ a.msg }}</span>
@@ -526,22 +540,22 @@ function relativeTime(ts) {
 .pane-column { background:#fff; border:none; border-right:1px solid #d0d0d0; display:flex; flex-direction:column; overflow:hidden; border-radius:0; }
 .pane-column:last-child { border-right:none; border-left:1px solid #d0d0d0; }
 .pane-header-strip { padding:10px 12px; background:#e8e8e8; border-bottom:1px solid #d0d0d0; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
-.pane-title { font-size:11px; font-weight:700; color:#333; }
+.pane-title { font-size:12px; font-weight:700; color:#333; }
 
 /* ── Navigation ────────────────────────────────────────── */
 .pane-navigation-tabs { display:flex; background:#f0f0f0; border-bottom:1px solid #d0d0d0; flex-shrink:0; }
-.pane-navigation-tabs button { flex:1; padding:8px 2px; font-size:11px; font-weight:600; background:transparent; border:none; border-bottom:2px solid transparent; color:#888; cursor:pointer; font-family:inherit; }
+.pane-navigation-tabs button { flex:1; padding:8px 2px; font-size:12px; font-weight:600; background:transparent; border:none; border-bottom:2px solid transparent; color:#666; cursor:pointer; font-family:inherit; }
 .pane-navigation-tabs button.active { color:#222; border-bottom-color:#555; background:#fff; }
 
 .pane-inner-scroller { flex:1; overflow-y:auto; padding:10px; }
 .sub-wrapper { display:flex; flex-direction:column; gap:8px; }
-.cyber-empty-notice { padding:16px; text-align:center; color:#888; font-size:12px; }
+.cyber-empty-notice { padding:16px; text-align:center; color:#666; font-size:13px; }
 
 /* ── Map ───────────────────────────────────────────────── */
 .center-workspace-pane { display:flex; flex-direction:column; }
 .gis-map-viewport { flex:1; min-height:0; position:relative; background:#e8e8e8; }
 .map-scope-toggle { position:absolute; top:10px; right:10px; z-index:1000; display:flex; background:#fff; border:1px solid #d0d0d0; overflow:hidden; border-radius:2px; }
-.map-scope-toggle button { font-size:11px; font-weight:600; padding:6px 10px; background:#fff; border:none; color:#555; cursor:pointer; font-family:inherit; }
+.map-scope-toggle button { font-size:12px; font-weight:600; padding:6px 10px; background:#fff; border:none; color:#555; cursor:pointer; font-family:inherit; }
 .map-scope-toggle button.active { background:#555; color:#fff; }
 
 /* ── Inspector ─────────────────────────────────────────── */
@@ -551,57 +565,57 @@ function relativeTime(ts) {
 .default-pad { padding-bottom:10px; }
 .inspector-profile-card { padding:12px; display:flex; flex-direction:column; gap:8px; }
 .profile-summary-row { display:flex; gap:8px; align-items:center; }
-.name-header-text { font-size:13px; font-weight:700; color:#222; }
+.name-header-text { font-size:14px; font-weight:700; color:#222; }
 .profile-technical-sheet { display:flex; flex-direction:column; gap:5px; }
-.sheet-data-node { display:flex; justify-content:space-between; font-size:12px; gap:8px; }
-.sheet-data-node span { color:#888; }
+.sheet-data-node { display:flex; justify-content:space-between; font-size:13px; gap:8px; }
+.sheet-data-node span { color:#666; }
 .sheet-data-node strong { color:#222; text-align:right; }
 .medical-directive-alert { background:#fff; border:1px solid #d0d0d0; padding:6px; margin-top:4px; border-radius:2px; }
-.directive-lbl { font-size:11px; font-weight:700; color:#333; display:block; }
-.directive-body { font-size:12px; color:#222; margin:2px 0 0 0; }
+.directive-lbl { font-size:12px; font-weight:700; color:#333; display:block; }
+.directive-body { font-size:13px; color:#222; margin:2px 0 0 0; }
 
 /* ── Metrics ───────────────────────────────────────────── */
 .metric-proportion-row { display:flex; align-items:center; gap:14px; padding:8px 12px 0; }
 .proportional-ring-wrap { position:relative; display:inline-flex; }
-.percentage-label { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:10px; font-weight:700; color:#222; }
-.proportional-legend-list { display:flex; flex-direction:column; gap:4px; font-size:11px; font-weight:600; color:#333; }
+.percentage-label { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:11px; font-weight:700; color:#222; }
+.proportional-legend-list { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; color:#333; }
 .bullet-dot { display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:4px; }
 .clear-green { background:#16a34a; } .clear-red { background:#dc2626; }
 
 /* ── Facilities ────────────────────────────────────────── */
 .facility-list { max-height:110px; overflow-y:auto; }
-.facility-row { display:flex; align-items:center; gap:8px; padding:5px 12px; border-bottom:1px solid #eee; font-size:12px; cursor:pointer; }
+.facility-row { display:flex; align-items:center; gap:8px; padding:5px 12px; border-bottom:1px solid #eee; font-size:13px; cursor:pointer; }
 .facility-row:hover { background:#f9f9f9; }
 .facility-name { color:#222; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.facility-meta { color:#888; font-size:11px; flex-shrink:0; }
+.facility-meta { color:#666; font-size:12px; flex-shrink:0; }
 
 /* ── Log ───────────────────────────────────────────────── */
 .live-stream-logger { flex:1; overflow-y:auto; padding:8px 12px; display:flex; flex-direction:column; gap:5px; background:#fff; }
-.stream-line-node { font-size:11px; line-height:1.3; display:flex; gap:6px; border-bottom:1px solid #eee; padding-bottom:2px; }
-.line-timestamp { color:#888; flex-shrink:0; font-family:var(--font-mono); }
+.stream-line-node { font-size:12px; line-height:1.3; display:flex; gap:6px; border-bottom:1px solid #eee; padding-bottom:2px; }
+.line-timestamp { color:#666; flex-shrink:0; font-family:var(--font-mono); }
 .line-message-body { color:#222; }
 .stream-line-node.critical .line-message-body { color:#222; font-weight:700; }
 .stream-line-node.warn .line-message-body { color:#555; font-weight:600; }
-.stream-empty-prompt { color:#888; font-size:11px; }
+.stream-empty-prompt { color:#666; font-size:12px; }
 
 /* ── Forms (LAYERS tab; the dispatch form lives in DispatchPanel) ── */
-.form-title { font-size:11px; font-weight:700; color:#555; }
+.form-title { font-size:12px; font-weight:700; color:#555; }
 .range-box { display:flex; flex-direction:column; gap:4px; }
-.range-labels { display:flex; justify-content:space-between; font-size:11px; color:#888; }
+.range-labels { display:flex; justify-content:space-between; font-size:12px; color:#888; }
 .cyber-slider { width:100%; }
 .topology-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
-.topology-checkbox-item { display:flex; align-items:center; gap:5px; font-size:11px; color:#555; cursor:pointer; }
+.topology-checkbox-item { display:flex; align-items:center; gap:5px; font-size:12px; color:#555; cursor:pointer; }
 .topology-checkbox-item input[type="checkbox"] { accent-color:#555; }
 .pane-bottom-action-dock { padding:8px; border-top:1px solid #d0d0d0; background:#f5f5f5; }
-.btn-system-abort { width:100%; padding:6px; color:#555; background:transparent; border:1px solid #d0d0d0; font-size:11px; font-weight:600; cursor:pointer; font-family:inherit; border-radius:2px; }
+.btn-system-abort { width:100%; padding:6px; color:#555; background:transparent; border:1px solid #d0d0d0; font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; border-radius:2px; }
 .btn-system-abort:hover { color:#222; background:#e8e8e8; border-color:#999; }
-.pane-badge-status { background:#eee; color:#555; font-size:10px; padding:1px 6px; font-weight:600; border-radius:2px; }
+.pane-badge-status { background:#eee; color:#555; font-size:11px; padding:1px 6px; font-weight:600; border-radius:2px; }
 .pane-badge-status.scanning { color:#555; }
 .cyber-list-row { padding:6px; border-bottom:1px solid #d0d0d0; cursor:pointer; background:#fff; }
 .cyber-list-row.active { border-left:2px solid #555; background:#f9f9f9; }
-.row-flex-meta { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#222; }
-.row-flex-desc { font-size:11px; color:#888; margin-top:2px; }
-.pane-coordinates { font-size:10px; color:#888; font-family:var(--font-mono); }
-.dismiss-btn { background:transparent; border:none; color:#888; font-size:16px; cursor:pointer; line-height:1; }
+.row-flex-meta { display:flex; justify-content:space-between; align-items:center; font-size:13px; color:#222; }
+.row-flex-desc { font-size:12px; color:#666; margin-top:2px; }
+.pane-coordinates { font-size:11px; color:#666; font-family:var(--font-mono); }
+.dismiss-btn { background:transparent; border:none; color:#666; font-size:16px; cursor:pointer; line-height:1; }
 .no-bg { background:transparent !important; }
 </style>

@@ -11,6 +11,7 @@ import {
 } from '../api.js';
 import LoginPanel from '../components/LoginPanel.vue';
 import DataTable from '../components/DataTable.vue';
+import { useFocusTrap } from '../composables/useFocusTrap.js';
 
 const adminToken = ref(getAdminToken() || '');
 const adminUser  = ref(getAdminUser());
@@ -323,6 +324,12 @@ async function submitForm() {
 
 const deleteTarget = ref(null);
 const deleteBusy   = ref(false);
+
+// Modal focus traps — Tab cycles inside, Esc closes, focus restores on close.
+const formModalEl   = ref(null);
+const deleteModalEl = ref(null);
+useFocusTrap(formModalEl, showForm, closeForm);
+useFocusTrap(deleteModalEl, () => !!deleteTarget.value, () => { deleteTarget.value = null; });
 function confirmDelete(tab, row) { deleteTarget.value = { tab, row }; }
 async function doDelete() {
   if (!deleteTarget.value) return;
@@ -366,10 +373,10 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 <template>
   <!-- LOGIN -->
   <LoginPanel v-if="!adminToken" subtitle="Administration Console" :error="loginError" :busy="loginBusy" @submit="login">
-    <label class="field-label">Phone</label>
-    <input v-model="loginPhone" class="login-input" type="tel" placeholder="+852 9xxx xxxx" autocomplete="username" required />
-    <label class="field-label">Password</label>
-    <input v-model="loginPass" class="login-input" type="password" placeholder="••••••••" autocomplete="current-password" required />
+    <label class="field-label" for="admin-login-phone">Phone</label>
+    <input id="admin-login-phone" v-model="loginPhone" class="login-input" type="tel" placeholder="+852 9xxx xxxx" autocomplete="username" required />
+    <label class="field-label" for="admin-login-pass">Password</label>
+    <input id="admin-login-pass" v-model="loginPass" class="login-input" type="password" placeholder="••••••••" autocomplete="current-password" required />
   </LoginPanel>
 
   <!-- DASHBOARD -->
@@ -394,12 +401,12 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
       </nav>
 
       <main class="content">
-        <div v-if="error" class="err-bar">{{ error }} <button @click="error = null">✕</button></div>
+        <div v-if="error" class="err-bar" role="alert">{{ error }} <button aria-label="Dismiss error" @click="error = null">✕</button></div>
 
         <!-- OVERVIEW -->
         <section v-if="activeTab === 'overview'">
           <h2 class="page-title">System Overview</h2>
-          <div v-if="loading" class="state-msg">Loading…</div>
+          <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!stats" class="state-msg">No data available.</div>
           <div v-else class="stat-grid">
             <div class="stat-card" v-for="(val, key) in stats" :key="key">
@@ -419,7 +426,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
         <section v-if="activeTab === 'users'">
           <div class="toolbar"><h2 class="page-title">Users</h2>
             <div class="toolbar-r">
-              <form @submit.prevent="doSearch" class="search-bar"><input v-model="searchQ" class="inp" placeholder="Search name / phone…" /><button class="btn" type="submit">Search</button></form>
+              <form @submit.prevent="doSearch" class="search-bar"><input v-model="searchQ" class="inp" placeholder="Search name / phone…" aria-label="Search users by name or phone" /><button class="btn" type="submit">Search</button></form>
               <button class="btn btn-dark" @click="openCreate('users')">+ New</button>
             </div></div>
           <div class="filter-row">
@@ -429,7 +436,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
             <select v-model="filters.users.has_email" class="flt" @change="applyFilters('users')"><option value="">Email: any</option><option value="true">has</option><option value="false">none</option></select>
             <button v-if="hasFilters('users')" class="flt-clear" @click="clearFilters('users')">Clear</button>
           </div>
-          <div v-if="loading" class="state-msg">Loading…</div>
+          <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
           <DataTable v-else :columns="TAB_CONFIG.users.columns" :rows="currentRows">
             <template #cell-actions="{ row }"><button class="btn btn-xs" @click="openEdit('users', row)">Edit</button><button class="btn btn-xs" @click="confirmDelete('users', row)">Del</button></template>
@@ -440,7 +447,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
         <section v-if="activeTab === 'reports'">
           <div class="toolbar"><h2 class="page-title">Status Reports</h2>
             <div class="toolbar-r">
-              <form @submit.prevent="doSearch" class="search-bar"><input v-model="searchQ" class="inp" placeholder="Search name / phone…" /><button class="btn" type="submit">Search</button></form>
+              <form @submit.prevent="doSearch" class="search-bar"><input v-model="searchQ" class="inp" placeholder="Search name / phone…" aria-label="Search reports by name or phone" /><button class="btn" type="submit">Search</button></form>
               <button class="btn btn-dark" @click="openCreate('reports')">+ New</button>
             </div></div>
           <div class="filter-row">
@@ -450,7 +457,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
             <select v-model="filters.reports.disaster_id" class="flt" @change="applyFilters('reports')"><option value="">Disaster: all</option><option value="__any__">in zone</option><option value="__none__">no zone</option><option v-for="d in disasterOptions" :key="d.id" :value="d.id">{{ d.type }} — {{ shortId(d.id) }}</option></select>
             <button v-if="hasFilters('reports')" class="flt-clear" @click="clearFilters('reports')">Clear</button>
           </div>
-          <div v-if="loading" class="state-msg">Loading…</div>
+          <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
           <DataTable v-else :columns="TAB_CONFIG.reports.columns" :rows="currentRows">
             <template #cell-name="{ row }">{{ row.user_name || row.name }}<span v-if="row.user_name && row.name && row.user_name !== row.name" class="sub"> ({{ row.name }})</span></template>
@@ -469,7 +476,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
             <select v-model="filters.disasters.type" class="flt" @change="applyFilters('disasters')"><option value="">Type: all</option><option v-for="t in DISASTER_TYPES" :key="t" :value="t">{{ t }}</option></select>
             <button v-if="hasFilters('disasters')" class="flt-clear" @click="clearFilters('disasters')">Clear</button>
           </div>
-          <div v-if="loading" class="state-msg">Loading…</div>
+          <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
           <DataTable v-else :columns="TAB_CONFIG.disasters.columns" :rows="currentRows">
             <template #cell-actions="{ row }"><button class="btn btn-xs" @click="openEdit('disasters', row)">Edit</button><button class="btn btn-xs" @click="confirmDelete('disasters', row)">Del</button></template>
@@ -479,15 +486,15 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
         <!-- LINKS -->
         <section v-if="activeTab === 'links'">
           <div class="toolbar"><h2 class="page-title">Account Links</h2>
-            <div class="toolbar-r"><form @submit.prevent="doSearch" class="search-bar"><input v-model="searchQ" class="inp" placeholder="Search name / phone…" /><button class="btn" type="submit">Search</button></form></div></div>
+            <div class="toolbar-r"><form @submit.prevent="doSearch" class="search-bar"><input v-model="searchQ" class="inp" placeholder="Search name / phone…" aria-label="Search links by name or phone" /><button class="btn" type="submit">Search</button></form></div></div>
           <div class="filter-row">
             <select v-model="filters.links.status" class="flt" @change="applyFilters('links')"><option value="">Status: all</option><option value="confirmed">confirmed</option><option value="pending">pending</option><option value="blocked">blocked</option></select>
             <button v-if="hasFilters('links')" class="flt-clear" @click="clearFilters('links')">Clear</button>
           </div>
-          <div v-if="loading" class="state-msg">Loading…</div>
+          <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
           <DataTable v-else :columns="TAB_CONFIG.links.columns" :rows="currentRows">
-            <template #cell-status="{ row }"><select class="flt inline" :value="row.status" @change="setLinkStatus(row, $event.target.value)"><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="blocked">blocked</option></select></template>
+            <template #cell-status="{ row }"><select class="flt inline" :value="row.status" aria-label="Link status" @change="setLinkStatus(row, $event.target.value)"><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="blocked">blocked</option></select></template>
             <template #cell-actions="{ row }"><button class="btn btn-xs" @click="confirmDelete('links', row)">Del</button></template>
           </DataTable>
         </section>
@@ -501,7 +508,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
             <select v-model="filters.devices.linked" class="flt" @change="applyFilters('devices')"><option value="">Account: any</option><option value="true">linked</option><option value="false">unlinked</option></select>
             <button v-if="hasFilters('devices')" class="flt-clear" @click="clearFilters('devices')">Clear</button>
           </div>
-          <div v-if="loading" class="state-msg">Loading…</div>
+          <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
           <DataTable v-else :columns="TAB_CONFIG.devices.columns" :rows="currentRows">
             <template #cell-actions="{ row }"><button class="btn btn-xs" @click="confirmDelete('devices', row)">Del</button></template>
@@ -516,7 +523,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
             <select v-model="filters.audit.entity" class="flt" @change="applyFilters('audit')"><option value="">Entity: all</option><option value="users">users</option><option value="reports">reports</option><option value="disasters">disasters</option><option value="account_links">links</option><option value="device_push_tokens">devices</option></select>
             <button v-if="hasFilters('audit')" class="flt-clear" @click="clearFilters('audit')">Clear</button>
           </div>
-          <div v-if="loading" class="state-msg">Loading…</div>
+          <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
           <DataTable v-else :columns="TAB_CONFIG.audit.columns" :rows="currentRows" />
         </section>
@@ -531,17 +538,17 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 
     <!-- FORM MODAL -->
     <div v-if="showForm" class="overlay" @click.self="closeForm">
-      <div class="modal">
-        <div class="modal-hd"><h3>{{ formMode === 'create' ? 'New' : 'Edit' }} {{ activeTab.replace(/s$/, '') }}</h3><button class="modal-x" @click="closeForm">✕</button></div>
+      <div ref="formModalEl" class="modal" role="dialog" aria-modal="true" aria-labelledby="admin-form-title" tabindex="-1">
+        <div class="modal-hd"><h3 id="admin-form-title">{{ formMode === 'create' ? 'New' : 'Edit' }} {{ activeTab.replace(/s$/, '') }}</h3><button class="modal-x" aria-label="Close" @click="closeForm">✕</button></div>
         <form @submit.prevent="submitForm" class="modal-body">
           <template v-for="field in TAB_CONFIG[activeTab]?.form?.fields || []" :key="field.key">
-            <label>{{ field.label }} <span v-if="field.required" class="req">*</span><span v-if="field.note" class="sub"> — {{ field.note }}</span></label>
-            <textarea v-if="field.type === 'textarea'" v-model="formData[field.key]" class="inp" rows="3" />
-            <select v-else-if="field.type === 'select'" v-model="formData[field.key]" class="inp"><option value="">—</option><option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option></select>
-            <label v-else-if="field.type === 'checkbox'" class="chk"><input type="checkbox" v-model="formData[field.key]" /> {{ field.label }}</label>
-            <input v-else v-model="formData[field.key]" class="inp" :type="field.type || 'text'" :required="field.required && formMode === 'create'" />
+            <label :for="`fld-${field.key}`">{{ field.label }} <span v-if="field.required" class="req">*</span><span v-if="field.note" class="sub"> — {{ field.note }}</span></label>
+            <textarea v-if="field.type === 'textarea'" :id="`fld-${field.key}`" v-model="formData[field.key]" class="inp" rows="3" />
+            <select v-else-if="field.type === 'select'" :id="`fld-${field.key}`" v-model="formData[field.key]" class="inp"><option value="">—</option><option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option></select>
+            <label v-else-if="field.type === 'checkbox'" class="chk"><input :id="`fld-${field.key}`" type="checkbox" v-model="formData[field.key]" /> {{ field.label }}</label>
+            <input v-else :id="`fld-${field.key}`" v-model="formData[field.key]" class="inp" :type="field.type || 'text'" :required="field.required && formMode === 'create'" />
           </template>
-          <div v-if="formError" class="form-err">{{ formError }}</div>
+          <div v-if="formError" class="form-err" role="alert">{{ formError }}</div>
           <div class="modal-acts">
             <button type="button" class="btn" @click="closeForm">Cancel</button>
             <button type="submit" class="btn btn-dark" :disabled="formBusy">{{ formBusy ? 'Saving…' : (formMode === 'create' ? 'Create' : 'Save') }}</button>
@@ -552,8 +559,8 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 
     <!-- DELETE CONFIRM -->
     <div v-if="deleteTarget" class="overlay" @click.self="deleteTarget = null">
-      <div class="modal modal-sm">
-        <div class="modal-hd"><h3>Confirm deletion</h3><button class="modal-x" @click="deleteTarget = null">✕</button></div>
+      <div ref="deleteModalEl" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="admin-delete-title" tabindex="-1">
+        <div class="modal-hd"><h3 id="admin-delete-title">Confirm deletion</h3><button class="modal-x" aria-label="Close" @click="deleteTarget = null">✕</button></div>
         <p class="modal-msg">Permanently delete this <strong>{{ deleteTarget.tab.replace(/s$/, '') }}</strong> record?</p>
         <div class="modal-acts" style="padding:0 20px 16px;">
           <button class="btn" @click="deleteTarget = null">Cancel</button>
@@ -568,30 +575,30 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 * { box-sizing:border-box; transition:none !important; }
 
 /* ── Login (fields slotted into the shared LoginPanel) ─── */
-.field-label { font-size:11px; font-weight:600; color:#555; margin-top:10px; margin-bottom:4px; }
-.login-input { padding:8px 10px; border:1px solid #d0d0d0; font-size:13px; color:#222; background:#fff; width:100%; box-sizing:border-box; font-family:inherit; border-radius:2px; }
-.login-input:focus { outline:none; border-color:#999; }
+.field-label { font-size:12px; font-weight:600; color:#555; margin-top:10px; margin-bottom:4px; }
+.login-input { padding:8px 10px; border:1px solid #d0d0d0; font-size:14px; color:#222; background:#fff; width:100%; box-sizing:border-box; font-family:inherit; border-radius:2px; }
+.login-input:focus { border-color:#999; }
 
 /* ── Shell ──────────────────────────────────────────────── */
-.shell { display:flex; flex-direction:column; height:100vh; background:#fff; font-family:var(--font-ui); font-size:13px; color:#222; overflow:hidden; }
+.shell { display:flex; flex-direction:column; height:100vh; background:#fff; font-family:var(--font-ui); font-size:14px; color:#222; overflow:hidden; }
 .body { display:flex; flex:1; min-height:0; }
 
 /* ── Top Bar ───────────────────────────────────────────── */
 .topbar { display:flex; align-items:center; justify-content:space-between; height:36px; padding:0 14px; background:#e8e8e8; color:#555; border-bottom:1px solid #d0d0d0; flex-shrink:0; }
 .topbar-l { display:flex; align-items:center; gap:8px; }
-.topbar-crest { width:22px; height:22px; background:#d0d0d0; border:1px solid #bbb; display:flex; align-items:center; justify-content:center; font-size:12px; color:#333; }
-.topbar-name { font-size:13px; font-weight:700; color:#222; }
+.topbar-crest { width:22px; height:22px; background:#d0d0d0; border:1px solid #bbb; display:flex; align-items:center; justify-content:center; font-size:13px; color:#333; }
+.topbar-name { font-size:14px; font-weight:700; color:#222; }
 .topbar-div { color:#ccc; }
-.topbar-sub { font-size:11px; color:#888; font-weight:500; }
+.topbar-sub { font-size:12px; color:#666; font-weight:500; }
 .topbar-r { display:flex; align-items:center; gap:12px; }
-.topbar-ts { font-size:11px; color:#888; font-family:var(--font-mono); }
-.topbar-user { font-size:11px; color:#666; }
-.topbar-logout { padding:3px 10px; background:transparent; border:1px solid #ccc; color:#555; font-size:11px; cursor:pointer; font-family:inherit; }
+.topbar-ts { font-size:12px; color:#666; font-family:var(--font-mono); }
+.topbar-user { font-size:12px; color:#666; }
+.topbar-logout { padding:3px 10px; background:transparent; border:1px solid #ccc; color:#555; font-size:12px; cursor:pointer; font-family:inherit; }
 .topbar-logout:hover { border-color:#999; color:#222; }
 
 /* ── Sidebar ───────────────────────────────────────────── */
 .sidebar { width:140px; background:#f0f0f0; border-right:1px solid #d0d0d0; display:flex; flex-direction:column; padding:6px 0; gap:0; flex-shrink:0; overflow-y:auto; }
-.nav-btn { display:block; padding:7px 12px; background:transparent; border:none; border-left:2px solid transparent; color:#555; cursor:pointer; text-align:left; font-size:12px; font-weight:500; font-family:inherit; width:100%; }
+.nav-btn { display:block; padding:7px 12px; background:transparent; border:none; border-left:2px solid transparent; color:#555; cursor:pointer; text-align:left; font-size:13px; font-weight:500; font-family:inherit; width:100%; }
 .nav-btn:hover { color:#222; background:#e0e0e0; }
 .nav-btn.on { color:#222; font-weight:700; border-left-color:#888; background:#e0e0e0; }
 
@@ -599,7 +606,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 .content { flex:1; overflow:auto; padding:16px 20px; display:flex; flex-direction:column; gap:12px; background:#fff; }
 
 /* ── Typography ────────────────────────────────────────── */
-.page-title { font-size:14px; font-weight:700; color:#222; margin:0; }
+.page-title { font-size:16px; font-weight:700; color:#222; margin:0; }
 .toolbar { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .toolbar-r { display:flex; align-items:center; gap:8px; }
 .search-bar { display:flex; gap:4px; }
@@ -607,55 +614,55 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 
 /* ── Filters ───────────────────────────────────────────── */
 .filter-row { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-.flt { padding:4px 8px; border:1px solid #d0d0d0; background:#fff; font-size:11px; color:#333; font-family:inherit; cursor:pointer; border-radius:2px; }
-.flt:focus { outline:none; border-color:#999; }
+.flt { padding:4px 8px; border:1px solid #d0d0d0; background:#fff; font-size:12px; color:#333; font-family:inherit; cursor:pointer; border-radius:2px; }
+.flt:focus { border-color:#999; }
 .flt.inline { border-color:#d0d0d0; }
-.flt-clear { padding:4px 8px; font-size:11px; background:transparent; border:none; color:#888; cursor:pointer; text-decoration:underline; font-family:inherit; }
+.flt-clear { padding:4px 8px; font-size:12px; background:transparent; border:none; color:#666; cursor:pointer; text-decoration:underline; font-family:inherit; }
 
 /* ── Inputs ────────────────────────────────────────────── */
-.inp { padding:6px 8px; border:1px solid #d0d0d0; font-size:13px; color:#222; background:#fff; width:100%; font-family:inherit; border-radius:2px; }
-.inp:focus { outline:none; border-color:#999; }
+.inp { padding:6px 8px; border:1px solid #d0d0d0; font-size:14px; color:#222; background:#fff; width:100%; font-family:inherit; border-radius:2px; }
+.inp:focus { border-color:#999; }
 
 /* ── Buttons ───────────────────────────────────────────── */
-.btn { padding:5px 12px; border:1px solid #d0d0d0; background:#f5f5f5; color:#333; font-size:11px; font-weight:600; cursor:pointer; font-family:inherit; border-radius:2px; }
+.btn { padding:5px 12px; border:1px solid #d0d0d0; background:#f5f5f5; color:#333; font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; border-radius:2px; }
 .btn:hover:not(:disabled) { background:#e8e8e8; }
 .btn:disabled { opacity:.35; cursor:not-allowed; }
 .btn-dark { background:#555; color:#fff; border-color:#555; }
 .btn-dark:hover:not(:disabled) { background:#444; }
-.btn-xs { padding:2px 6px; font-size:10px; }
+.btn-xs { padding:2px 6px; font-size:11px; }
 
 /* ── Table cell content (rendered into DataTable slots) ── */
-.sub { color:#888; font-size:11px; }
-.badge { display:inline-block; padding:3px 8px; border:1px solid #d0d0d0; background:#fff; font-size:11px; color:#333; font-weight:500; border-radius:0; }
+.sub { color:#666; font-size:12px; }
+.badge { display:inline-block; padding:3px 8px; border:1px solid #d0d0d0; background:#fff; font-size:12px; color:#333; font-weight:500; border-radius:0; }
 
 /* ── Stats Grid ────────────────────────────────────────── */
 .stat-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:8px; }
 .stat-card { border:1px solid #d0d0d0; background:#fff; padding:10px 12px; border-radius:2px; }
-.stat-label { font-size:11px; font-weight:700; color:#555; margin-bottom:6px; border-bottom:1px solid #eee; padding-bottom:4px; }
-.stat-sub { display:flex; justify-content:space-between; font-size:12px; color:#666; padding:2px 0; }
+.stat-label { font-size:12px; font-weight:700; color:#555; margin-bottom:6px; border-bottom:1px solid #eee; padding-bottom:4px; }
+.stat-sub { display:flex; justify-content:space-between; font-size:13px; color:#666; padding:2px 0; }
 .stat-num { font-weight:700; color:#222; font-family:var(--font-mono); }
 
 /* ── Pagination ────────────────────────────────────────── */
 .pager { display:flex; align-items:center; gap:8px; }
-.pager-info { font-size:11px; color:#888; margin-right:auto; }
+.pager-info { font-size:12px; color:#666; margin-right:auto; }
 
 /* ── States ────────────────────────────────────────────── */
-.err-bar { display:flex; align-items:center; gap:8px; padding:6px 10px; background:#fff; border:1px solid #d0d0d0; color:#222; font-size:12px; }
-.err-bar button { margin-left:auto; background:none; border:none; cursor:pointer; color:#888; font-size:14px; }
-.form-err { padding:6px 8px; background:#fff; border:1px solid #d0d0d0; font-size:12px; color:#222; }
-.state-msg { color:#888; padding:16px 0; font-size:12px; }
+.err-bar { display:flex; align-items:center; gap:8px; padding:6px 10px; background:#fff; border:1px solid #d0d0d0; color:#222; font-size:13px; }
+.err-bar button { margin-left:auto; background:none; border:none; cursor:pointer; color:#666; font-size:14px; }
+.form-err { padding:6px 8px; background:#fff; border:1px solid #d0d0d0; font-size:13px; color:#222; }
+.state-msg { color:#666; padding:16px 0; font-size:13px; }
 
 /* ── Modal ──────────────────────────────────────────────── */
 .overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; z-index:1000; }
 .modal { background:#fff; width:440px; max-width:96vw; max-height:90vh; overflow-y:auto; border:1px solid #d0d0d0; border-radius:2px; }
 .modal-sm { width:340px; }
 .modal-hd { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #e0e0e0; background:#f5f5f5; }
-.modal-hd h3 { margin:0; font-size:13px; font-weight:700; color:#222; }
-.modal-x { background:none; border:none; font-size:16px; cursor:pointer; color:#888; }
+.modal-hd h3 { margin:0; font-size:14px; font-weight:700; color:#222; }
+.modal-x { background:none; border:none; font-size:16px; cursor:pointer; color:#666; }
 .modal-body { display:flex; flex-direction:column; gap:5px; padding:14px 16px; }
-.modal-body label { font-size:11px; font-weight:600; color:#555; margin-top:4px; }
+.modal-body label { font-size:12px; font-weight:600; color:#555; margin-top:4px; }
 .modal-acts { display:flex; gap:8px; justify-content:flex-end; margin-top:10px; padding-top:10px; border-top:1px solid #eee; }
-.modal-msg { padding:12px 16px; color:#555; line-height:1.5; margin:0; font-size:13px; }
-.req { color:#888; }
-.chk { display:flex; align-items:center; gap:6px; font-size:12px; color:#222; cursor:pointer; text-transform:none; }
+.modal-msg { padding:12px 16px; color:#555; line-height:1.5; margin:0; font-size:14px; }
+.req { color:#666; }
+.chk { display:flex; align-items:center; gap:6px; font-size:13px; color:#222; cursor:pointer; text-transform:none; }
 </style>

@@ -30,7 +30,16 @@ function securityHeaders(req, res, next) {
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-DNS-Prefetch-Control', 'off');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
   res.setHeader('Content-Security-Policy', process.env.CONTENT_SECURITY_POLICY || DEFAULT_CSP);
+  res.setHeader('Permissions-Policy', [
+    'camera=()',
+    'microphone=()',
+    'geolocation=()',
+    'payment=()',
+    'usb=()',
+    'interest-cohort=()',
+  ].join(', '));
   // HSTS is harmless over http (browsers honour it only on https), so enable it
   // by default in production; ENABLE_HSTS=true forces it on in any environment.
   if (process.env.ENABLE_HSTS === 'true' || process.env.NODE_ENV === 'production') {

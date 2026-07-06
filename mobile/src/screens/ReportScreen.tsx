@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ScrollView, ActivityIndicator, Switch,
+  StyleSheet, ScrollView, ActivityIndicator, Switch, AccessibilityInfo,
 } from 'react-native';
 import { randomUUID } from 'expo-crypto';
 import { Ionicons } from '@expo/vector-icons';
 import { submitReport } from '../services/syncService';
 import type { PendingReport, ReportStatus } from '../api/apiClient';
-import { normalizeHKID } from '../utils/hkid';
+import { isValidHKID, normalizeHKID } from '../utils/hkid';
 import { validateReportForm } from '../utils/reportForm';
 import { resolveLocation } from '../utils/location';
 import { C, R, SHADOW, statusColor, statusDim, STATUS_ICON } from '../theme';
@@ -66,12 +66,49 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
   const statusOptions = isProxy ? PROXY_STATUSES : SELF_STATUSES;
   const showNotes     = status === 'injured' || status === 'need_help';
 
-  // Reset status when switching proxy mode if current status is proxy-only
+  // Per-field inline validation (runs on blur) — the user learns about a
+  // problem at the field instead of after submitting the whole form.
+  type FieldKey = 'subjectName' | 'reporterName' | 'phone' | 'personalId';
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, string>>>({});
+
+  function validateField(field: FieldKey): void {
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      const put = (msg: string | null) => {
+        if (msg) next[field] = msg;
+        else delete next[field];
+      };
+      if (field === 'subjectName') {
+        put(subjectName.trim() ? null : t(isProxy ? 'report.errSubjectProxy' : 'report.errSubjectSelf'));
+      } else if (field === 'reporterName') {
+        put(!isProxy || reporterName.trim() ? null : t('report.errReporter'));
+      } else if (field === 'phone') {
+        put(isProxy || phone.trim() ? null : t('report.errPhone'));
+      } else if (!isProxy && !personalId.trim()) {
+        put(t('report.errHkidRequired'));
+      } else {
+        put(personalId.trim() && !isValidHKID(personalId) ? t('report.errHkidInvalid') : null);
+      }
+      return next;
+    });
+  }
+
+  // Reset status when switching proxy mode if current status is proxy-only;
+  // stale field errors from the other mode no longer apply either.
   useEffect(() => {
     if (!isProxy && !SELF_STATUSES.find((s) => s.value === status)) {
       setStatus('safe');
     }
+    setFieldErrors({});
   }, [isProxy]);
+
+  // Surface dynamic feedback to screen readers (iOS has no live regions).
+  useEffect(() => {
+    if (message) AccessibilityInfo.announceForAccessibility(message.text);
+  }, [message]);
+  useEffect(() => {
+    if (success) AccessibilityInfo.announceForAccessibility(`${t('report.delivered')}. ${t('report.deliveredSub')}`);
+  }, [success, t]);
 
   function resetForm(): void {
     setSubjectName('');
@@ -81,6 +118,7 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
     setPhone('');
     setPersonalId('');
     setMessage(null);
+    setFieldErrors({});
   }
 
   async function onSubmit(): Promise<void> {
@@ -134,7 +172,10 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
 
   if (success) {
     return (
-      <View style={[S.bg, { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }]}>
+      <View
+        style={[S.bg, { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }]}
+        accessibilityLiveRegion="polite"
+      >
         <View style={S.successCircle}>
           <Ionicons name="checkmark-circle" size={72} color={C.safe} />
         </View>
@@ -174,6 +215,8 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
           onValueChange={setIsProxy}
           trackColor={{ false: C.borderStrong, true: C.govBlue }}
           thumbColor={C.bgPanel}
+          accessibilityLabel={t('report.proxyLabel')}
+          accessibilityHint={t('report.proxySub')}
         />
       </View>
 
@@ -184,6 +227,7 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
         </Text>
       </View>
 
+      <View accessibilityRole="radiogroup">
       {statusOptions.map((opt) => {
         const active = status === opt.value;
         const col    = statusColor(opt.value);
@@ -193,6 +237,9 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
             key={opt.value}
             style={[S.statusRow, active && { backgroundColor: dim, borderLeftColor: col }]}
             onPress={() => setStatus(opt.value)}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: active }}
+            accessibilityLabel={`${statusLabel(opt.value)}. ${t(opt.subKey)}`}
             activeOpacity={0.7}
           >
             <View style={[S.statusIconWrap, { backgroundColor: active ? dim : C.bgRaised }]}>
@@ -216,6 +263,7 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
           </TouchableOpacity>
         );
       })}
+      </View>
 
       {/* Form fields */}
       <View style={S.formPad}>
@@ -224,27 +272,37 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
           {isProxy ? t('report.nameProxy') : t('report.nameSelf')}
         </Text>
         <TextInput
-          style={S.input}
+          style={[S.input, fieldErrors.subjectName ? S.inputError : null]}
           value={subjectName}
           onChangeText={setSubjectName}
+          onBlur={() => validateField('subjectName')}
           placeholder={isProxy ? t('report.phSubjectProxy') : t('report.phSubjectSelf')}
           placeholderTextColor={C.textLo}
+          accessibilityLabel={isProxy ? t('report.nameProxy') : t('report.nameSelf')}
           autoComplete="name"
           returnKeyType="next"
         />
+        {fieldErrors.subjectName ? (
+          <Text style={S.fieldError} accessibilityLiveRegion="polite">{fieldErrors.subjectName}</Text>
+        ) : null}
 
         {/* Reporter name (proxy only) */}
         {isProxy ? (
           <>
             <Text style={S.fieldLabel}>{t('report.nameSubmitter')}</Text>
             <TextInput
-              style={S.input}
+              style={[S.input, fieldErrors.reporterName ? S.inputError : null]}
               value={reporterName}
               onChangeText={setReporterName}
+              onBlur={() => validateField('reporterName')}
               placeholder={t('report.phReporter')}
               placeholderTextColor={C.textLo}
+              accessibilityLabel={t('report.nameSubmitter')}
               autoComplete="off"
             />
+            {fieldErrors.reporterName ? (
+              <Text style={S.fieldError} accessibilityLiveRegion="polite">{fieldErrors.reporterName}</Text>
+            ) : null}
           </>
         ) : null}
 
@@ -259,6 +317,7 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
               multiline
               placeholder={t('report.phNotes')}
               placeholderTextColor={C.textLo}
+              accessibilityLabel={t('report.notes')}
               textAlignVertical="top"
             />
           </>
@@ -268,26 +327,36 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
           {isProxy ? t('report.hkidProxy') : t('report.hkidSelf')}
         </Text>
         <TextInput
-          style={S.input}
+          style={[S.input, fieldErrors.personalId ? S.inputError : null]}
           value={personalId}
           onChangeText={setPersonalId}
+          onBlur={() => validateField('personalId')}
           autoCapitalize="characters"
           autoCorrect={false}
           placeholder="A123456(7)"
           placeholderTextColor={C.textLo}
+          accessibilityLabel={isProxy ? t('report.hkidProxy') : t('report.hkidSelf')}
         />
+        {fieldErrors.personalId ? (
+          <Text style={S.fieldError} accessibilityLiveRegion="polite">{fieldErrors.personalId}</Text>
+        ) : null}
 
         <Text style={S.fieldLabel}>
           {isProxy ? t('report.phoneProxy') : t('report.phoneSelf')}
         </Text>
         <TextInput
-          style={S.input}
+          style={[S.input, fieldErrors.phone ? S.inputError : null]}
           value={phone}
           onChangeText={setPhone}
+          onBlur={() => validateField('phone')}
           keyboardType="phone-pad"
           placeholder="+852 ..."
           placeholderTextColor={C.textLo}
+          accessibilityLabel={isProxy ? t('report.phoneProxy') : t('report.phoneSelf')}
         />
+        {fieldErrors.phone ? (
+          <Text style={S.fieldError} accessibilityLiveRegion="polite">{fieldErrors.phone}</Text>
+        ) : null}
 
         {/* Location — auto-detected on submit (wireframe: "Location [Auto Detect]") */}
         <View style={S.locRow}>
@@ -300,6 +369,8 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
           style={[S.submitBtn, submitting && S.submitDisabled]}
           onPress={onSubmit}
           disabled={submitting}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: submitting, busy: submitting }}
           activeOpacity={0.8}
         >
           {submitting ? (
@@ -317,10 +388,13 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
         {message ? (() => {
           const mc = msgColors(message.kind);
           return (
-          <View style={[S.msgBox, {
-            backgroundColor: mc.bg,
-            borderColor:     mc.border,
-          }]}>
+          <View
+            style={[S.msgBox, {
+              backgroundColor: mc.bg,
+              borderColor:     mc.border,
+            }]}
+            accessibilityLiveRegion="polite"
+          >
             <Ionicons
               name={message.kind === 'error' ? 'alert-circle'
                   : message.kind === 'success' ? 'checkmark-circle'
@@ -398,6 +472,8 @@ const S = StyleSheet.create({
     backgroundColor: C.bgPanel, borderWidth: 1, borderColor: C.borderStrong,
     borderRadius: R.sm, padding: 14, fontSize: 16, color: C.textHi,
   },
+  inputError: { borderColor: C.critical },
+  fieldError: { marginTop: 6, fontSize: 13, fontWeight: '600', color: C.critical, lineHeight: 18 },
   textarea: { height: 96, textAlignVertical: 'top' },
 
   locRow: {

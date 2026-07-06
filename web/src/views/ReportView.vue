@@ -38,6 +38,30 @@ function metaText(s) {
 
 const showNotes = computed(() => status.value === 'injured' || status.value === 'need_help');
 
+// Inline field validation — runs on blur so the user learns about a problem
+// at the field, not after submitting the whole form.
+const fieldErrors = ref({ subjectName: null, reporterName: null, personalId: null });
+
+function validateField(field) {
+  if (field === 'subjectName') {
+    fieldErrors.value.subjectName = subjectName.value.trim() ? null : t('report.errName');
+  }
+  if (field === 'reporterName') {
+    fieldErrors.value.reporterName = reporterName.value.trim() ? null : t('report.errReporter');
+  }
+  if (field === 'personalId') {
+    fieldErrors.value.personalId =
+      !personalId.value.trim() || isValidHKID(personalId.value) ? null : t('report.errHkid');
+  }
+}
+
+function validateAll() {
+  validateField('subjectName');
+  validateField('reporterName');
+  validateField('personalId');
+  return !fieldErrors.value.subjectName && !fieldErrors.value.reporterName && !fieldErrors.value.personalId;
+}
+
 function resetForm() {
   subjectName.value  = '';
   reporterName.value = '';
@@ -46,22 +70,12 @@ function resetForm() {
   phone.value        = '';
   personalId.value   = '';
   message.value      = null;
+  fieldErrors.value  = { subjectName: null, reporterName: null, personalId: null };
 }
 
 async function onSubmit() {
+  if (!validateAll()) return;
   const name = subjectName.value.trim();
-  if (!name) {
-    message.value = { type: 'error', text: t('report.errName') };
-    return;
-  }
-  if (!reporterName.value.trim()) {
-    message.value = { type: 'error', text: t('report.errReporter') };
-    return;
-  }
-  if (personalId.value.trim() && !isValidHKID(personalId.value)) {
-    message.value = { type: 'error', text: t('report.errHkid') };
-    return;
-  }
 
   submitting.value = true;
   success.value    = false;
@@ -120,7 +134,7 @@ onMounted(async () => { try { await retryAll(); } catch {} });
 
     <hr class="divider">
 
-    <div v-if="success" class="state-block">
+    <div v-if="success" class="state-block" role="status">
       <div class="state-icon is-safe"><AppIcon name="checkmark-circle" :size="32" /></div>
       <h2>{{ $t('report.submitted') }}</h2>
       <p class="state-sub">{{ $t('report.submittedSub') }}</p>
@@ -131,11 +145,11 @@ onMounted(async () => { try { await retryAll(); } catch {} });
     </div>
 
     <template v-if="!success">
-      <div v-if="storageUnavailable()" class="msg msg-warn msg-row">
+      <div v-if="storageUnavailable()" class="msg msg-warn msg-row" role="alert">
         <AppIcon name="warning" :size="16" />
         <span>{{ $t('report.storageUnavailable') }}</span>
       </div>
-      <div v-if="pendingCount > 0" class="outbox-badge">
+      <div v-if="pendingCount > 0" class="outbox-badge" role="status">
         <AppIcon name="cloud-offline" :size="14" />
         {{ $t(pendingCount === 1 ? 'report.queuedOne' : 'report.queuedMany', { n: pendingCount }) }}
       </div>
@@ -155,15 +169,29 @@ onMounted(async () => { try { await retryAll(); } catch {} });
         <div class="field-block">
           <label class="resp-question" for="subject-name">{{ $t('report.subjectName') }}</label>
           <div class="input-field-wrapper">
-            <input id="subject-name" v-model="subjectName" type="text" class="input-text-clinical" :placeholder="$t('report.subjectPlaceholder')" autocomplete="name" />
+            <input
+              id="subject-name" v-model="subjectName" type="text" class="input-text-clinical"
+              :placeholder="$t('report.subjectPlaceholder')" autocomplete="name"
+              :aria-invalid="fieldErrors.subjectName ? 'true' : undefined"
+              :aria-describedby="fieldErrors.subjectName ? 'subject-name-err' : undefined"
+              @blur="validateField('subjectName')"
+            />
           </div>
+          <p v-if="fieldErrors.subjectName" id="subject-name-err" class="field-error" role="alert">{{ fieldErrors.subjectName }}</p>
         </div>
 
         <div class="field-block">
           <label class="resp-question" for="reporter-name">{{ $t('report.reporterName') }}</label>
           <div class="input-field-wrapper">
-            <input id="reporter-name" v-model="reporterName" type="text" class="input-text-clinical" :placeholder="$t('report.reporterPlaceholder')" autocomplete="off" />
+            <input
+              id="reporter-name" v-model="reporterName" type="text" class="input-text-clinical"
+              :placeholder="$t('report.reporterPlaceholder')" autocomplete="off"
+              :aria-invalid="fieldErrors.reporterName ? 'true' : undefined"
+              :aria-describedby="fieldErrors.reporterName ? 'reporter-name-err' : undefined"
+              @blur="validateField('reporterName')"
+            />
           </div>
+          <p v-if="fieldErrors.reporterName" id="reporter-name-err" class="field-error" role="alert">{{ fieldErrors.reporterName }}</p>
         </div>
 
         <div class="field-block">
@@ -182,16 +210,22 @@ onMounted(async () => { try { await retryAll(); } catch {} });
             <span class="resp-question-hint">({{ $t('report.hkidHint') }})</span>
           </label>
           <div class="input-field-wrapper">
-            <input id="personal-id" v-model="personalId" type="text" class="input-text-clinical" placeholder="A123456(7)" autocomplete="off" style="text-transform: uppercase;" />
-            <span class="field-icon-indicator">☰</span>
+            <input
+              id="personal-id" v-model="personalId" type="text" class="input-text-clinical"
+              placeholder="A123456(7)" autocomplete="off" style="text-transform: uppercase;"
+              :aria-invalid="fieldErrors.personalId ? 'true' : undefined"
+              :aria-describedby="fieldErrors.personalId ? 'personal-id-err' : undefined"
+              @blur="validateField('personalId')"
+            />
           </div>
+          <p v-if="fieldErrors.personalId" id="personal-id-err" class="field-error" role="alert">{{ fieldErrors.personalId }}</p>
         </div>
 
         <div class="section-label" style="margin-top: var(--sp-5);">{{ $t('report.sectionSituation') }}</div>
 
         <div class="field-block">
-          <label class="resp-question" style="margin-bottom: var(--sp-2);">{{ $t('report.currentStatus') }}</label>
-          <div class="resp-option-vertical-group">
+          <span id="status-group-label" class="resp-question" style="margin-bottom: var(--sp-2);">{{ $t('report.currentStatus') }}</span>
+          <div class="resp-option-vertical-group" role="radiogroup" aria-labelledby="status-group-label">
             <label
               v-for="s in availableStatuses"
               :key="s"
@@ -221,13 +255,13 @@ onMounted(async () => { try { await retryAll(); } catch {} });
               <span class="spinner"></span> {{ $t('report.submitting') }}
             </template>
             <template v-else>
-              <span>✓</span> {{ $t('report.submitReport') }}
+              {{ $t('report.submitReport') }}
             </template>
           </button>
         </div>
       </form>
 
-      <div v-if="message" class="msg msg-row" :class="`msg-${message.type}`" style="margin-top: var(--sp-3);">
+      <div v-if="message" class="msg msg-row" :class="`msg-${message.type}`" role="alert" style="margin-top: var(--sp-3);">
         <AppIcon :name="message.type === 'error' ? 'alert-circle' : 'information-circle'" :size="16" />
         <span>{{ message.text }}</span>
       </div>
@@ -279,25 +313,40 @@ onMounted(async () => { try { await retryAll(); } catch {} });
 /* 100% Strict Input Fields Style Layout */
 .input-field-wrapper { position: relative; display: flex; align-items: center; width: 100%; }
 .input-text-clinical {
-  width: 100%; height: 34px; border: 1px solid #cbd5e1;
+  /* 44px tall / 16px text: comfortable touch target, no iOS auto-zoom. */
+  width: 100%; height: 44px; border: 1px solid #cbd5e1;
   border-radius: 4px; padding: 0 var(--sp-3);
-  font-size: 13.5px; color: #0f172a; box-sizing: border-box;
+  font-size: 16px; color: #0f172a; box-sizing: border-box;
   background: #ffffff;
 }
 .input-text-clinical:focus {
-  outline: none; border-color: var(--resp-teal-accent);
+  border-color: var(--resp-teal-accent);
   box-shadow: 0 0 0 2px var(--resp-accent-dim);
 }
+.input-text-clinical[aria-invalid='true'] { border-color: var(--need-help); }
 .textarea-clinical { height: auto; padding: var(--sp-2) var(--sp-3); resize: vertical; }
-.field-icon-indicator { position: absolute; right: var(--sp-3); color: #64748b; font-size: 14px; pointer-events: none; }
+
+/* Inline field diagnostic — text, never colour alone. */
+.field-error {
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--need-help);
+  line-height: 1.4;
+}
 
 /* 100% Option Selection Card Styles Layout Row */
 .resp-option-vertical-group { display: flex; flex-direction: column; gap: var(--sp-2); width: 100%; }
 .resp-shell .resp-option {
   display: flex; align-items: center; gap: var(--sp-3);
-  padding: var(--sp-2) var(--sp-3); background: #ffffff;
+  padding: var(--sp-3); background: #ffffff;
   border: 1px solid #cbd5e1; border-radius: 4px;
   cursor: pointer; font-size: 13px; color: #0f172a; user-select: none;
+}
+/* Keyboard focus lands on the visually-hidden radio — surface it on the card. */
+.resp-shell .resp-option:focus-within {
+  outline: 3px solid #005A9C;
+  outline-offset: 2px;
 }
 .resp-shell .resp-option.is-selected {
   background: var(--resp-accent-dim); border-color: var(--resp-accent-border);
@@ -312,8 +361,8 @@ onMounted(async () => { try { await retryAll(); } catch {} });
 .hidden-radio { position: absolute; opacity: 0; pointer-events: none; }
 
 .option-label-group { display: flex; flex-direction: column; }
-.option-title { font-size: 14px; font-weight: 700; }
-.option-desc { font-size: 12px; color: #64748b; font-weight: 400; }
+.option-title { font-size: 16px; font-weight: 700; }
+.option-desc { font-size: 13px; color: #64748b; font-weight: 400; }
 .resp-option.is-selected .option-desc { color: var(--resp-teal-accent); }
 
 /* Actions Bar Trigger Group Layout */
@@ -324,7 +373,7 @@ onMounted(async () => { try { await retryAll(); } catch {} });
   border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: var(--sp-2);
 }
 .btn-teal-action:hover { background: var(--resp-teal-accent); }
-.complete-action { width: 100%; justify-content: center; height: 40px; font-size: 14px; }
+.complete-action { width: 100%; justify-content: center; height: 48px; font-size: 16px; }
 
 /* Informational Banners and Context Cards */
 .proxy-banner { display: flex; gap: var(--sp-3); padding: var(--sp-3); background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; margin-bottom: var(--sp-4); }

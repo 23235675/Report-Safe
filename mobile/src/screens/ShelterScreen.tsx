@@ -187,6 +187,8 @@ export default function ShelterScreen(): React.JSX.Element {
           <TouchableOpacity
             style={[S.seg, view === 'info' && S.segOn]}
             onPress={() => setView('info')}
+            accessibilityRole="button"
+            accessibilityState={{ selected: view === 'info' }}
             activeOpacity={0.85}
           >
             <Ionicons name="home" size={15} color={view === 'info' ? C.govBlue : C.textLo} />
@@ -195,6 +197,8 @@ export default function ShelterScreen(): React.JSX.Element {
           <TouchableOpacity
             style={[S.seg, view === 'requests' && S.segOn]}
             onPress={() => setView('requests')}
+            accessibilityRole="button"
+            accessibilityState={{ selected: view === 'requests' }}
             activeOpacity={0.85}
           >
             <Ionicons name="file-tray-full" size={15} color={view === 'requests' ? C.govBlue : C.textLo} />
@@ -225,10 +229,22 @@ export default function ShelterScreen(): React.JSX.Element {
                   {p.description ? <Text style={S.pendingDesc} numberOfLines={2}>{p.description}</Text> : null}
                 </View>
                 <View style={S.pendingActions}>
-                  <TouchableOpacity style={S.approveBtn} onPress={() => reviewPlace(p.id, 'approved')}>
+                  <TouchableOpacity
+                    style={S.approveBtn}
+                    onPress={() => reviewPlace(p.id, 'approved')}
+                    hitSlop={6}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${t('map.approve')} — ${p.name}`}
+                  >
                     <Ionicons name="checkmark" size={15} color={C.textInv} />
                   </TouchableOpacity>
-                  <TouchableOpacity style={S.declineBtn} onPress={() => reviewPlace(p.id, 'rejected')}>
+                  <TouchableOpacity
+                    style={S.declineBtn}
+                    onPress={() => reviewPlace(p.id, 'rejected')}
+                    hitSlop={6}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${t('map.decline')} — ${p.name}`}
+                  >
                     <Ionicons name="close" size={15} color={C.critical} />
                   </TouchableOpacity>
                 </View>
@@ -253,6 +269,8 @@ export default function ShelterScreen(): React.JSX.Element {
           <TouchableOpacity
             onPress={() => setFilterDis('')}
             style={[S.filterChip, !filterDis && S.filterActive]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: !filterDis }}
           >
             <Text style={[S.filterChipText, !filterDis && { color: C.govBlue }]}>{t('map.all')}</Text>
           </TouchableOpacity>
@@ -261,6 +279,8 @@ export default function ShelterScreen(): React.JSX.Element {
               key={d.id}
               onPress={() => setFilterDis(d.id)}
               style={[S.filterChip, filterDis === d.id && S.filterActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: filterDis === d.id }}
             >
               <Text style={[S.filterChipText, filterDis === d.id && { color: C.govBlue }]}>
                 {disasterTypeLabel(d.type)}
@@ -279,14 +299,14 @@ export default function ShelterScreen(): React.JSX.Element {
       </View>
 
       {spOk ? (
-        <View style={S.okBox}>
+        <View style={S.okBox} accessibilityLiveRegion="polite">
           <Ionicons name="checkmark-circle" size={16} color={C.safe} />
           <Text style={S.okText}>{spOk}</Text>
         </View>
       ) : null}
 
       {error ? (
-        <View style={S.errorBox}>
+        <View style={S.errorBox} accessibilityLiveRegion="polite">
           <Text style={S.errorText}>{error}</Text>
         </View>
       ) : null}
@@ -388,7 +408,12 @@ export default function ShelterScreen(): React.JSX.Element {
           <View style={S.modalCard}>
             <View style={S.modalHead}>
               <Text style={S.modalTitle}>{t('map.suggestSafePlace')}</Text>
-              <TouchableOpacity onPress={() => setShowForm(false)} hitSlop={10}>
+              <TouchableOpacity
+                onPress={() => setShowForm(false)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.close')}
+              >
                 <Ionicons name="close" size={20} color={C.textLo} />
               </TouchableOpacity>
             </View>
@@ -403,23 +428,23 @@ export default function ShelterScreen(): React.JSX.Element {
                 </View>
               ) : null}
               {spErr ? (
-                <View style={S.errInline}>
+                <View style={S.errInline} accessibilityLiveRegion="polite">
                   <Ionicons name="alert-circle" size={15} color={C.critical} />
                   <Text style={S.errInlineText}>{spErr}</Text>
                 </View>
               ) : null}
               <View style={S.field}>
                 <Text style={S.fieldLbl}>{t('map.fName')}</Text>
-                <TextInput style={S.input} value={spForm.name} onChangeText={(v) => setSpForm((f) => ({ ...f, name: v }))} placeholder={t('map.phSafeName')} placeholderTextColor={C.textLo} />
+                <TextInput style={S.input} value={spForm.name} onChangeText={(v) => setSpForm((f) => ({ ...f, name: v }))} placeholder={t('map.phSafeName')} placeholderTextColor={C.textLo} accessibilityLabel={t('map.fName')} />
               </View>
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <View style={[S.field, { flex: 1 }]}>
                   <Text style={S.fieldLbl}>{t('map.fLat')}</Text>
-                  <TextInput style={S.input} value={spForm.lat} onChangeText={(v) => setSpForm((f) => ({ ...f, lat: v }))} placeholder="22.30" placeholderTextColor={C.textLo} keyboardType="numbers-and-punctuation" />
+                  <TextInput style={S.input} value={spForm.lat} onChangeText={(v) => setSpForm((f) => ({ ...f, lat: v }))} placeholder="22.30" placeholderTextColor={C.textLo} accessibilityLabel={t('map.fLat')} keyboardType="numbers-and-punctuation" />
                 </View>
                 <View style={[S.field, { flex: 1 }]}>
                   <Text style={S.fieldLbl}>{t('map.fLng')}</Text>
-                  <TextInput style={S.input} value={spForm.lng} onChangeText={(v) => setSpForm((f) => ({ ...f, lng: v }))} placeholder="114.17" placeholderTextColor={C.textLo} keyboardType="numbers-and-punctuation" />
+                  <TextInput style={S.input} value={spForm.lng} onChangeText={(v) => setSpForm((f) => ({ ...f, lng: v }))} placeholder="114.17" placeholderTextColor={C.textLo} accessibilityLabel={t('map.fLng')} keyboardType="numbers-and-punctuation" />
                 </View>
               </View>
               <TouchableOpacity style={S.locBtn} onPress={useMyLocation} activeOpacity={0.85}>
@@ -428,11 +453,11 @@ export default function ShelterScreen(): React.JSX.Element {
               </TouchableOpacity>
               <View style={S.field}>
                 <Text style={S.fieldLbl}>{t('map.fCapacity')}</Text>
-                <TextInput style={S.input} value={spForm.capacity} onChangeText={(v) => setSpForm((f) => ({ ...f, capacity: v }))} placeholder="e.g. 50" placeholderTextColor={C.textLo} keyboardType="number-pad" />
+                <TextInput style={S.input} value={spForm.capacity} onChangeText={(v) => setSpForm((f) => ({ ...f, capacity: v }))} placeholder="e.g. 50" placeholderTextColor={C.textLo} accessibilityLabel={t('map.fCapacity')} keyboardType="number-pad" />
               </View>
               <View style={S.field}>
                 <Text style={S.fieldLbl}>{t('map.fDescription')}</Text>
-                <TextInput style={[S.input, { height: 64, textAlignVertical: 'top' }]} value={spForm.description} onChangeText={(v) => setSpForm((f) => ({ ...f, description: v }))} placeholder={t('map.phSafeDesc')} placeholderTextColor={C.textLo} multiline />
+                <TextInput style={[S.input, { height: 64, textAlignVertical: 'top' }]} value={spForm.description} onChangeText={(v) => setSpForm((f) => ({ ...f, description: v }))} placeholder={t('map.phSafeDesc')} placeholderTextColor={C.textLo} accessibilityLabel={t('map.fDescription')} multiline />
               </View>
               <TouchableOpacity
                 style={[S.submitBtn, (spBusy || !isLoggedIn) && { opacity: 0.5 }]}

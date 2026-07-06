@@ -6,6 +6,7 @@ import { GOV_TOKEN_KEY } from '../router/index.js';
 import AppIcon from '../components/AppIcon.vue';
 import { shelterIcon } from '../iconography.js';
 import { t, shelterTypeLabel, sourceLabel, disasterTypeLabel } from '../i18n/index.js';
+import { useFocusTrap } from '../composables/useFocusTrap.js';
 
 const route    = useRoute();
 const govToken = ref(sessionStorage.getItem(GOV_TOKEN_KEY) || '');
@@ -104,6 +105,14 @@ const saving     = ref(false);
 const showCapModal = ref(false);
 const capTarget    = ref(null);
 const capValue     = ref('');
+
+// Modal focus traps — Tab cycles inside, Esc closes, focus restores on close.
+const shelterModalEl = ref(null);
+const capModalEl     = ref(null);
+const safeModalEl    = ref(null);
+useFocusTrap(shelterModalEl, showForm,     () => { showForm.value = false; });
+useFocusTrap(capModalEl,     showCapModal, () => { showCapModal.value = false; });
+useFocusTrap(safeModalEl,    showSafeForm, () => { showSafeForm.value = false; });
 
 const filtered = computed(() => {
   let list = shelters.value;
@@ -254,7 +263,7 @@ watch([filterSource, filterDisaster], () => {
       <p class="subtitle">{{ $t('shelters.subtitle') }}</p>
     </div>
 
-    <div v-if="error" class="msg msg-error msg-row">
+    <div v-if="error" class="msg msg-error msg-row" role="alert">
       <AppIcon name="alert-circle" :size="16" /><span>{{ error }}</span>
     </div>
 
@@ -262,13 +271,13 @@ watch([filterSource, filterDisaster], () => {
     <div class="toolbar">
       <span class="filter-ico"><AppIcon name="funnel" :size="16" /></span>
       <div class="filters">
-        <select v-model="filterSource" class="filter-sel">
+        <select v-model="filterSource" class="filter-sel" :aria-label="$t('shelters.fSource')">
           <option value="">{{ $t('shelters.allSources') }}</option>
           <option value="government">{{ $t('source.government') }}</option>
           <option value="volunteer">{{ $t('source.volunteer') }}</option>
           <option value="citizen">{{ $t('source.citizen') }}</option>
         </select>
-        <select v-model="filterDisaster" class="filter-sel">
+        <select v-model="filterDisaster" class="filter-sel" :aria-label="$t('shelters.fDisaster')">
           <option value="">{{ $t('shelters.allDisasters') }}</option>
           <option v-for="d in disasters" :key="d.id" :value="d.id">
             {{ disasterTypeLabel(d.type) }} — {{ d.description?.slice(0, 40) ?? d.id }}
@@ -279,7 +288,7 @@ watch([filterSource, filterDisaster], () => {
       <button v-if="!canManage" @click="openSafePlace" class="btn btn-outline"><AppIcon name="add" :size="16" /> {{ $t('shelters.suggestSafePlace') }}</button>
     </div>
 
-    <div v-if="safeSuccess" class="msg msg-success msg-row"><AppIcon name="checkmark-circle" :size="16" /><span>{{ safeSuccess }}</span></div>
+    <div v-if="safeSuccess" class="msg msg-success msg-row" role="status"><AppIcon name="checkmark-circle" :size="16" /><span>{{ safeSuccess }}</span></div>
 
     <!-- ── Pending safe-place submissions (gov/volunteer review) ──── -->
     <div v-if="canManage && pendingPlaces.length" class="pending-panel">
@@ -309,13 +318,13 @@ watch([filterSource, filterDisaster], () => {
       <table class="data-table" v-if="filtered.length">
         <thead>
           <tr>
-            <th>{{ $t('shelters.thName') }}</th>
-            <th>{{ $t('shelters.thType') }}</th>
-            <th>{{ $t('shelters.thSource') }}</th>
-            <th>{{ $t('shelters.thCapacity') }}</th>
-            <th>{{ $t('shelters.thPhone') }}</th>
-            <th>{{ $t('shelters.thHours') }}</th>
-            <th v-if="canManage">{{ $t('shelters.thActions') }}</th>
+            <th scope="col">{{ $t('shelters.thName') }}</th>
+            <th scope="col">{{ $t('shelters.thType') }}</th>
+            <th scope="col">{{ $t('shelters.thSource') }}</th>
+            <th scope="col">{{ $t('shelters.thCapacity') }}</th>
+            <th scope="col">{{ $t('shelters.thPhone') }}</th>
+            <th scope="col">{{ $t('shelters.thHours') }}</th>
+            <th v-if="canManage" scope="col">{{ $t('shelters.thActions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -354,13 +363,13 @@ watch([filterSource, filterDisaster], () => {
 
     <!-- ── Create / Edit form modal ──────────────────────────────── -->
     <div v-if="showForm" class="modal-overlay" @click.self="showForm = false">
-      <div class="modal">
+      <div ref="shelterModalEl" class="modal" role="dialog" aria-modal="true" aria-labelledby="shelter-form-title" tabindex="-1">
         <div class="modal-head">
-          <h3>{{ editTarget ? $t('shelters.editShelter') : $t('shelters.addShelter') }}</h3>
+          <h3 id="shelter-form-title">{{ editTarget ? $t('shelters.editShelter') : $t('shelters.addShelter') }}</h3>
           <button @click="showForm = false" class="modal-close" :aria-label="$t('common.close')"><AppIcon name="close" :size="16" /></button>
         </div>
         <div class="modal-body">
-          <div v-if="formError" class="msg msg-error" style="margin-bottom: var(--sp-3);">{{ formError }}</div>
+          <div v-if="formError" class="msg msg-error" role="alert" style="margin-bottom: var(--sp-3);">{{ formError }}</div>
           <div class="form-grid">
             <label class="field field-wide">
               <span class="field-lbl">{{ $t('shelters.fName') }}</span>
@@ -433,9 +442,9 @@ watch([filterSource, filterDisaster], () => {
 
     <!-- ── Quick capacity update modal ───────────────────────────── -->
     <div v-if="showCapModal" class="modal-overlay" @click.self="showCapModal = false">
-      <div class="modal modal-sm">
+      <div ref="capModalEl" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="cap-modal-title" tabindex="-1">
         <div class="modal-head">
-          <h3>{{ $t('shelters.updateCapacity') }}</h3>
+          <h3 id="cap-modal-title">{{ $t('shelters.updateCapacity') }}</h3>
           <button @click="showCapModal = false" class="modal-close" :aria-label="$t('common.close')"><AppIcon name="close" :size="16" /></button>
         </div>
         <div class="modal-body">
@@ -455,17 +464,17 @@ watch([filterSource, filterDisaster], () => {
 
     <!-- ── Citizen: suggest a safe place ─────────────────────────── -->
     <div v-if="showSafeForm" class="modal-overlay" @click.self="showSafeForm = false">
-      <div class="modal">
+      <div ref="safeModalEl" class="modal" role="dialog" aria-modal="true" aria-labelledby="safe-form-title" tabindex="-1">
         <div class="modal-head">
-          <h3>{{ $t('shelters.suggestSafePlace') }}</h3>
+          <h3 id="safe-form-title">{{ $t('shelters.suggestSafePlace') }}</h3>
           <button @click="showSafeForm = false" class="modal-close" :aria-label="$t('common.close')"><AppIcon name="close" :size="16" /></button>
         </div>
         <div class="modal-body">
           <p class="subtitle" style="margin-top:0;">{{ $t('shelters.safeShareDesc') }}</p>
-          <div v-if="!isLoggedIn" class="msg msg-warn msg-row" style="margin-bottom:var(--sp-3);">
+          <div v-if="!isLoggedIn" class="msg msg-warn msg-row" role="alert" style="margin-bottom:var(--sp-3);">
             <AppIcon name="alert-circle" :size="16" /><span>{{ $t('shelters.safeSignInWarn') }}</span>
           </div>
-          <div v-if="safeError" class="msg msg-error msg-row" style="margin-bottom:var(--sp-3);">
+          <div v-if="safeError" class="msg msg-error msg-row" role="alert" style="margin-bottom:var(--sp-3);">
             <AppIcon name="alert-circle" :size="16" /><span>{{ safeError }}</span>
           </div>
           <label class="field">
@@ -587,7 +596,7 @@ watch([filterSource, filterDisaster], () => {
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field-wide { grid-column: 1 / -1; }
 .field-lbl { font-size: 12px; font-weight: 600; color: var(--text-md); }
-.field-input { padding: 7px 10px; border: 1px solid var(--border-line); border-radius: var(--radius-sm); background: var(--bg-panel); color: var(--text-hi); font-size: 13px; outline: none; }
+.field-input { padding: 9px 10px; border: 1px solid var(--border-line); border-radius: var(--radius-sm); background: var(--bg-panel); color: var(--text-hi); font-size: 16px; }
 .field-input:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--gov-blue-dim); }
 .font-mono { font-family: var(--font-mono); }
 

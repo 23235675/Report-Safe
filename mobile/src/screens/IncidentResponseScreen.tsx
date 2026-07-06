@@ -136,11 +136,11 @@ export default function IncidentResponseScreen(): React.JSX.Element | null {
 
         {/* Respond actions */}
         <Text style={[S.sectionLabel, { marginTop: 18 }]}>{t('incident.iAmResponding')}</Text>
-        <TouchableOpacity style={[S.action, { backgroundColor: C.govBlueDim, borderColor: C.govBlue }]} onPress={() => respond('enroute')} disabled={busy !== null} activeOpacity={0.85}>
+        <TouchableOpacity style={[S.action, { backgroundColor: C.govBlueDim, borderColor: C.govBlue }]} onPress={() => respond('enroute')} disabled={busy !== null} accessibilityRole="button" accessibilityState={{ disabled: busy !== null, busy: busy === 'enroute' }} activeOpacity={0.85}>
           {busy === 'enroute' ? <ActivityIndicator color={C.govBlue} /> : <Ionicons name="walk" size={22} color={C.govBlue} />}
           <Text style={[S.actionText, { color: C.govBlue }]}>{t('incident.statusEnroute')}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[S.action, { backgroundColor: C.safeDim, borderColor: C.safe }]} onPress={() => respond('onscene')} disabled={busy !== null} activeOpacity={0.85}>
+        <TouchableOpacity style={[S.action, { backgroundColor: C.safeDim, borderColor: C.safe }]} onPress={() => respond('onscene')} disabled={busy !== null} accessibilityRole="button" accessibilityState={{ disabled: busy !== null, busy: busy === 'onscene' }} activeOpacity={0.85}>
           {busy === 'onscene' ? <ActivityIndicator color={C.safe} /> : <Ionicons name="flag" size={22} color={C.safe} />}
           <Text style={[S.actionText, { color: C.safe }]}>{t('incident.statusOnscene')}</Text>
         </TouchableOpacity>
@@ -158,7 +158,7 @@ export default function IncidentResponseScreen(): React.JSX.Element | null {
         </Text>
 
         {/* Decline / Close */}
-        <TouchableOpacity style={S.declineBtn} onPress={() => respond('declined')} disabled={busy !== null} activeOpacity={0.85}>
+        <TouchableOpacity style={S.declineBtn} onPress={() => respond('declined')} disabled={busy !== null} accessibilityRole="button" accessibilityState={{ disabled: busy !== null, busy: busy === 'declined' }} activeOpacity={0.85}>
           <Text style={S.declineText}>{t('incident.statusDecline')}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={S.closeBtn} onPress={dismissIncident} activeOpacity={0.7}>

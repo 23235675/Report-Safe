@@ -55,6 +55,8 @@ export default function ResponderSettings({
             onValueChange={setRespOptIn}
             trackColor={{ false: C.border, true: C.govBlue }}
             thumbColor={C.bgPanel}
+            accessibilityLabel={t('responder.optIn')}
+            accessibilityHint={t('responder.optInHint')}
           />
           <View style={{ flex: 1 }}>
             <Text style={S.respOptLabel}>{t('responder.optIn')}</Text>
@@ -71,6 +73,8 @@ export default function ResponderSettings({
                   key={k}
                   style={[S.chip, respSkills.has(k) && S.chipOn]}
                   onPress={() => onToggleSkill(k)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: respSkills.has(k) }}
                   activeOpacity={0.8}
                 >
                   <Text style={[S.chipText, respSkills.has(k) && S.chipTextOn]}>{t(lbl)}</Text>
@@ -85,6 +89,8 @@ export default function ResponderSettings({
                   key={o.km}
                   style={[S.chip, respRadius === o.km && S.chipOn]}
                   onPress={() => onSetRadius(o.km)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: respRadius === o.km }}
                   activeOpacity={0.8}
                 >
                   <Text style={[S.chipText, respRadius === o.km && S.chipTextOn]}>{t(o.key)}</Text>
@@ -95,13 +101,13 @@ export default function ResponderSettings({
         ) : null}
 
         {respErr ? (
-          <View style={S.errorBar}>
+          <View style={S.errorBar} accessibilityLiveRegion="polite">
             <Ionicons name="alert-circle" size={16} color={C.critical} />
             <Text style={S.errorText}>{respErr}</Text>
           </View>
         ) : null}
         {respSaved ? (
-          <View style={S.respSavedBar}>
+          <View style={S.respSavedBar} accessibilityLiveRegion="polite">
             <Ionicons name="checkmark-circle" size={16} color={C.safe} />
             <Text style={S.respSavedText}>{t('responder.saved')}</Text>
           </View>

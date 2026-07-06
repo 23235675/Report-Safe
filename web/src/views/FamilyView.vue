@@ -146,14 +146,15 @@ onUnmounted(() => {
     </div>
 
     <template v-else>
-      <div v-if="notice" class="msg msg-info msg-row" style="margin-bottom: var(--sp-3);">
+      <div v-if="notice" class="msg msg-info msg-row" role="alert" style="margin-bottom: var(--sp-3);">
         <AppIcon name="information-circle" :size="16" /><span>{{ notice }}</span>
       </div>
 
       <form class="search-form" @submit.prevent="onAdd">
+        <label class="visually-hidden" for="add-loved-one-phone">{{ $t('family.addLabel') }}</label>
         <div class="search-field">
           <AppIcon name="call" :size="16" style="color: var(--text-lo);" />
-          <input v-model="addPhone" type="tel" :placeholder="$t('family.addPlaceholder')" autocomplete="off" />
+          <input id="add-loved-one-phone" v-model="addPhone" type="tel" :placeholder="$t('family.addPlaceholder')" autocomplete="off" />
         </div>
         <button type="submit" :disabled="adding" class="search-btn">
           <span v-if="adding" class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span>
@@ -161,8 +162,8 @@ onUnmounted(() => {
         </button>
       </form>
 
-      <div v-if="linksLoading && links.length === 0" class="state-loading"><span class="spinner"></span> {{ $t('common.loading') }}</div>
-      <div v-else-if="linksError" class="msg msg-error msg-row"><AppIcon name="alert-circle" :size="16" /><span>{{ linksError }}</span></div>
+      <div v-if="linksLoading && links.length === 0" class="state-loading" role="status"><span class="spinner"></span> {{ $t('common.loading') }}</div>
+      <div v-else-if="linksError" class="msg msg-error msg-row" role="alert"><AppIcon name="alert-circle" :size="16" /><span>{{ linksError }}</span></div>
 
       <div v-if="confirmed.length > 0" class="list" style="margin-bottom: var(--sp-4);">
         <div
@@ -234,9 +235,10 @@ onUnmounted(() => {
     <p class="subtitle" style="margin: 0 0 var(--sp-3);">{{ $t('family.searchSubtitle') }}</p>
 
     <form class="search-form" @submit.prevent="() => onSearch()">
+      <label class="visually-hidden" for="family-search">{{ $t('family.searchLabel') }}</label>
       <div class="search-field">
         <AppIcon name="search" :size="18" style="color: var(--text-lo);" />
-        <input v-model="query" type="search" :placeholder="$t('family.searchPlaceholder')" autocomplete="off" />
+        <input id="family-search" v-model="query" type="search" :placeholder="$t('family.searchPlaceholder')" autocomplete="off" />
       </div>
       <button type="submit" :disabled="loading" class="search-btn">
         <span v-if="loading" class="spinner" style="width: 16px; height: 16px; border-width: 2px;"></span>
@@ -244,8 +246,8 @@ onUnmounted(() => {
       </button>
     </form>
 
-    <div v-if="loading" class="state-loading"><span class="spinner"></span> {{ $t('family.searching') }}</div>
-    <div v-else-if="error" class="state-block">
+    <div v-if="loading" class="state-loading" role="status"><span class="spinner"></span> {{ $t('family.searching') }}</div>
+    <div v-else-if="error" class="state-block" role="alert">
       <div class="state-icon is-error"><AppIcon name="alert-circle" :size="26" /></div>
       <p class="state-title">{{ $t('family.searchFailedTitle') }}</p>
       <p class="state-sub">{{ error }}</p>

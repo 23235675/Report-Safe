@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator,
+  AccessibilityInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { randomUUID } from 'expo-crypto';
@@ -51,6 +52,11 @@ export default function DisasterModeScreen({ disaster, onReported }: Props): Rea
   const [name,       setName]       = useState(profile.name);
   const [submitting, setSubmitting] = useState<ReportStatus | null>(null);
   const [error,      setError]      = useState<string | null>(null);
+
+  // iOS has no live regions — announce validation errors explicitly.
+  useEffect(() => {
+    if (error) AccessibilityInfo.announceForAccessibility(error);
+  }, [error]);
 
   const disasterType = disasterTypeLabel(disaster.type) || 'Disaster';
 
@@ -137,12 +143,13 @@ export default function DisasterModeScreen({ disaster, onReported }: Props): Rea
           onChangeText={setName}
           placeholder={t('disasterMode.phName')}
           placeholderTextColor={C.textLo}
+          accessibilityLabel={t('disasterMode.yourName')}
           autoComplete="name"
           editable={submitting === null}
         />
 
         {error ? (
-          <View style={S.errorBox}>
+          <View style={S.errorBox} accessibilityLiveRegion="polite">
             <Ionicons name="alert-circle" size={15} color={C.critical} />
             <Text style={S.errorText}>{error}</Text>
           </View>
@@ -159,6 +166,9 @@ export default function DisasterModeScreen({ disaster, onReported }: Props): Rea
               style={[S.action, disabled && !busy && S.actionDimmed]}
               onPress={() => report(opt.value)}
               disabled={disabled}
+              accessibilityRole="button"
+              accessibilityState={{ disabled, busy }}
+              accessibilityLabel={`${statusLabel(opt.value)}. ${t(opt.subKey)}`}
               activeOpacity={0.85}
             >
               <View style={S.actionIcon}>

@@ -44,6 +44,7 @@ function signOut() {
        Account-first secondary nav), a paper-first canvas, and a sticky mono
        metadata footer. -->
   <div v-else class="rs-shell">
+    <a class="skip-link" href="#main-content">{{ $t('nav.skipToContent') }}</a>
     <header class="rs-top-nav">
       <span class="rs-conn-status">
         <span class="rs-conn-dot" :class="{ on: isConnected }"></span>
@@ -93,7 +94,7 @@ function signOut() {
 
       </aside>
 
-      <main class="rs-workspace">
+      <main id="main-content" class="rs-workspace">
         <div class="rs-paper">
           <RouterView />
         </div>

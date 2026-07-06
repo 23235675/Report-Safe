@@ -112,8 +112,8 @@ function switchMode(m) { mode.value = m; error.value = ''; success.value = ''; }
       <p class="subtitle">{{ $t('account.subtitle') }}</p>
     </div>
 
-    <div v-if="error"   class="msg msg-error msg-row"><AppIcon name="alert-circle" :size="16" /><span>{{ error }}</span></div>
-    <div v-if="success" class="msg msg-success msg-row"><AppIcon name="checkmark-circle" :size="16" /><span>{{ success }}</span></div>
+    <div v-if="error"   class="msg msg-error msg-row" role="alert"><AppIcon name="alert-circle" :size="16" /><span>{{ error }}</span></div>
+    <div v-if="success" class="msg msg-success msg-row" role="status"><AppIcon name="checkmark-circle" :size="16" /><span>{{ success }}</span></div>
 
     <div v-if="savedUser" class="account-card">
       <div class="ac-head">
@@ -247,12 +247,12 @@ function switchMode(m) { mode.value = m; error.value = ''; success.value = ''; }
 .field-wide { grid-column: 1 / -1; }
 .field-lbl  { font-size: 12px; font-weight: 600; color: var(--text-md); }
 .field-hint { font-weight: 400; color: var(--text-lo); }
-.field-input { padding: 8px 10px; border: 1px solid var(--border-line); border-radius: var(--radius-sm); background: var(--bg-panel); color: var(--text-hi); font-size: 13px; outline: none; }
+.field-input { padding: 10px 12px; border: 1px solid var(--border-line); border-radius: var(--radius-sm); background: var(--bg-panel); color: var(--text-hi); font-size: 16px; }
 .field-input:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--gov-blue-dim); }
 .field-input:disabled { background: var(--bg-raised); color: var(--text-lo); cursor: not-allowed; }
 .font-mono { font-family: var(--font-mono); }
 .phone-row { display: flex; align-items: stretch; }
-.phone-prefix { display: flex; align-items: center; padding: 0 10px; background: var(--bg-raised); border: 1px solid var(--border-line); border-right: none; border-radius: var(--radius-sm) 0 0 var(--radius-sm); font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--text-md); }
+.phone-prefix { display: flex; align-items: center; padding: 0 10px; background: var(--bg-raised); border: 1px solid var(--border-line); border-right: none; border-radius: var(--radius-sm) 0 0 var(--radius-sm); font-family: var(--font-mono); font-size: 15px; font-weight: 700; color: var(--text-md); }
 .phone-input { border-radius: 0 var(--radius-sm) var(--radius-sm) 0 !important; flex: 1; }
 .consent-field { flex-direction: row; align-items: flex-start; gap: var(--sp-2); }
 .consent-check { margin-top: 2px; flex-shrink: 0; width: 16px; height: 16px; accent-color: var(--gov-blue); }

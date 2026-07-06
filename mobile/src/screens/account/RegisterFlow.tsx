@@ -86,7 +86,7 @@ export default function RegisterFlow({
           </View>
 
           {error && (
-            <View style={S.errorBar}>
+            <View style={S.errorBar} accessibilityLiveRegion="polite">
               <Ionicons name="alert-circle" size={16} color={C.critical} />
               <Text style={S.errorText}>{error}</Text>
             </View>
@@ -105,6 +105,7 @@ export default function RegisterFlow({
                   }
                   placeholder="9 8 7 6 5 4 3 2"
                   placeholderTextColor={C.textLo}
+                  accessibilityLabel={t('account.phoneRegLabel')}
                   keyboardType="numeric"
                   maxLength={8}
                 />
@@ -119,12 +120,13 @@ export default function RegisterFlow({
                 onChangeText={(v) => setRegForm((f) => ({ ...f, name: v }))}
                 placeholder={t('account.phFullName')}
                 placeholderTextColor={C.textLo}
+                accessibilityLabel={t('account.fullName')}
               />
             </View>
 
             <View style={S.field}>
               <Text style={S.fieldLbl}>{t('account.genderLabel')}</Text>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }} accessibilityRole="radiogroup">
                 {(['male', 'female'] as const).map((g) => (
                   <TouchableOpacity
                     key={g}
@@ -132,6 +134,8 @@ export default function RegisterFlow({
                       borderColor: regForm.gender === g ? C.govBlue : C.border,
                       backgroundColor: regForm.gender === g ? C.govBlueDim : C.bgPanel }]}
                     onPress={() => setRegForm((f) => ({ ...f, gender: g }))}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: regForm.gender === g }}
                   >
                     <Ionicons name={g} size={18} color={regForm.gender === g ? C.govBlue : C.textLo} />
                     <Text style={{ color: regForm.gender === g ? C.govBlue : C.textMd, fontWeight: '600' }}>
@@ -150,6 +154,8 @@ export default function RegisterFlow({
                 onChangeText={(v) => setRegForm((f) => ({ ...f, personal_id: v }))}
                 placeholder={t('account.phHkid')}
                 placeholderTextColor={C.textLo}
+                accessibilityLabel={t('account.hkidLabel')}
+                accessibilityHint={t('account.hkidHint')}
                 autoCapitalize="characters"
                 autoCorrect={false}
               />
@@ -164,6 +170,7 @@ export default function RegisterFlow({
                 onChangeText={(v) => setRegForm((f) => ({ ...f, email: v }))}
                 placeholder="name@example.com"
                 placeholderTextColor={C.textLo}
+                accessibilityLabel={t('account.emailLabel')}
                 keyboardType="email-address"
                 autoCapitalize="none"
               />

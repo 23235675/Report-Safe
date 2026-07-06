@@ -37,6 +37,7 @@ defineExpose({ scrollToReport });
         :key="key"
         class="filter-chip"
         :class="{ on }"
+        :aria-pressed="on"
         @click="$emit('toggle', key)"
       >{{ STATUS_LABEL[key] }}</button>
     </div>
@@ -44,19 +45,19 @@ defineExpose({ scrollToReport });
     <div ref="scrollEl" class="cyber-queue-stack">
       <div v-if="p1.length > 0" class="queue-category">
         <div class="category-divider text-red">CRITICAL PRIORITY P1 · {{ p1.length }}</div>
-        <div v-for="(r, i) in p1" :id="`triage-${r.id}`" :key="r.id" class="cyber-queue-item" @click="$emit('select', r.id)">
+        <div v-for="(r, i) in p1" :id="`triage-${r.id}`" :key="r.id" class="cyber-queue-item" role="button" tabindex="0" @click="$emit('select', r.id)" @keydown.enter.prevent="$emit('select', r.id)" @keydown.space.prevent="$emit('select', r.id)">
           <TriageRow :report="r" :index="i" :highlight="highlightId === r.id" />
         </div>
       </div>
       <div v-if="p2.length > 0" class="queue-category">
         <div class="category-divider text-orange">MEDICAL ESCALATION P2 · {{ p2.length }}</div>
-        <div v-for="(r, i) in p2" :id="`triage-${r.id}`" :key="r.id" class="cyber-queue-item" @click="$emit('select', r.id)">
+        <div v-for="(r, i) in p2" :id="`triage-${r.id}`" :key="r.id" class="cyber-queue-item" role="button" tabindex="0" @click="$emit('select', r.id)" @keydown.enter.prevent="$emit('select', r.id)" @keydown.space.prevent="$emit('select', r.id)">
           <TriageRow :report="r" :index="p1.length + i" :highlight="highlightId === r.id" />
         </div>
       </div>
       <div v-if="p3.length > 0" class="queue-category">
         <div class="category-divider text-yellow">MONITOR / WELFARE P3 · {{ p3.length }}</div>
-        <div v-for="(r, i) in p3" :id="`triage-${r.id}`" :key="r.id" class="cyber-queue-item" @click="$emit('select', r.id)">
+        <div v-for="(r, i) in p3" :id="`triage-${r.id}`" :key="r.id" class="cyber-queue-item" role="button" tabindex="0" @click="$emit('select', r.id)" @keydown.enter.prevent="$emit('select', r.id)" @keydown.space.prevent="$emit('select', r.id)">
           <TriageRow :report="r" :index="p1.length + p2.length + i" :highlight="highlightId === r.id" />
         </div>
       </div>
@@ -69,11 +70,11 @@ defineExpose({ scrollToReport });
 .sub-wrapper { display:flex; flex-direction:column; gap:8px; }
 .text-red { color:#222; } .text-orange { color:#222; } .text-yellow { color:#222; }
 .filter-chip-row { display:flex; flex-wrap:wrap; gap:4px; }
-.filter-chip { font-size:11px; font-weight:500; padding:3px 8px; background:#fff; border:1px solid #d0d0d0; color:#555; cursor:pointer; font-family:inherit; border-radius:2px; }
+.filter-chip { font-size:12px; font-weight:500; padding:3px 8px; background:#fff; border:1px solid #d0d0d0; color:#555; cursor:pointer; font-family:inherit; border-radius:2px; }
 .filter-chip.on { background:#e8e8e8; color:#222; border-color:#999; }
 .cyber-queue-stack { display:flex; flex-direction:column; gap:10px; }
 .queue-category { display:flex; flex-direction:column; gap:4px; }
-.category-divider { font-size:11px; font-weight:700; padding-bottom:3px; border-bottom:1px solid #d0d0d0; margin-bottom:2px; color:#555; }
+.category-divider { font-size:12px; font-weight:700; padding-bottom:3px; border-bottom:1px solid #d0d0d0; margin-bottom:2px; color:#555; }
 .cyber-queue-item { background:#fff; border:1px solid #d0d0d0; padding:4px; cursor:pointer; border-radius:2px; }
-.cyber-empty-notice { padding:16px; text-align:center; color:#888; font-size:12px; }
+.cyber-empty-notice { padding:16px; text-align:center; color:#666; font-size:13px; }
 </style>

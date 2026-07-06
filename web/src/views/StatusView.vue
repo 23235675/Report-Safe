@@ -107,11 +107,11 @@ function prevPeoplePage() { peopleOffset.value = Math.max(0, peopleOffset.value 
       </div>
     </div>
 
-    <div v-if="loading && !stats.total && !error" class="state-loading">
+    <div v-if="loading && !stats.total && !error" class="state-loading" role="status">
       <span class="spinner"></span> {{ $t('statusView.loading') }}
     </div>
 
-    <div v-else-if="error" class="state-block">
+    <div v-else-if="error" class="state-block" role="alert">
       <div class="state-icon is-error"><AppIcon name="cloud-offline" :size="26" /></div>
       <p class="state-title">{{ $t('statusView.cantReach') }}</p>
       <p class="state-sub">{{ $t('statusView.cantReachSub') }}</p>
@@ -149,16 +149,16 @@ function prevPeoplePage() { peopleOffset.value = Math.max(0, peopleOffset.value 
           <table class="data-table status-table">
             <thead>
               <tr>
-                <th>{{ $t('statusView.colStatus') }}</th>
-                <th class="col-num">{{ $t('statusView.colCount') }}</th>
-                <th>{{ $t('statusView.colShare') }}</th>
+                <th scope="col">{{ $t('statusView.colStatus') }}</th>
+                <th scope="col" class="col-num">{{ $t('statusView.colCount') }}</th>
+                <th scope="col">{{ $t('statusView.colShare') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr
                 v-for="cat in categories" :key="cat.key"
                 class="status-row" :class="{ 'is-active': activeStatus === cat.key }"
-                role="button" tabindex="0"
+                role="button" tabindex="0" :aria-pressed="activeStatus === cat.key"
                 @click="selectStatus(cat.key)"
                 @keydown.enter.prevent="selectStatus(cat.key)"
                 @keydown.space.prevent="selectStatus(cat.key)"
@@ -203,10 +203,10 @@ function prevPeoplePage() { peopleOffset.value = Math.max(0, peopleOffset.value 
         <table v-else class="people-table">
           <thead>
             <tr>
-              <th>{{ $t('statusView.colName') }}</th>
-              <th>{{ $t('statusView.colPhone') }}</th>
-              <th>{{ $t('statusView.colGender') }}</th>
-              <th>{{ $t('statusView.colStatus') }}</th>
+              <th scope="col">{{ $t('statusView.colName') }}</th>
+              <th scope="col">{{ $t('statusView.colPhone') }}</th>
+              <th scope="col">{{ $t('statusView.colGender') }}</th>
+              <th scope="col">{{ $t('statusView.colStatus') }}</th>
             </tr>
           </thead>
           <tbody>

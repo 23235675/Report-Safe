@@ -33,7 +33,7 @@ export default function LoginFlow({
       </View>
 
       {error && (
-        <View style={S.errorBar}>
+        <View style={S.errorBar} accessibilityLiveRegion="polite">
           <Ionicons name="alert-circle" size={16} color={C.critical} />
           <Text style={S.errorText}>{error}</Text>
         </View>
@@ -50,6 +50,7 @@ export default function LoginFlow({
               onChangeText={(v) => setPhone(v.replace(/\D/g, '').slice(0, 8))}
               placeholder="9 8 7 6 5 4 3 2"
               placeholderTextColor={C.textLo}
+              accessibilityLabel={t('account.phoneLabel')}
               keyboardType="numeric"
               maxLength={8}
             />
@@ -60,6 +61,8 @@ export default function LoginFlow({
           onPress={onLogin}
           disabled={loading}
           style={[S.primaryBtn, loading && { opacity: 0.6 }]}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: loading, busy: loading }}
           activeOpacity={0.85}
         >
           {loading ? (

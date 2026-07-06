@@ -88,7 +88,7 @@ export default function HomeScreen(): React.JSX.Element {
           <Text style={S.loadingText}>{t('home.loading')}</Text>
         </View>
       ) : error && !loaded ? (
-        <View style={S.errorBanner}>
+        <View style={S.errorBanner} accessibilityLiveRegion="polite">
           <Ionicons name="cloud-offline" size={18} color={C.critical} />
           <Text style={S.errorBannerText}>{t('home.cantReach')}</Text>
           <TouchableOpacity onPress={onRefresh} style={S.errorRetryBtn} activeOpacity={0.85}>
@@ -123,7 +123,13 @@ export default function HomeScreen(): React.JSX.Element {
       {/* ── Live map: active cases (always) + shelters (disaster only) ── */}
       <View style={S.mapWrap}>
         <MapWebView center={location} markers={markers} height={240} />
-        <TouchableOpacity style={S.mapExpand} onPress={() => setMapFull(true)} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={S.mapExpand}
+          onPress={() => setMapFull(true)}
+          accessibilityRole="button"
+          accessibilityLabel={t('home.expandMap')}
+          activeOpacity={0.85}
+        >
           <Ionicons name="expand" size={18} color={C.textHi} />
         </TouchableOpacity>
       </View>
@@ -132,7 +138,13 @@ export default function HomeScreen(): React.JSX.Element {
       <Modal visible={mapFull} animationType="slide" onRequestClose={() => setMapFull(false)}>
         <View style={S.fullWrap}>
           <MapWebView center={location} markers={markers} height={Dimensions.get('window').height} />
-          <TouchableOpacity style={S.mapClose} onPress={() => setMapFull(false)} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={S.mapClose}
+            onPress={() => setMapFull(false)}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.close')}
+            activeOpacity={0.85}
+          >
             <Ionicons name="close" size={22} color={C.textHi} />
           </TouchableOpacity>
         </View>
@@ -199,7 +211,13 @@ export default function HomeScreen(): React.JSX.Element {
       {/* ── Current incidents — hidden until the user opts to see them ── */}
       {disasters.length > 0 ? (
         <View style={S.section}>
-          <TouchableOpacity style={S.toggleBtn} onPress={() => setShowIncidents((v) => !v)} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={S.toggleBtn}
+            onPress={() => setShowIncidents((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showIncidents }}
+            activeOpacity={0.85}
+          >
             <Ionicons name={showIncidents ? 'chevron-up' : 'list'} size={16} color={C.govBlue} />
             <Text style={S.toggleText}>
               {showIncidents ? t('home.hideIncidents') : t('home.showIncidents', { n: disasters.length })}

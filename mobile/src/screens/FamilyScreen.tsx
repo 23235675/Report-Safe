@@ -156,7 +156,7 @@ export default function FamilyScreen(): React.JSX.Element {
       ) : (
         <>
           {notice ? (
-            <View style={FS.noticeBox}>
+            <View style={FS.noticeBox} accessibilityLiveRegion="polite">
               <Ionicons name="information-circle" size={16} color={C.govBlue} />
               <Text style={FS.noticeText}>{notice}</Text>
             </View>
@@ -172,13 +172,22 @@ export default function FamilyScreen(): React.JSX.Element {
                 onChangeText={setAddPhone}
                 placeholder={t('family.addPlaceholder')}
                 placeholderTextColor={C.textLo}
+                accessibilityLabel={t('family.addPlaceholder')}
                 keyboardType="phone-pad"
                 autoCorrect={false}
                 onSubmitEditing={onAdd}
                 returnKeyType="done"
               />
             </View>
-            <TouchableOpacity style={FS.addBtn} onPress={onAdd} disabled={adding} activeOpacity={0.85}>
+            <TouchableOpacity
+              style={FS.addBtn}
+              onPress={onAdd}
+              disabled={adding}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.add')}
+              accessibilityState={{ disabled: adding, busy: adding }}
+              activeOpacity={0.85}
+            >
               {adding
                 ? <ActivityIndicator color={C.textInv} size="small" />
                 : <Ionicons name="person-add" size={18} color={C.textInv} />}
@@ -190,7 +199,7 @@ export default function FamilyScreen(): React.JSX.Element {
           ) : null}
 
           {linksError ? (
-            <View style={FS.errorBox}>
+            <View style={FS.errorBox} accessibilityLiveRegion="polite">
               <View style={FS.rowHead}>
                 <Ionicons name="alert-circle" size={16} color={C.critical} />
                 <Text style={FS.errorText}>{linksError}</Text>
@@ -239,7 +248,13 @@ export default function FamilyScreen(): React.JSX.Element {
                     <Ionicons name="create-outline" size={15} color={C.amber} />
                     <Text style={[FS.chipText, { color: C.amber }]}>{t('family.report')}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={FS.iconBtn} onPress={() => onRemove(l)} hitSlop={8}>
+                  <TouchableOpacity
+                    style={FS.iconBtn}
+                    onPress={() => onRemove(l)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('common.remove')}
+                  >
                     <Ionicons name="close" size={18} color={C.textLo} />
                   </TouchableOpacity>
                 </View>
@@ -271,7 +286,13 @@ export default function FamilyScreen(): React.JSX.Element {
                     <Ionicons name="checkmark" size={15} color={C.textInv} />
                     <Text style={FS.confirmBtnText}>{t('family.confirm')}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={FS.iconBtn} onPress={() => onRemove(l)} hitSlop={8}>
+                  <TouchableOpacity
+                    style={FS.iconBtn}
+                    onPress={() => onRemove(l)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('common.remove')}
+                  >
                     <Ionicons name="close" size={18} color={C.textLo} />
                   </TouchableOpacity>
                 </View>
@@ -321,13 +342,22 @@ export default function FamilyScreen(): React.JSX.Element {
             onChangeText={setQuery}
             placeholder={t('family.searchPlaceholder')}
             placeholderTextColor={C.textLo}
+            accessibilityLabel={t('family.searchPlaceholder')}
             onSubmitEditing={() => onSearch()}
             returnKeyType="search"
             autoCorrect={false}
             autoCapitalize="words"
           />
         </View>
-        <TouchableOpacity style={FS.searchBtn} onPress={() => onSearch()} disabled={loading} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={FS.searchBtn}
+          onPress={() => onSearch()}
+          disabled={loading}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.search')}
+          accessibilityState={{ disabled: loading, busy: loading }}
+          activeOpacity={0.85}
+        >
           {loading
             ? <ActivityIndicator color={C.textInv} size="small" />
             : <Ionicons name="arrow-forward" size={20} color={C.textInv} />}
@@ -335,7 +365,7 @@ export default function FamilyScreen(): React.JSX.Element {
       </View>
 
       {error ? (
-        <View style={FS.errorBox}>
+        <View style={FS.errorBox} accessibilityLiveRegion="polite">
           <View style={FS.rowHead}>
             <Ionicons name="alert-circle" size={16} color={C.critical} />
             <Text style={FS.errorText}>{error}</Text>

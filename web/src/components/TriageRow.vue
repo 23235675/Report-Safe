@@ -41,7 +41,7 @@ function relativeTime(ts) {
     <StatusIcon :status="report.status" :size="28" :icon="16" :vivid="true" style="margin-top: 1px;" />
     <div style="flex: 1; min-width: 0;">
       <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; flex-wrap: wrap;">
-        <span style="font-size: 12px; font-weight: 700; color: var(--text-hi);">{{ report.name }}</span>
+        <span style="font-size: 13px; font-weight: 700; color: var(--text-hi);">{{ report.name }}</span>
         <StatusBadge :status="report.status" :short="true" :vivid="true" />
         <span
           v-if="report.reported_by === 'family'"
@@ -49,7 +49,7 @@ function relativeTime(ts) {
           title="Reported on behalf by a family member"
         ><AppIcon name="people" :size="10" /> Proxy</span>
       </div>
-      <div class="muted" style="font-size: 10px; line-height: 1.45;">
+      <div class="muted" style="font-size: 11px; line-height: 1.45;">
         <span class="inline-ico"><AppIcon name="navigate" :size="11" /> {{ distance }}</span>
         · {{ coords }}
         · <span class="inline-ico"><AppIcon name="time" :size="11" /> {{ relativeTime(report.updated_at) }}</span>
@@ -69,7 +69,7 @@ function relativeTime(ts) {
 <style scoped>
 .proxy-tag {
   display: inline-flex; align-items: center; gap: 3px;
-  font-size: 9px; font-weight: 700; letter-spacing: 0.02em;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.02em;
   color: var(--awaiting); background: var(--awaiting-dim);
   border: 1px solid var(--awaiting-border); border-radius: 4px;
   padding: 0 4px; text-transform: uppercase;

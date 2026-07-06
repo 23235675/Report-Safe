@@ -96,15 +96,15 @@ onUnmounted(() => { offStats?.(); offAlert?.(); });
       </div>
     </div>
 
-    <div v-if="authNotice" class="msg msg-info no-print" style="margin-bottom: var(--sp-5);">
+    <div v-if="authNotice" class="msg msg-info no-print" role="alert" style="margin-bottom: var(--sp-5);">
       {{ $t('home.authNotice') }}
     </div>
 
     <DisasterBanner v-if="latestDisaster && !dismissed" :disaster="latestDisaster" @close="dismissed = true" />
 
-    <div v-if="loading && !loaded" class="state-loading"><span class="spinner"></span> {{ $t('home.loading') }}</div>
+    <div v-if="loading && !loaded" class="state-loading" role="status"><span class="spinner"></span> {{ $t('home.loading') }}</div>
 
-    <div v-else-if="error" class="state-block">
+    <div v-else-if="error" class="state-block" role="alert">
       <div class="state-icon is-error"><AppIcon name="cloud-offline" :size="26" /></div>
       <p class="state-title">{{ $t('home.cantReach') }}</p>
       <p class="state-sub">{{ $t('home.cantReachSub') }}</p>
@@ -153,12 +153,13 @@ onUnmounted(() => { offStats?.(); offAlert?.(); });
         </div>
 
         <div v-if="availableTypes.length > 1" class="ds-filters no-print">
-          <button class="ds-chip" :class="{ on: typeFilter === 'all' }" @click="typeFilter = 'all'">{{ $t('home.filterAll') }}</button>
+          <button class="ds-chip" :class="{ on: typeFilter === 'all' }" :aria-pressed="typeFilter === 'all'" @click="typeFilter = 'all'">{{ $t('home.filterAll') }}</button>
           <button
             v-for="ty in availableTypes"
             :key="ty"
             class="ds-chip"
             :class="{ on: typeFilter === ty }"
+            :aria-pressed="typeFilter === ty"
             @click="typeFilter = ty"
           >
             <AppIcon :name="typeIcon(ty)" :size="13" /> {{ disasterTypeLabel(ty) }}
@@ -287,9 +288,11 @@ onUnmounted(() => { offStats?.(); offAlert?.(); });
   display: inline-flex; align-items: center; gap: 6px;
   height: 34px; padding: 0 var(--sp-3); background: transparent;
   border: none; border-bottom: 3px solid transparent;
-  font-size: 13px; font-weight: 500; color: #d5e0f0; cursor: pointer;
+  font-size: 13px; font-weight: 500; color: #e2f1f0; cursor: pointer;
 }
 .ds-chip:hover { color: #ffffff; }
+/* Navy focus ring is invisible on the dark-teal filter bar — use white. */
+.ds-chip:focus-visible { outline-color: #ffffff; }
 .ds-chip.on { font-weight: 700; color: #ffffff; border-bottom-color: #ffffff; background: rgba(255, 255, 255, 0.1); }
 
 /* Zone Records Sheets */

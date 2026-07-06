@@ -24,13 +24,13 @@ function submit() { emit('submit', passwordInput.value); }
     busy-label="Verifying…"
     @submit="submit"
   >
-    <label class="field-label">Access token</label>
-    <input v-model="passwordInput" class="login-input" type="password" placeholder="Enter access token..." autocomplete="off" autofocus required />
+    <label class="field-label" for="gov-access-token">Access token</label>
+    <input id="gov-access-token" v-model="passwordInput" class="login-input" type="password" placeholder="Enter access token..." autocomplete="off" autofocus required />
   </LoginPanel>
 </template>
 
 <style scoped>
-.field-label { font-size:11px; font-weight:600; color:#555; margin-bottom:4px; }
-.login-input { padding:8px 10px; border:1px solid #d0d0d0; font-size:13px; color:#222; background:#fff; width:100%; box-sizing:border-box; font-family:inherit; border-radius:2px; }
-.login-input:focus { outline:none; border-color:#999; }
+.field-label { font-size:12px; font-weight:600; color:#555; margin-bottom:4px; }
+.login-input { padding:8px 10px; border:1px solid #d0d0d0; font-size:14px; color:#222; background:#fff; width:100%; box-sizing:border-box; font-family:inherit; border-radius:2px; }
+.login-input:focus { border-color:#999; }
 </style>
