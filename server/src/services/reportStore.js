@@ -2,61 +2,14 @@
 
 const crypto = require('crypto');
 const { collection } = require('../db/mongo');
-const { haversineKm } = require('../lib/geo');
+const { boundingBox, boxFilter, findWithinRadius, GEO_SCAN_CAP } = require('../lib/geo');
 const { escapeRegex } = require('../lib/mongoMap');
+const { logger } = require('../lib/logger');
+const userStore = require('./userStore');
 
-/**
- * Triage priority tier for rescue sorting (0 = most urgent).
- *
- * CRITICAL (fixes M5): escalation must NEVER lower a case's priority. A
- * `need_help` that has gone silent (auto-escalated to `awaiting_response`)
- * is at least as urgent as the original call — it stays P1, never sinking
- * below a responsive `injured` case. Escalation changes the *status label*
- * for tracking/alerting, not the triage urgency.
- *
- *   P1 (0) need_help, awaiting_response   — active or silent call for help
- *   P2 (1) injured, potentially_missing, verified_missing, missing
- *   P3 (2) safe, rescued
- *   P4 (3) deceased
- */
-const STATUS_PRIORITY = Object.freeze({
-  need_help:           0,
-  awaiting_response:   0,
-  injured:             1,
-  potentially_missing: 1,
-  verified_missing:    1,
-  missing:             1,
-  safe:                2,
-  rescued:             2,
-  deceased:            3,
-});
-
-/**
- * Human-readable priority label for each tier.
- */
-const PRIORITY_LABEL = Object.freeze({
-  0: 'P1',
-  1: 'P2',
-  2: 'P3',
-  3: 'P4',
-});
-
-/** Every status the stats endpoint reports on (zero-filled when absent). */
-const ALL_STATUSES = Object.freeze([
-  'safe', 'injured', 'need_help', 'awaiting_response',
-  'potentially_missing', 'missing', 'verified_missing', 'rescued', 'deceased',
-]);
-
-/**
- * Hard ceiling on how many docs any geo bounding-box query pulls into the heap
- * before the exact haversine pass (C2). A city-wide disaster (seeded T10 has
- * radius_km 60 → box covers all of HK) would otherwise stream the WHOLE
- * collection into Node — an OOM risk on Azure B1 and an RU-exhaustion (429)
- * risk on Cosmos Free. Well above any realistic single-radius hit, so normal
- * results are unaffected; only the pathological all-collection box is bounded.
- * ponytail: a scan ceiling, not cursor pagination — M7 adds paging for the tail.
- */
-const GEO_SCAN_CAP = Number(process.env.GEO_SCAN_CAP) || 5000;
+// Status vocabulary + triage priorities are canonical in shared/statuses.js
+// (see the never-lower-priority escalation invariant documented there).
+const { REPORT_STATUSES: ALL_STATUSES, STATUS_PRIORITY, PRIORITY_LABEL } = require('../../../shared/statuses');
 
 function coarsen(v) {
   return Math.round(v * 100) / 100;
@@ -64,49 +17,12 @@ function coarsen(v) {
 
 /**
  * Map a stored Mongo document to the app's row shape: _id → id, and drop the
- * denormalised search helper `name_lower`. Mirrors the explicit column lists
- * the SQL SELECTs returned.
+ * denormalised search helper `name_lower`.
  */
 function fromDoc(doc) {
   if (!doc) return doc;
   const { _id, name_lower, ...rest } = doc;
   return { id: _id, ...rest };
-}
-
-/**
- * Latitude/longitude bounding box around a point, used as an index-friendly
- * prefilter before the exact (but unindexable) haversine distance check.
- *
- * The box is always a SUPERSET of the true radius circle, so the exact
- * `distance <= radius` filter that follows still returns every real match —
- * the box only lets the index skip far-away rows via idx_reports_lat_lng.
- * If the box would cross a pole or the antimeridian we widen it to the full
- * range (correctness over speed) rather than risk dropping valid rows.
- */
-function boundingBox(lat, lng, radiusKm) {
-  const latDelta = radiusKm / 110.574;
-  const cosLat = Math.cos((lat * Math.PI) / 180);
-  const lngDelta = Math.abs(cosLat) < 1e-6 ? 180 : radiusKm / (111.320 * Math.abs(cosLat));
-  const latMin = lat - latDelta, latMax = lat + latDelta;
-  const lngMin = lng - lngDelta, lngMax = lng + lngDelta;
-  if (latMin < -90 || latMax > 90 || lngMin < -180 || lngMax > 180) {
-    return { latMin: -90, latMax: 90, lngMin: -180, lngMax: 180 };
-  }
-  return { latMin, latMax, lngMin, lngMax };
-}
-
-/**
- * The index-friendly Mongo sub-filter for "inside the bounding box of
- * (lat,lng,radiusKm)". Spread into a find() filter, then refine with an exact
- * haversine pass. Single source of truth for the box→filter shape that the
- * shelters/aed/incident/disaster geo queries all build.
- */
-function boxFilter(lat, lng, radiusKm) {
-  const bb = boundingBox(lat, lng, radiusKm);
-  return {
-    lat: { $gte: bb.latMin, $lte: bb.latMax },
-    lng: { $gte: bb.lngMin, $lte: bb.lngMax },
-  };
 }
 
 /**
@@ -126,7 +42,7 @@ async function recordStatusHistory(reportId, fromStatus, toStatus, changedBy, no
       notes: notes ?? null,
     });
   } catch (err) {
-    console.error('[reportStore.recordStatusHistory] failed (continuing):', err);
+    logger.error('status_history_write_failed', { reportId, error: err.message });
   }
 }
 
@@ -138,8 +54,7 @@ async function recordStatusHistory(reportId, fromStatus, toStatus, changedBy, no
  * Idempotent relay: a stable client UUID is the _id. We first try to bump an
  * existing doc; only if none exists do we insert. The unique _id makes a
  * concurrent double-submit (choppy network) safe — the insert loser catches the
- * 11000 duplicate-key and relays instead. This preserves the SQL
- * `ON CONFLICT (id) DO UPDATE relay_count++` semantics without a transaction.
+ * 11000 duplicate-key and relays instead.
  */
 async function upsertReport(report) {
   try {
@@ -192,7 +107,7 @@ async function upsertReport(report) {
     await recordStatusHistory(id, null, report.status, report.reported_by === 'family' ? 'family' : 'self');
     return { id, inserted: true };
   } catch (err) {
-    console.error('[reportStore.upsertReport] failed:', err);
+    logger.error('report_upsert_failed', { error: err.message });
     throw err;
   }
 }
@@ -216,11 +131,12 @@ async function searchByName(queryStr, { limit = 100, offset = 0 } = {}) {
     const off = Math.max(Number(offset) || 0, 0);
     const q = queryStr.trim();
 
-    // All-digits → phone search (match the last 8 digits). Else name PREFIX search
-    // (H7): anchored `^q` instead of an unanchored scan, so the query can seek the
-    // index rather than reading every citizen row on each lookup.
-    // ponytail: anchored case-insensitive regex on `name`; for full index use on
-    // Cosmos, denormalise a `name_lower` onto users and match that exactly.
+    // All-digits → phone search (match the last 8 digits). Else name PREFIX
+    // search: anchored `^q` instead of an unanchored scan, so the query can
+    // seek the index rather than reading every citizen row on each lookup.
+    // Known limitation: anchored case-insensitive regex on `name`; for full
+    // index use on Cosmos, denormalise a `name_lower` onto users and match
+    // that exactly.
     const isPhoneQuery = /^\d+$/.test(q);
     const userFilter = isPhoneQuery
       ? { role: 'citizen', phone: { $regex: escapeRegex(q.slice(-8)) + '$' } }
@@ -276,7 +192,7 @@ async function searchByName(queryStr, { limit = 100, offset = 0 } = {}) {
     });
     return rows.slice(off, off + lim);
   } catch (err) {
-    console.error('[reportStore.searchByName] failed:', err);
+    logger.error('report_search_failed', { error: err.message });
     throw err;
   }
 }
@@ -292,7 +208,7 @@ async function listPeople({ limit = 50, offset = 0, status = null } = {}) {
     const off = Math.max(Number(offset) || 0, 0);
     const statusFilter = status ? String(status) : null;
 
-    // ponytail: scan cap on latest-reports, matches the bound used by getRescueView.
+    // Scan cap on latest-reports, matching the bound used by getRescueView.
     const reports = await collection('reports')
       .find({})
       .project({ user_id: 1, reported_for_user_id: 1, status: 1, updated_at: 1 })
@@ -338,7 +254,7 @@ async function listPeople({ limit = 50, offset = 0, status = null } = {}) {
 
     return { rows, total: allIds.length };
   } catch (err) {
-    console.error('[reportStore.listPeople] failed:', err);
+    logger.error('people_list_failed', { error: err.message });
     throw err;
   }
 }
@@ -354,29 +270,21 @@ function maskPhone(phone) {
  * Rescue/triage view: all reports within radiusKm sorted by priority then distance.
  * Returns full rows + distance_km + priority_label.
  *
- * A lat/lng bounding box (index-friendly) prefilters rows before the exact
- * haversine distance check, so this no longer scans the whole collection.
+ * The capped scan is newest-first on the indexed updated_at so, if the cap is
+ * hit, it's the most recently-active reports that survive — the exact haversine
+ * + priority sort below then re-orders the survivors for triage.
  */
 async function getRescueView(lat, lng, radiusKm, { limit = 500, offset = 0 } = {}) {
   try {
     const lim = Math.min(Math.max(Number(limit) || 500, 1), 1000);
     const off = Math.max(Number(offset) || 0, 0);
-    const bb = boundingBox(lat, lng, radiusKm);
 
-    // Bound the scan (C2). Newest-first on the indexed updated_at so, if the cap
-    // is hit, it's the most recently-active reports that survive — then the exact
-    // haversine + priority sort below re-orders the survivors for triage.
-    const candidates = await collection('reports')
-      .find({ lat: { $gte: bb.latMin, $lte: bb.latMax }, lng: { $gte: bb.lngMin, $lte: bb.lngMax } })
-      .sort({ updated_at: -1 })
-      .limit(GEO_SCAN_CAP)
-      .toArray();
-
-    const within = [];
-    for (const doc of candidates) {
-      const distance_km = haversineKm(lat, lng, doc.lat, doc.lng);
-      if (distance_km <= radiusKm) within.push({ ...fromDoc(doc), distance_km });
-    }
+    const within = await findWithinRadius('reports', {
+      lat, lng, radiusKm,
+      sort: { updated_at: -1 },
+      cap: GEO_SCAN_CAP,
+      map: fromDoc,
+    });
 
     // ORDER BY priority(status) [ELSE 2], distance ASC.
     within.sort((a, b) => {
@@ -398,7 +306,7 @@ async function getRescueView(lat, lng, radiusKm, { limit = 500, offset = 0 } = {
       };
     });
   } catch (err) {
-    console.error('[reportStore.getRescueView] failed:', err);
+    logger.error('rescue_view_failed', { error: err.message });
     throw err;
   }
 }
@@ -431,7 +339,7 @@ async function getStats({ excludeWeb = false } = {}) {
 
     return { total, ...counts, active_disasters: activeDisasters };
   } catch (err) {
-    console.error('[reportStore.getStats] failed:', err);
+    logger.error('stats_failed', { error: err.message });
     throw err;
   }
 }
@@ -453,7 +361,7 @@ async function updateStatus(id, newStatus, changedBy = 'system') {
       await recordStatusHistory(id, before.status, newStatus, changedBy);
     }
   } catch (err) {
-    console.error('[reportStore.updateStatus] failed:', err);
+    logger.error('report_status_update_failed', { id, error: err.message });
     throw err;
   }
 }
@@ -466,9 +374,9 @@ async function updateStatus(id, newStatus, changedBy = 'system') {
  *
  * No transaction (Cosmos RU-based): each tier is found → updateMany → history
  * insert. status_history is write-only/best-effort, so a failed history insert
- * is logged loudly but never blocks the escalation (matches prior semantics).
- * Escalated rows get updated_at = now, so they can't be re-picked by the next
- * tier's `updated_at < threshold` filter in the same pass.
+ * is logged loudly but never blocks the escalation. Escalated rows get
+ * updated_at = now, so they can't be re-picked by the next tier's
+ * `updated_at < threshold` filter in the same pass.
  */
 async function escalateStaleReports(needHelpThresholdMs, awaitingThresholdMs) {
   try {
@@ -492,7 +400,7 @@ async function escalateStaleReports(needHelpThresholdMs, awaitingThresholdMs) {
           { ordered: false }
         );
       } catch (e) {
-        console.error('[reportStore.escalateStaleReports] history insert failed (continuing):', e.message);
+        logger.error('escalation_history_write_failed', { error: e.message });
       }
       return ids.length;
     };
@@ -503,124 +411,15 @@ async function escalateStaleReports(needHelpThresholdMs, awaitingThresholdMs) {
   } catch (err) {
     // Swallowing here is deliberate (background engine must not crash the
     // poll loop) — but the failure is loud in the log.
-    console.error('[reportStore.escalateStaleReports] failed:', err);
+    logger.error('escalation_failed', { error: err.message });
     return { escalatedToAwaiting: 0, escalatedToMissing: 0 };
   }
-}
-
-/**
- * Return all shelters within radiusKm sorted by distance.
- * Uses the same bounding-box prefilter + JS haversine as the rescue view.
- */
-async function getShelters(lat, lng, radiusKm) {
-  try {
-    const bb = boundingBox(lat, lng, radiusKm);
-    const candidates = await collection('shelters')
-      .find({ active: true, lat: { $gte: bb.latMin, $lte: bb.latMax }, lng: { $gte: bb.lngMin, $lte: bb.lngMax } })
-      .sort({ lat: 1 }) // indexed; makes the cap deterministic (C2)
-      .limit(GEO_SCAN_CAP)
-      .toArray();
-
-    const within = [];
-    for (const doc of candidates) {
-      const distance_km = haversineKm(lat, lng, doc.lat, doc.lng);
-      if (distance_km <= radiusKm) within.push({ ...fromDoc(doc), distance_km });
-    }
-    within.sort((a, b) => a.distance_km - b.distance_km);
-    return within;
-  } catch (err) {
-    console.error('[reportStore.getShelters] failed:', err);
-    return [];
-  }
-}
-
-/**
- * PDPO erasure (DPP6 / data-subject deletion): delete the account and scrub
- * personal data from any reports tied to it. Report rows are kept (so aggregate
- * counts stay intact) but their identifying fields are nulled and the user
- * linkage is cleared (mirrors the old FK ON DELETE SET NULL).
- *
- * MongoDB has no FK cascades, so the cascades the SQL schema declared are
- * emulated here explicitly:
- *   account_links       ON DELETE CASCADE  → delete links touching the user
- *   device_push_tokens  ON DELETE CASCADE  → delete the user's device handles
- *   safe_places         ON DELETE CASCADE  → delete the user's submissions
- *   reports.user_id / reported_for_user_id ON DELETE SET NULL → nulled in scrub
- */
-async function eraseUserData(userId) {
-  try {
-    const now = Date.now();
-    // Phase 1a — scrub PII from the user's reports (rows kept for aggregate counts).
-    const scrub = await collection('reports').updateMany(
-      { $or: [{ user_id: userId }, { reported_for_user_id: userId }] },
-      {
-        $set: {
-          name: 'Erased', name_lower: 'erased', phone: null, personal_id: null,
-          medical_notes: null, reporter_name: null,
-          user_id: null, reported_for_user_id: null, updated_at: now,
-        },
-      }
-    );
-
-    // Phase 1b — scrub PII from the USER doc IN PLACE and tombstone it FIRST, so
-    // a crash after this point can never leave PII behind (M1) — only a PII-free
-    // pending tombstone that finalizePendingErasures() cleans up. phone is a
-    // (non-sparse) unique index → use a per-user sentinel so multiple tombstones
-    // don't collide; personal_id is $unset so the sparse-unique index drops it.
-    const marked = await collection('users').findOneAndUpdate(
-      { _id: userId },
-      {
-        $set: {
-          name: 'Erased', name_lower: 'erased', phone: `erased-${userId}`, email: null,
-          access_token_hash: null, refresh_token_hash: null, prev_refresh_token_hash: null,
-          deletion_state: 'pending', deletion_requested_at: now, updated_at: now,
-        },
-        $unset: { personal_id: '' },
-      },
-      { returnDocument: 'after' }
-    );
-    const existed = marked && marked.value !== undefined ? marked.value : marked;
-    if (!existed) return { deleted: 0, reportsScrubbed: scrub.modifiedCount };
-
-    // Phase 2 — cascade deletes (idempotent) then drop the tombstone.
-    await finalizePendingErasures(userId);
-    return { deleted: 1, reportsScrubbed: scrub.modifiedCount };
-  } catch (err) {
-    console.error('[reportStore.eraseUserData] failed:', err);
-    throw err;
-  }
-}
-
-/**
- * Finalize PDPO erasure tombstones (M1 phase 2): emulate the SQL FK cascades and
- * remove the (already PII-free) user doc. Idempotent — safe to re-run after a
- * crash. Pass a userId to finalize one, or omit to sweep every pending tombstone
- * (called from the retention job for crash recovery).
- */
-async function finalizePendingErasures(userId) {
-  const filter = userId
-    ? { _id: userId }
-    : { deletion_state: 'pending' };
-  const pending = await collection('users').find(filter, { projection: { _id: 1 } }).limit(500).toArray();
-  const ids = pending.map((p) => p._id);
-  if (ids.length) {
-    // Emulate the SQL FK cascades in BULK: one deleteMany per related collection
-    // (was a per-user serial loop = ids.length × 4 round-trips). Dependents go
-    // concurrently; the user docs are deleted LAST so a crash mid-cascade leaves
-    // the tombstone for the next sweep — same idempotent guarantee, fewer ops/RU.
-    await Promise.all([
-      collection('account_links').deleteMany({ $or: [{ user_a_id: { $in: ids } }, { user_b_id: { $in: ids } }] }),
-      collection('device_push_tokens').deleteMany({ user_id: { $in: ids } }),
-      collection('safe_places').deleteMany({ created_by_user_id: { $in: ids } }),
-    ]);
-    await collection('users').deleteMany({ _id: { $in: ids } });
-  }
-  return { finalized: pending.length };
 }
 
 module.exports = {
   STATUS_PRIORITY,
   PRIORITY_LABEL,
+  // Geo primitives now live in lib/geo; re-exported for back-compat.
   boundingBox,
   boxFilter,
   fromDoc,
@@ -633,8 +432,9 @@ module.exports = {
   getStats,
   updateStatus,
   escalateStaleReports,
-  getShelters,
-  eraseUserData,
-  finalizePendingErasures,
+  // PDPO erasure now lives in userStore (it is an account-lifecycle cascade);
+  // delegated here for existing callers and tests.
+  eraseUserData: (userId) => userStore.eraseUser(userId),
+  finalizePendingErasures: (userId) => userStore.finalizePendingErasures(userId),
   coarsen,
 };

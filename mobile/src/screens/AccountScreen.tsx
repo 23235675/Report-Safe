@@ -1,18 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Switch, Alert, ActivityIndicator,
-} from 'react-native';
+import { View, Text, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { userStorage } from '../db/userStorage';
 import { setAuthSession, clearAuthSession, loginUser, registerUser, setResponderProfile } from '../api/apiClient';
 import { isValidHKID, normalizeHKID, normalizePhone } from '../utils/hkid';
-import { C, R, SHADOW } from '../theme';
+import { C } from '../theme';
 import { useTranslation } from '../i18n';
+import LoginFlow from './account/LoginFlow';
+import RegisterFlow from './account/RegisterFlow';
+import ProfilePanel from './account/ProfilePanel';
+import ResponderSettings from './account/ResponderSettings';
+import { S } from './account/styles';
+
+/**
+ * Account tab orchestrator. Owns the mode/regStep state machine, the profile +
+ * form + responder state, and every handler; the panels
+ * (LoginFlow / RegisterFlow / ProfilePanel / ResponderSettings) are
+ * presentational and receive props/callbacks. All state deliberately lives
+ * here so typed-but-unsubmitted input survives switching between panels,
+ * exactly as it did when this was a single component.
+ */
 
 const USER_KEY = 'rs_user';
 
-interface UserProfile {
+export interface UserProfile {
   id?: string;
   phone: string;
   name?: string | null;
@@ -23,15 +34,16 @@ interface UserProfile {
   user_type?: string;
 }
 
-type Mode = 'login' | 'register' | 'profile';
+export interface RegFormState {
+  phone: string;
+  name: string;
+  gender: '' | 'male' | 'female';
+  personal_id: string;
+  email: string;
+  privacy_consent: boolean;
+}
 
-/** Onboarding consent-page points (wireframe step 1). */
-const CONSENT_POINTS: { icon: keyof typeof Ionicons.glyphMap; key: string }[] = [
-  { icon: 'document-text', key: 'account.consentTerms' },
-  { icon: 'alert-circle',  key: 'account.consentEmergency' },
-  { icon: 'location',      key: 'account.consentLocation' },
-  { icon: 'notifications', key: 'account.consentNotification' },
-];
+type Mode = 'login' | 'register' | 'profile';
 
 export default function AccountScreen(): React.JSX.Element {
   const { t } = useTranslation();
@@ -44,21 +56,16 @@ export default function AccountScreen(): React.JSX.Element {
   const [saved, setSaved] = useState(false);
 
   // Register form
-  const [regForm, setRegForm] = useState({
+  const [regForm, setRegForm] = useState<RegFormState>({
     phone: '',
     name: '',
-    gender: '' as '' | 'male' | 'female',
+    gender: '',
     personal_id: '',
     email: '',
     privacy_consent: false,
   });
 
   // ── Community First Responder (CFR) opt-in ──
-  const RADIUS_OPTS = [
-    { km: 0.4, key: 'responder.radiusWalk' },
-    { km: 0.8, key: 'responder.radiusBike' },
-    { km: 1.5, key: 'responder.radiusDrive' },
-  ];
   const [respOptIn, setRespOptIn]   = useState(false);
   const [respSkills, setRespSkills] = useState<Set<'cpr' | 'aed' | 'fire'>>(new Set(['cpr']));
   const [respRadius, setRespRadius] = useState(0.8);
@@ -190,373 +197,62 @@ export default function AccountScreen(): React.JSX.Element {
     ]);
   }
 
-  const genderIconName = profile?.gender === 'male' ? 'male' : profile?.gender === 'female' ? 'female' : 'person';
+  // ── Mode/regStep state machine transitions (passed to the panels) ──
+  function goToRegister() { setMode('register'); setRegStep('consent'); setError(''); }
+  function backToLogin() { setMode('login'); setError(''); }
+  function agreeAndContinue() { setRegForm((f) => ({ ...f, privacy_consent: true })); setRegStep('details'); setError(''); }
+  function backToConsent() { setRegStep('consent'); setError(''); }
 
   return (
     <ScrollView style={S.bg} contentContainerStyle={S.container}>
       <View style={S.card}>
         {/* ── LOGIN MODE ── */}
         {mode === 'login' && !profile ? (
-          <>
-            <View style={S.header}>
-              <Ionicons name="person-circle" size={40} color={C.govBlue} />
-              <Text style={S.headerTitle}>{t('account.signIn')}</Text>
-              <Text style={S.headerSub}>{t('account.signInSub')}</Text>
-            </View>
-
-            {error && (
-              <View style={S.errorBar}>
-                <Ionicons name="alert-circle" size={16} color={C.critical} />
-                <Text style={S.errorText}>{error}</Text>
-              </View>
-            )}
-
-            <View style={S.form}>
-              <View style={S.field}>
-                <Text style={S.fieldLbl}>{t('account.phoneLabel')}</Text>
-                <View style={S.phoneRow}>
-                  <Text style={S.phonePrefix}>+852</Text>
-                  <TextInput
-                    style={[S.input, S.phoneInput, S.mono]}
-                    value={phone}
-                    onChangeText={(v) => setPhone(v.replace(/\D/g, '').slice(0, 8))}
-                    placeholder="9 8 7 6 5 4 3 2"
-                    placeholderTextColor={C.textLo}
-                    keyboardType="numeric"
-                    maxLength={8}
-                  />
-                </View>
-              </View>
-
-              <TouchableOpacity
-                onPress={handleLogin}
-                disabled={loading}
-                style={[S.primaryBtn, loading && { opacity: 0.6 }]}
-                activeOpacity={0.85}
-              >
-                {loading ? (
-                  <ActivityIndicator color={C.textInv} size="small" />
-                ) : (
-                  <Ionicons name="log-in" size={16} color={C.textInv} />
-                )}
-                <Text style={S.primaryBtnText}>{loading ? t('account.signingIn') : t('account.signIn')}</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={S.divider} />
-
-            <View style={S.registerPrompt}>
-              <Text style={S.registerPromptText}>{t('account.noAccountQ')}</Text>
-              <TouchableOpacity onPress={() => { setMode('register'); setRegStep('consent'); setError(''); }}>
-                <Text style={S.registerLink}>{t('account.createNow')}</Text>
-              </TouchableOpacity>
-            </View>
-          </>
+          <LoginFlow
+            phone={phone}
+            setPhone={setPhone}
+            loading={loading}
+            error={error}
+            onLogin={handleLogin}
+            onGoRegister={goToRegister}
+          />
         ) : null}
 
-        {/* ── ONBOARDING STEP 1: CONSENT (wireframe) ── */}
-        {mode === 'register' && regStep === 'consent' ? (
-          <>
-            <View style={S.header}>
-              <Ionicons name="shield-checkmark" size={40} color={C.govBlue} />
-              <Text style={S.headerTitle}>{t('account.consentTitle')}</Text>
-              <Text style={S.headerSub}>{t('account.consentIntro')}</Text>
-            </View>
-
-            <View style={S.form}>
-              <View style={S.consentList}>
-                {CONSENT_POINTS.map((p) => (
-                  <View key={p.key} style={S.consentPoint}>
-                    <Ionicons name={p.icon} size={18} color={C.govBlue} style={{ marginTop: 1 }} />
-                    <Text style={S.consentPointText}>{t(p.key)}</Text>
-                  </View>
-                ))}
-              </View>
-
-              <View style={S.formActions}>
-                <TouchableOpacity onPress={() => { setMode('login'); setError(''); }} style={S.ghostBtn}>
-                  <Text style={S.ghostBtnText}>{t('common.back')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => { setRegForm((f) => ({ ...f, privacy_consent: true })); setRegStep('details'); setError(''); }}
-                  style={S.primaryBtn}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="checkmark" size={16} color={C.textInv} />
-                  <Text style={S.primaryBtnText}>{t('account.agreeContinue')}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </>
-        ) : null}
-
-        {/* ── ONBOARDING STEP 2: CREATE ACCOUNT (wireframe) ── */}
-        {mode === 'register' && regStep === 'details' ? (
-          <>
-            <View style={S.header}>
-              <Ionicons name="person-add-sharp" size={40} color={C.govBlue} />
-              <Text style={S.headerTitle}>{t('account.createAccount')}</Text>
-              <Text style={S.headerSub}>{t('account.setupProfile')}</Text>
-            </View>
-
-            {error && (
-              <View style={S.errorBar}>
-                <Ionicons name="alert-circle" size={16} color={C.critical} />
-                <Text style={S.errorText}>{error}</Text>
-              </View>
-            )}
-
-            <View style={S.form}>
-              <View style={S.field}>
-                <Text style={S.fieldLbl}>{t('account.phoneRegLabel')}</Text>
-                <View style={S.phoneRow}>
-                  <Text style={S.phonePrefix}>+852</Text>
-                  <TextInput
-                    style={[S.input, S.phoneInput, S.mono]}
-                    value={regForm.phone}
-                    onChangeText={(v) =>
-                      setRegForm((f) => ({ ...f, phone: v.replace(/\D/g, '').slice(0, 8) }))
-                    }
-                    placeholder="9 8 7 6 5 4 3 2"
-                    placeholderTextColor={C.textLo}
-                    keyboardType="numeric"
-                    maxLength={8}
-                  />
-                </View>
-              </View>
-
-              <View style={S.field}>
-                <Text style={S.fieldLbl}>{t('account.fullName')}</Text>
-                <TextInput
-                  style={S.input}
-                  value={regForm.name}
-                  onChangeText={(v) => setRegForm((f) => ({ ...f, name: v }))}
-                  placeholder={t('account.phFullName')}
-                  placeholderTextColor={C.textLo}
-                />
-              </View>
-
-              <View style={S.field}>
-                <Text style={S.fieldLbl}>{t('account.genderLabel')}</Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  {(['male', 'female'] as const).map((g) => (
-                    <TouchableOpacity
-                      key={g}
-                      style={[S.input, { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                        borderColor: regForm.gender === g ? C.govBlue : C.border,
-                        backgroundColor: regForm.gender === g ? C.govBlueDim : C.bgPanel }]}
-                      onPress={() => setRegForm((f) => ({ ...f, gender: g }))}
-                    >
-                      <Ionicons name={g} size={18} color={regForm.gender === g ? C.govBlue : C.textLo} />
-                      <Text style={{ color: regForm.gender === g ? C.govBlue : C.textMd, fontWeight: '600' }}>
-                        {t(g === 'male' ? 'account.genderMale' : 'account.genderFemale')}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              <View style={S.field}>
-                <Text style={S.fieldLbl}>{t('account.hkidLabel')}</Text>
-                <TextInput
-                  style={[S.input, S.mono]}
-                  value={regForm.personal_id}
-                  onChangeText={(v) => setRegForm((f) => ({ ...f, personal_id: v }))}
-                  placeholder={t('account.phHkid')}
-                  placeholderTextColor={C.textLo}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                />
-                <Text style={S.fieldHint}>{t('account.hkidHint')}</Text>
-              </View>
-
-              <View style={S.field}>
-                <Text style={S.fieldLbl}>{t('account.emailLabel')}</Text>
-                <TextInput
-                  style={S.input}
-                  value={regForm.email}
-                  onChangeText={(v) => setRegForm((f) => ({ ...f, email: v }))}
-                  placeholder="name@example.com"
-                  placeholderTextColor={C.textLo}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </View>
-
-              <View style={S.consentGranted}>
-                <Ionicons name="shield-checkmark" size={16} color={C.safe} />
-                <Text style={S.consentGrantedText}>{t('account.consent')}</Text>
-              </View>
-
-              <View style={S.formActions}>
-                <TouchableOpacity
-                  onPress={() => { setRegStep('consent'); setError(''); }}
-                  style={S.ghostBtn}
-                >
-                  <Text style={S.ghostBtnText}>{t('common.back')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleRegister}
-                  disabled={loading}
-                  style={[S.primaryBtn, loading && { opacity: 0.6 }]}
-                  activeOpacity={0.85}
-                >
-                  {loading ? (
-                    <ActivityIndicator color={C.textInv} size="small" />
-                  ) : (
-                    <Ionicons name="checkmark" size={16} color={C.textInv} />
-                  )}
-                  <Text style={S.primaryBtnText}>{loading ? t('account.creating') : t('account.createAccount')}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </>
+        {/* ── REGISTER MODE (consent → details) ── */}
+        {mode === 'register' ? (
+          <RegisterFlow
+            regStep={regStep}
+            regForm={regForm}
+            setRegForm={setRegForm}
+            loading={loading}
+            error={error}
+            onBackToLogin={backToLogin}
+            onAgreeContinue={agreeAndContinue}
+            onBackToConsent={backToConsent}
+            onRegister={handleRegister}
+          />
         ) : null}
 
         {/* ── PROFILE MODE (logged in) ── */}
         {mode === 'profile' && profile ? (
-          <>
-            <View style={S.cardHead}>
-              <View style={S.avatar}>
-                <Ionicons name={genderIconName} size={26} color={C.textInv} />
-              </View>
-              <View style={S.identity}>
-                <Text style={S.identityName}>{profile.name || t('account.noName')}</Text>
-                <Text style={S.identityPhone}>{profile.phone}</Text>
-              </View>
-            </View>
-
-            {saved && (
-              <View style={S.successBar}>
-                <Ionicons name="checkmark-circle" size={16} color={C.safe} />
-                <Text style={S.successText}>{t('account.updated')}</Text>
-              </View>
-            )}
-
-            <View style={S.profileView}>
-              <View style={S.profileRow}>
-                <Text style={S.prLbl}>{t('account.phone')}</Text>
-                <Text style={[S.prVal, S.mono]}>{profile.phone}</Text>
-              </View>
-              {profile.personal_id && (
-                <View style={S.profileRow}>
-                  <Text style={S.prLbl}>{t('account.hkidLabel')}</Text>
-                  <Text style={[S.prVal, S.mono]}>{profile.personal_id}</Text>
-                </View>
-              )}
-              {profile.gender && (
-                <View style={S.profileRow}>
-                  <Text style={S.prLbl}>{t('account.genderLabel')}</Text>
-                  <Text style={S.prVal}>
-                    {t(profile.gender === 'male' ? 'account.genderMale' : 'account.genderFemale')}
-                  </Text>
-                </View>
-              )}
-              {profile.email && (
-                <View style={S.profileRow}>
-                  <Text style={S.prLbl}>{t('account.email')}</Text>
-                  <Text style={S.prVal}>{profile.email}</Text>
-                </View>
-              )}
-              <View style={S.profileRow}>
-                <Text style={S.prLbl}>{t('account.privacyConsent')}</Text>
-                <Text style={[S.prVal, { color: profile.privacy_consent ? C.safe : C.textLo }]}>
-                  {profile.privacy_consent ? t('account.granted') : t('account.notGranted')}
-                </Text>
-              </View>
-            </View>
-
-            <TouchableOpacity onPress={handleLogout} style={S.signOutBtn} activeOpacity={0.85}>
-              <Ionicons name="log-out-outline" size={18} color={C.critical} />
-              <Text style={S.signOutText}>{t('account.signOut')}</Text>
-            </TouchableOpacity>
-          </>
+          <ProfilePanel profile={profile} saved={saved} onLogout={handleLogout} />
         ) : null}
       </View>
 
       {/* ── Community First Responder opt-in (logged-in users) ── */}
       {profile ? (
-        <View style={S.card}>
-          <View style={S.respHead}>
-            <View style={S.respHeadIcon}>
-              <Ionicons name="pulse" size={20} color={C.govBlue} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={S.respTitle}>{t('responder.title')}</Text>
-              <Text style={S.respSub}>{t('responder.sub')}</Text>
-            </View>
-          </View>
-
-          <View style={S.respBody}>
-            <View style={S.consentRow}>
-              <Switch
-                value={respOptIn}
-                onValueChange={setRespOptIn}
-                trackColor={{ false: C.border, true: C.govBlue }}
-                thumbColor={C.bgPanel}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={S.respOptLabel}>{t('responder.optIn')}</Text>
-                <Text style={S.respHint}>{t('responder.optInHint')}</Text>
-              </View>
-            </View>
-
-            {respOptIn ? (
-              <>
-                <Text style={S.respSection}>{t('responder.skills')}</Text>
-                <View style={S.chipRow}>
-                  {([['cpr', 'responder.skillCpr'], ['aed', 'responder.skillAed'], ['fire', 'responder.skillFire']] as const).map(([k, lbl]) => (
-                    <TouchableOpacity
-                      key={k}
-                      style={[S.chip, respSkills.has(k) && S.chipOn]}
-                      onPress={() => toggleSkill(k)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[S.chipText, respSkills.has(k) && S.chipTextOn]}>{t(lbl)}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <Text style={S.respSection}>{t('responder.radius')}</Text>
-                <View style={S.chipRow}>
-                  {RADIUS_OPTS.map((o) => (
-                    <TouchableOpacity
-                      key={o.km}
-                      style={[S.chip, respRadius === o.km && S.chipOn]}
-                      onPress={() => setRespRadius(o.km)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[S.chipText, respRadius === o.km && S.chipTextOn]}>{t(o.key)}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </>
-            ) : null}
-
-            {respErr ? (
-              <View style={S.errorBar}>
-                <Ionicons name="alert-circle" size={16} color={C.critical} />
-                <Text style={S.errorText}>{respErr}</Text>
-              </View>
-            ) : null}
-            {respSaved ? (
-              <View style={S.respSavedBar}>
-                <Ionicons name="checkmark-circle" size={16} color={C.safe} />
-                <Text style={S.respSavedText}>{t('responder.saved')}</Text>
-              </View>
-            ) : null}
-
-            <TouchableOpacity
-              style={[S.respSaveBtn, respBusy && { opacity: 0.6 }]}
-              onPress={saveResponder}
-              disabled={respBusy}
-              activeOpacity={0.85}
-            >
-              {respBusy ? <ActivityIndicator color={C.textInv} size="small" /> : <Ionicons name="checkmark" size={16} color={C.textInv} />}
-              <Text style={S.respSaveText}>{respBusy ? t('responder.saving') : t('responder.save')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <ResponderSettings
+          respOptIn={respOptIn}
+          setRespOptIn={setRespOptIn}
+          respSkills={respSkills}
+          onToggleSkill={toggleSkill}
+          respRadius={respRadius}
+          onSetRadius={setRespRadius}
+          respBusy={respBusy}
+          respSaved={respSaved}
+          respErr={respErr}
+          onSave={saveResponder}
+        />
       ) : null}
 
       <View style={S.privacyNote}>
@@ -580,88 +276,3 @@ export default function AccountScreen(): React.JSX.Element {
     </ScrollView>
   );
 }
-
-const S = StyleSheet.create({
-  bg: { flex: 1, backgroundColor: C.bgCanvas },
-  container: { padding: 16, paddingBottom: 32 },
-
-  card: { backgroundColor: C.bgPanel, borderRadius: R.md, borderWidth: 1, borderColor: C.border, marginBottom: 16, overflow: 'hidden', ...SHADOW.card },
-
-  header: { alignItems: 'center', paddingVertical: 20, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: C.border },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: C.textHi, marginTop: 8 },
-  headerSub: { fontSize: 13, color: C.textLo, marginTop: 4 },
-
-  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderBottomWidth: 1, borderBottomColor: C.border },
-  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: C.govBlue, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  avatarText: { color: C.textInv, fontSize: 20, fontWeight: '700' },
-  identity: { flex: 1 },
-  identityName: { fontSize: 16, fontWeight: '700', color: C.textHi },
-  identityPhone: { fontSize: 13, color: C.textLo, marginTop: 2 },
-
-  successBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.safeDim, padding: 10, borderBottomWidth: 1, borderBottomColor: C.border },
-  successText: { fontSize: 13, fontWeight: '600', color: C.safe },
-  errorBar: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.criticalDim, padding: 10, margin: 12, marginBottom: 0, borderRadius: R.sm, borderWidth: 1, borderColor: C.criticalBorder },
-  errorText: { flex: 1, fontSize: 13, fontWeight: '600', color: C.critical },
-
-  form: { padding: 16, gap: 12 },
-  field: { gap: 4 },
-  fieldLbl: { fontSize: 12, fontWeight: '600', color: C.textMd, textTransform: 'uppercase', letterSpacing: 0.3 },
-  fieldHint: { fontSize: 11, color: C.textLo, marginTop: 3 },
-  input: { borderWidth: 1, borderColor: C.border, borderRadius: 6, padding: 10, fontSize: 14, color: C.textHi, backgroundColor: C.bgCanvas },
-  phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  phonePrefix: { fontSize: 14, fontWeight: '700', color: C.textHi, marginLeft: 10 },
-  phoneInput: { flex: 1 },
-  mono: { fontFamily: 'monospace' },
-  consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  consentText: { flex: 1, fontSize: 13, color: C.textMd, lineHeight: 18, marginTop: 2 },
-  consentList: { gap: 12, marginBottom: 4 },
-  consentPoint: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  consentPointText: { flex: 1, fontSize: 13, color: C.textMd, lineHeight: 19 },
-  consentGranted: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, backgroundColor: C.safeDim, borderRadius: R.sm, borderWidth: 1, borderColor: C.safeBorder },
-  consentGrantedText: { flex: 1, fontSize: 12, color: C.textMd, lineHeight: 17 },
-  formActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 4 },
-  ghostBtn: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: R.sm, borderWidth: 1, borderColor: C.border },
-  ghostBtnText: { fontSize: 14, fontWeight: '600', color: C.textMd },
-  primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 11, borderRadius: R.sm, backgroundColor: C.govBlue },
-  primaryBtnText: { fontSize: 14, fontWeight: '700', color: C.textInv },
-
-  divider: { height: 1, backgroundColor: C.border, marginVertical: 16 },
-  registerPrompt: { paddingHorizontal: 16, paddingBottom: 16, alignItems: 'center', gap: 6 },
-  registerPromptText: { fontSize: 13, color: C.textMd },
-  registerLink: { fontSize: 14, fontWeight: '700', color: C.govBlue, textDecorationLine: 'underline' },
-
-  profileView: { padding: 16 },
-  profileRow: { flexDirection: 'row', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.border },
-  prLbl: { width: 130, fontSize: 11, fontWeight: '700', color: C.textLo, textTransform: 'uppercase', letterSpacing: 0.5, paddingTop: 1 },
-  prVal: { flex: 1, fontSize: 14, color: C.textHi },
-
-  signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, margin: 12, padding: 12, borderRadius: R.sm, borderWidth: 1, borderColor: C.criticalBorder, backgroundColor: C.criticalDim },
-  signOutText: { fontSize: 14, fontWeight: '700', color: C.critical },
-
-  privacyNote: { backgroundColor: C.govBlueDim, borderRadius: R.md, padding: 14, borderWidth: 1, borderColor: C.border, marginBottom: 16 },
-  pnHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  pnTitle: { fontSize: 14, fontWeight: '700', color: C.textHi },
-  pnBody: { fontSize: 13, color: C.textMd, lineHeight: 19 },
-
-  noAccountNote: { flexDirection: 'row', gap: 10, backgroundColor: C.awaitingDim, borderRadius: R.md, padding: 12, borderWidth: 1, borderColor: C.border, alignItems: 'flex-start' },
-  noAccountText: { flex: 1, fontSize: 12, color: C.textMd, lineHeight: 16 },
-
-  /* Responder opt-in */
-  respHead: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderBottomWidth: 1, borderBottomColor: C.border },
-  respHeadIcon: { width: 40, height: 40, borderRadius: R.sm, backgroundColor: C.govBlueDim, alignItems: 'center', justifyContent: 'center' },
-  respTitle: { fontSize: 15, fontWeight: '800', color: C.textHi },
-  respSub: { fontSize: 12, color: C.textLo, marginTop: 3, lineHeight: 16 },
-  respBody: { padding: 16, gap: 12 },
-  respOptLabel: { fontSize: 14, fontWeight: '700', color: C.textHi },
-  respHint: { fontSize: 12, color: C.textLo, marginTop: 2, lineHeight: 16 },
-  respSection: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5, color: C.textMd, marginTop: 4 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: R.pill, backgroundColor: C.bgCanvas, borderWidth: 1, borderColor: C.border },
-  chipOn: { backgroundColor: C.govBlueDim, borderColor: C.govBlue },
-  chipText: { fontSize: 13, fontWeight: '600', color: C.textMd },
-  chipTextOn: { color: C.govBlue },
-  respSavedBar: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 10, backgroundColor: C.safeDim, borderRadius: R.sm, borderWidth: 1, borderColor: C.safeBorder },
-  respSavedText: { fontSize: 13, fontWeight: '600', color: C.safe },
-  respSaveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: R.sm, backgroundColor: C.govBlue, marginTop: 4 },
-  respSaveText: { fontSize: 15, fontWeight: '700', color: C.textInv },
-});

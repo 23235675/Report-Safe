@@ -1,5 +1,5 @@
 # ── Stage 1: build the Vue web frontend ─────────────────────────────────────
-FROM node:20-alpine AS web
+FROM node:22-alpine AS web
 WORKDIR /app
 COPY package*.json ./
 COPY web/package*.json ./web/
@@ -8,7 +8,7 @@ COPY . .
 RUN npm run build:web
 
 # ── Stage 2: server runtime (serves the built SPA as one artifact) ───────────
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -17,6 +17,7 @@ COPY server/package*.json ./server/
 RUN cd server && npm install --omit=dev
 
 COPY server ./server
+COPY shared ./shared
 COPY --from=web /app/web/dist ./web/dist
 
 EXPOSE 3001

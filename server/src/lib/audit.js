@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const { collection } = require('../db/mongo');
+const { logger } = require('./logger');
 
 /**
  * Write one row to the audit_logs table (PDPO accountability: every
@@ -26,7 +27,7 @@ function logAudit({ action, entity, entityId, actor = 'gov-token', details = nul
     details: details ? JSON.stringify(details) : null,
     created_at: Date.now(),
   }).catch((err) => {
-    console.error('[audit] FAILED to record audit entry:', action, entity, entityId, err);
+    logger.error('audit_write_failed', { action, entity, entityId, error: err.message });
   });
 }
 

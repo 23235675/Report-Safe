@@ -103,7 +103,7 @@ function AppContent(): React.JSX.Element {
       <NavigationContainer ref={navigationRef}>
         <StatusBar style="light" />
         <Tab.Navigator
-          screenOptions={({ route }) => ({
+          screenOptions={({ route }: { route: { name: string } }) => ({
             // Federal navy command bar — official, daylight-readable, white title.
             headerStyle: {
               backgroundColor: C.govBlue,
@@ -138,7 +138,7 @@ function AppContent(): React.JSX.Element {
               letterSpacing: 0.2,
               fontWeight: '600',
             },
-            tabBarIcon: ({ focused, color, size }) => {
+            tabBarIcon: ({ focused, color, size }: { focused: boolean; color: string; size: number }) => {
               const glyph = TAB_ICONS[route.name] ?? { on: 'ellipse', off: 'ellipse-outline' };
               return (
                 <Ionicons

@@ -1,20 +1,12 @@
 'use strict';
 
 const { z } = require('zod');
+const { normalizePhone } = require('../../../shared/phone');
+const { normalizeHKID, isValidHKID, isValidHKIDChecksum } = require('../../../shared/hkid');
+const { REPORT_STATUSES } = require('../../../shared/statuses');
 
 const latSchema = z.number().min(-90).max(90);
 const lngSchema = z.number().min(-180).max(180);
-
-/**
- * Phone normalization: accept 8-digit HK numbers, auto-prepend +852.
- * If user enters "+85298765432", strip and store only "98765432" then prepend "+852".
- * If user enters "98765432", add "+852" directly.
- */
-function normalizePhone(raw) {
-  const cleaned = String(raw).replace(/\D/g, ''); // keep only digits
-  const eightDigits = cleaned.slice(-8); // last 8 digits (strip +852 if present)
-  return `+852${eightDigits}`;
-}
 
 const phoneSchema = z
   .string()
@@ -22,61 +14,13 @@ const phoneSchema = z
     'Enter a valid Hong Kong phone number (at least 8 digits).')
   .transform(normalizePhone);
 
-/**
- * Hong Kong Identity Card number validation (PCPD Code of Practice on
- * Personal Identifiers applies — never expose this value publicly).
- *
- * Accepted input: "A123456(7)" or "A1234567" (1–2 leading letters,
- * 6 digits, check digit 0–9 or A). Normalised storage form strips the
- * parentheses and uppercases: "A1234567".
- *
- * Check digit: letters map A=10…Z=35; a single-letter prefix is padded
- * with a leading space valued 36; weights 9..2 over the 8 positions;
- * the full number including the check digit must be ≡ 0 (mod 11),
- * where a check value of 10 is written as "A".
+/*
+ * HKID validation lives in shared/hkid.js (single source of truth, PCPD Code
+ * of Practice applies — never expose an HKID publicly). Lenient by default;
+ * the strict mod-11 checksum is always present and enforced via HKID_STRICT.
+ * The synthetic HKIDs produced by db/seed.js are checksum-valid, so strict
+ * mode accepts them.
  */
-function normalizeHKID(raw) {
-  return String(raw).toUpperCase().replace(/[()\s-]/g, '');
-}
-
-function isValidHKID(raw) {
-  const id = normalizeHKID(raw);
-  // VERY lenient: accepts almost any mix of letters and digits (7-12 chars total).
-  // Must have at least 1 letter and 6 digits. Handles: A123456, ABC123456, 1A234567, etc.
-  const hasLetter = /[A-Z]/.test(id);
-  const digitCount = (id.match(/\d/g) || []).length;  // count total digits, not consecutive
-  const validLength = id.length >= 7 && id.length <= 12;
-  return hasLetter && digitCount >= 6 && validLength;
-}
-
-/**
- * STRICT HKID validation — the real HK mod-11 check-digit algorithm (the
- * production rule). Letters map A=10…Z=35; a single-letter prefix is treated as
- * a leading space valued 36; weights 9..2 run over the 8 positions (2 letter
- * slots + 6 digits); the total including the check digit (value 10 = "A") must
- * be ≡ 0 (mod 11).
- *
- * This logic is ALWAYS present so the system is production-ready; whether it is
- * ENFORCED is controlled by HKID_STRICT (see personalIdSchema). The synthetic
- * HKIDs produced by db/seed.js are checksum-valid, so strict mode accepts them.
- */
-function isValidHKIDChecksum(raw) {
-  const id = normalizeHKID(raw);
-  const m = /^([A-Z]{1,2})(\d{6})([0-9A])$/.exec(id);
-  if (!m) return false;
-  const [, letters, digits, checkChar] = m;
-  const charVal = (c) => c.charCodeAt(0) - 55; // 'A'(65) -> 10 … 'Z'(90) -> 35
-
-  let sum;
-  if (letters.length === 1) {
-    sum = 36 * 9 + charVal(letters[0]) * 8;     // leading "space" (36) + letter
-  } else {
-    sum = charVal(letters[0]) * 9 + charVal(letters[1]) * 8;
-  }
-  for (let i = 0; i < 6; i++) sum += Number(digits[i]) * (7 - i); // weights 7..2
-  sum += (checkChar === 'A' ? 10 : Number(checkChar));            // check digit, weight 1
-  return sum % 11 === 0;
-}
 
 /** Active HKID validator: strict mod-11 when HKID_STRICT=true, else lenient. */
 function hkidIsValid(raw) {
@@ -105,7 +49,7 @@ const personalIdSchema = z
 const ReportSchema = z.object({
   id:            z.string().min(1).optional(),
   name:          z.string().min(1, 'name is required').max(120),
-  status:        z.enum(['safe', 'injured', 'need_help', 'awaiting_response', 'potentially_missing', 'missing', 'verified_missing', 'rescued', 'deceased']),
+  status:        z.enum(REPORT_STATUSES),
   // lat/lng are optional at the schema layer: a web PROXY report carries no
   // location of its own (A6) — the server resolves it from the affected
   // person. The reports route still REQUIRES coordinates for self/mobile reports.
@@ -323,6 +267,108 @@ const MissingPersonUpdateSchema = z.object({
   notes:       z.string().max(2000).optional().nullable(),
 });
 
+// ── Super-admin CRUD bodies (/api/admin/*) ───────────────────────────
+/**
+ * ''/null/undefined → undefined. The admin web form submits EVERY field —
+ * including empty inputs and empty selects — and the admin API has always
+ * treated a blank value as "not provided" (routes/admin/shared.js `blank`).
+ * Wrapping a field this way makes blanks vanish at the boundary instead of
+ * failing type validation or overwriting stored values.
+ */
+const blankable = (schema) =>
+  z.preprocess((v) => (v === undefined || v === null || v === '' ? undefined : v), schema.optional());
+
+/*
+ * The Admin* schemas validate SHAPE only. Required-field presence, enum
+ * membership (VALID_ROLES / VALID_USER_TYPES / VALID_REPORT_STATUS) and the
+ * cross-field business rules stay in the admin handlers, which throw
+ * HttpError with the exact legacy `{ error: '…' }` messages the admin UI and
+ * tests/adminRoutes.test.js assert on — a schema-level rejection would return
+ * the generic `{ error: 'Validation failed', details }` envelope instead.
+ * Create-schema fields are `.optional().nullable()` (no blank-wrapping) where
+ * the handler's own required/enum guard must see the raw ''/null to answer
+ * with its specific message, exactly as before.
+ */
+
+/** Validates POST /api/admin/users body (shape; guards live in the handler). */
+const AdminUserCreateSchema = z.object({
+  phone:           z.string().optional().nullable(),
+  name:            z.string().optional().nullable(),
+  email:           z.string().optional().nullable(),
+  personal_id:     z.string().optional().nullable(),
+  role:            z.string().optional().nullable(),
+  user_type:       z.string().optional().nullable(),
+  privacy_consent: blankable(z.boolean()),
+  password:        blankable(z.string()),
+});
+
+/** Validates PUT /api/admin/users/:id body — blanks mean "keep existing". */
+const AdminUserUpdateSchema = z.object({
+  phone:           blankable(z.string()),
+  name:            blankable(z.string()),
+  email:           blankable(z.string()),
+  personal_id:     blankable(z.string()),
+  role:            blankable(z.string()),
+  user_type:       blankable(z.string()),
+  privacy_consent: blankable(z.boolean()),
+  password:        blankable(z.string()),
+});
+
+/** Validates POST /api/admin/reports body (shape; guards live in the handler). */
+const AdminReportCreateSchema = z.object({
+  name:          z.string().optional().nullable(),
+  status:        z.string().optional().nullable(),
+  lat:           blankable(z.number()),
+  lng:           blankable(z.number()),
+  medical_notes: z.string().optional().nullable(),
+  phone:         z.string().optional().nullable(),
+  personal_id:   z.string().optional().nullable(),
+  disaster_id:   z.string().optional().nullable(),
+  user_id:       z.string().optional().nullable(),
+});
+
+/** Validates PUT /api/admin/reports/:id body — blanks mean "keep existing". */
+const AdminReportUpdateSchema = z.object({
+  name:          blankable(z.string()),
+  status:        blankable(z.string()),
+  lat:           blankable(z.number()),
+  lng:           blankable(z.number()),
+  medical_notes: blankable(z.string()),
+  phone:         blankable(z.string()),
+  personal_id:   blankable(z.string()),
+  disaster_id:   blankable(z.string()),
+});
+
+/** Validates POST /api/admin/disasters body (shape; guards live in the handler). */
+const AdminDisasterCreateSchema = z.object({
+  type:        z.string().optional().nullable(),
+  magnitude:   blankable(z.number()),
+  severity:    blankable(z.number()),
+  lat:         blankable(z.number()),
+  lng:         blankable(z.number()),
+  radius_km:   blankable(z.number()),
+  description: z.string().optional().nullable(),
+  active:      blankable(z.boolean()),
+});
+
+/** Validates PUT /api/admin/disasters/:id body — blanks mean "keep existing". */
+const AdminDisasterUpdateSchema = z.object({
+  type:        blankable(z.string()),
+  magnitude:   blankable(z.number()),
+  severity:    blankable(z.number()),
+  lat:         blankable(z.number()),
+  lng:         blankable(z.number()),
+  radius_km:   blankable(z.number()),
+  description: blankable(z.string()),
+  active:      blankable(z.boolean()),
+  ended_at:    blankable(z.number()),
+});
+
+/** Validates PUT /api/admin/links/:id body (enum guard lives in the handler). */
+const AdminLinkUpdateSchema = z.object({
+  status: z.string().optional().nullable(),
+});
+
 module.exports = {
   IncidentCreateSchema,
   IncidentRespondSchema,
@@ -349,4 +395,11 @@ module.exports = {
   SafePlaceCreateSchema,
   SafePlaceQuerySchema,
   DeviceRegisterSchema,
+  AdminUserCreateSchema,
+  AdminUserUpdateSchema,
+  AdminReportCreateSchema,
+  AdminReportUpdateSchema,
+  AdminDisasterCreateSchema,
+  AdminDisasterUpdateSchema,
+  AdminLinkUpdateSchema,
 };

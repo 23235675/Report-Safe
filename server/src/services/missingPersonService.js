@@ -1,6 +1,7 @@
 'use strict';
 
 const { escalateStaleReports } = require('./reportStore');
+const { logger } = require('../lib/logger');
 
 /**
  * Missing Person Escalation Engine.
@@ -31,10 +32,10 @@ async function runEscalation(io) {
     );
 
     if (escalatedToAwaiting > 0 || escalatedToMissing > 0) {
-      console.log(
-        `[missingPersonService] escalated ${escalatedToAwaiting} → awaiting_response, ` +
-        `${escalatedToMissing} → potentially_missing`
-      );
+      logger.info('escalation_run', {
+        to_awaiting_response: escalatedToAwaiting,
+        to_potentially_missing: escalatedToMissing,
+      });
 
       // Broadcast fresh stats so dashboards update immediately.
       if (io) {
@@ -43,7 +44,7 @@ async function runEscalation(io) {
       }
     }
   } catch (err) {
-    console.error('[missingPersonService.runEscalation] failed:', err);
+    logger.error('escalation_run_failed', { error: err.message });
   }
 }
 
@@ -58,10 +59,10 @@ function startEscalation(io) {
   timer = setInterval(tick, POLL_INTERVAL_MS);
   if (timer.unref) timer.unref();
 
-  console.log(
-    `[missingPersonService] started — need_help threshold: ${NEED_HELP_THRESHOLD_MS / 60000}m, ` +
-    `awaiting threshold: ${AWAITING_THRESHOLD_MS / 60000}m`
-  );
+  logger.info('escalation_engine_started', {
+    need_help_threshold_min: NEED_HELP_THRESHOLD_MS / 60000,
+    awaiting_threshold_min: AWAITING_THRESHOLD_MS / 60000,
+  });
 }
 
 function stopEscalation() {

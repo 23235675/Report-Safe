@@ -1,22 +1,22 @@
 'use strict';
 
 const express = require('express');
-const crypto  = require('crypto');
-const { collection } = require('../db/mongo');
 const { DeviceRegisterSchema } = require('../lib/zodSchemas');
-const { authenticate } = require('../lib/authGuard');
+const { authenticate, resolvePrincipal } = require('../lib/authGuard');
 const { rateLimit } = require('../lib/rateLimit');
+const { validate, asyncHandler, HttpError } = require('../lib/http');
+const { errorHandler } = require('../lib/errorHandler');
+const deviceStore = require('../services/deviceStore');
 
 /**
  * Device push-token registry. A mobile device posts its native FCM/APNs handle
  * plus its last known location; a disaster trigger then direct-pushes (Azure
  * Notification Hubs) to the handles inside the radius — reaching CLOSED apps the
- * socket path can't. The token is upserted (one row per handle) and its location
- * refreshed on every call so targeting stays current.
+ * socket path can't.
  *
- * Auth is OPTIONAL: an anonymous device (not yet registered as a user) can still
- * receive life-safety alerts. When a Bearer token is present we associate the
- * handle with that user so it's cleaned up on PDPO erasure (ON DELETE CASCADE).
+ * Auth is OPTIONAL on registration: an anonymous device (not yet registered as
+ * a user) can still receive life-safety alerts. When a Bearer token is present
+ * we associate the handle with that user so it's cleaned up on PDPO erasure.
  */
 module.exports = function createDevicesRouter() {
   const router = express.Router();
@@ -26,66 +26,38 @@ module.exports = function createDevicesRouter() {
 
   /** Resolve an optional Bearer token to a user id (no error if absent/invalid). */
   async function optionalUserId(req) {
-    return new Promise((resolve) => {
-      const hasAuth = !!req.headers['authorization'];
-      if (!hasAuth) return resolve(null);
-      authenticate(req, { status: () => ({ json: () => resolve(null) }) }, () => {
-        resolve(req.auth?.userId ?? null);
-      });
-    });
+    const header = req.headers['authorization'] || '';
+    const m = /^Bearer\s+(.+)$/i.exec(header.trim());
+    if (!m) return null;
+    const p = await resolvePrincipal(m[1].trim());
+    return p.kind === 'user' ? p.userId : null;
   }
 
   // POST /api/devices/register — upsert this device's push handle + location.
-  router.post('/register', deviceLimiter, async (req, res) => {
-    const parsed = DeviceRegisterSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: 'Validation failed', details: parsed.error.errors });
-    }
-    const { token, platform, lat, lng } = parsed.data;
-    try {
-      const userId = await optionalUserId(req);
-      const now = Date.now();
-      // Upsert by token (the former ON CONFLICT (token) DO UPDATE). user_id uses
-      // COALESCE semantics: a provided id overwrites, an absent one keeps prior.
-      const setOnInsert = { _id: crypto.randomUUID(), created_at: now };
-      const set = { platform, lat: lat ?? null, lng: lng ?? null, updated_at: now };
-      if (userId != null) set.user_id = userId; else setOnInsert.user_id = null;
-
-      const tokens = collection('device_push_tokens');
-      try {
-        await tokens.updateOne({ token }, { $setOnInsert: setOnInsert, $set: set }, { upsert: true });
-      } catch (err) {
-        // Lost an insert race on the unique token → the row now exists; update it.
-        if (err.code === 11000) await tokens.updateOne({ token }, { $set: set });
-        else throw err;
-      }
-      return res.status(201).json({ ok: true });
-    } catch (err) {
-      console.error('[devices POST /register] failed:', err);
-      return res.status(500).json({ error: 'Internal server error' });
-    }
-  });
+  router.post('/register', deviceLimiter, validate(DeviceRegisterSchema), asyncHandler(async (req, res) => {
+    const userId = await optionalUserId(req);
+    await deviceStore.upsert({ ...req.valid, userId });
+    res.status(201).json({ ok: true });
+  }));
 
   // DELETE /api/devices/:token — unregister (logout / notifications disabled).
-  // Owner-scoped (B21/M3): only the user the handle is registered to — or a
-  // gov/admin token — may remove it, so learning a token from logs/capture no
-  // longer lets anyone silence that device's life-safety pushes.
-  router.delete('/:token', deviceLimiter, authenticate, async (req, res) => {
-    try {
-      const tokens = collection('device_push_tokens');
-      const doc = await tokens.findOne({ token: req.params.token }, { projection: { user_id: 1 } });
-      if (!doc) return res.json({ ok: true }); // already gone — idempotent
-      const isGov = req.auth.kind === 'gov';
-      if (!isGov && doc.user_id !== req.auth.userId) {
-        return res.status(403).json({ error: 'Forbidden — you may only unregister your own device.' });
-      }
-      await tokens.deleteOne({ token: req.params.token });
-      return res.json({ ok: true });
-    } catch (err) {
-      console.error('[devices DELETE /:token] failed:', err);
-      return res.status(500).json({ error: 'Internal server error' });
+  // Owner-scoped: only the user the handle is registered to — or a gov/admin
+  // token — may remove it, so learning a token from logs/capture no longer
+  // lets anyone silence that device's life-safety pushes.
+  router.delete('/:token', deviceLimiter, authenticate, asyncHandler(async (req, res) => {
+    const doc = await deviceStore.findOwner(req.params.token);
+    if (!doc) return res.json({ ok: true }); // already gone — idempotent
+
+    const isGov = req.auth.kind === 'gov';
+    if (!isGov && doc.user_id !== req.auth.userId) {
+      throw new HttpError(403, 'Forbidden — you may only unregister your own device.');
     }
-  });
+    await deviceStore.remove(req.params.token);
+    res.json({ ok: true });
+  }));
+
+  // Router-scoped error handler; the app-level one in index.js is the backstop.
+  router.use(errorHandler);
 
   return router;
 };

@@ -3,6 +3,10 @@ import { StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { C } from '../theme';
 
+// react-native-webview 13.x ships class-component types that React 19's JSX
+// checker rejects; re-type the component for JSX use (runtime is unchanged).
+const RNWebView = WebView as unknown as React.ComponentType<Record<string, unknown>>;
+
 /** A single pin on the map. Colour carries meaning (status / shelter / you). */
 export interface MapMarker {
   id: string;
@@ -44,13 +48,13 @@ export default function MapWebView({ center, markers, onMarkerPress, zoom = 14, 
 
   return (
     <View style={[S.wrap, { height }]}>
-      <WebView
+      <RNWebView
         key={key}
         originWhitelist={['*']}
         source={{ html }}
         style={S.web}
         scrollEnabled={false}
-        onMessage={(e) => onMarkerPress?.(e.nativeEvent.data)}
+        onMessage={(e: { nativeEvent: { data: string } }) => onMarkerPress?.(e.nativeEvent.data)}
       />
     </View>
   );

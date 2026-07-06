@@ -2,29 +2,26 @@
 
 const crypto = require('crypto');
 const { collection } = require('../db/mongo');
-const { boxFilter, fromDoc } = require('./reportStore');
-const { haversineKm } = require('../lib/geo');
+const { boxFilter, haversineKm, findWithinRadius, GEO_SCAN_CAP } = require('../lib/geo');
+const { mapId, unwrap } = require('../lib/mongoMap');
+const { logger } = require('../lib/logger');
 const realtimeService = require('./realtimeService');
 const pushService = require('../lib/pushService');
 
 /**
  * Community First Responder (CFR) incident engine.
  *
- * An "incident" is a 999/CAD point dispatch (cardiac arrest, fire, …) that needs
- * nearby opted-in volunteers in the minutes before the ambulance arrives. This
- * mirrors triggerEngine.activateDisaster, but the alert is OPT-IN and NON-GATING:
- * it reaches volunteers (not the victim) and never forces disaster mode.
- *
- * Reuses the same PostGIS-free geo math as everything else (bounding-box
- * prefilter + JS haversine) so it runs identically on Cosmos.
+ * An "incident" is a 999/CAD point dispatch (cardiac arrest, fire, trauma) that
+ * needs nearby opted-in volunteers in the minutes before the ambulance arrives.
+ * This mirrors triggerEngine.activateDisaster, but the alert is OPT-IN and
+ * NON-GATING: it reaches volunteers (not the victim) and never forces disaster
+ * mode.
  */
 
 /** Two active incidents of the same type within this distance are duplicates. */
 const DEDUPE_KM = (Number(process.env.INCIDENT_DEDUPE_RADIUS_M) || 150) / 1000;
 /** Default responder radius when a profile omits one (≈ walking distance). */
 const DEFAULT_RADIUS_KM = Number(process.env.INCIDENT_DEFAULT_RADIUS_KM) || 1.0;
-/** Scan ceiling for geo bounding-box queries (C2) — see reportStore GEO_SCAN_CAP. */
-const GEO_SCAN_CAP = Number(process.env.GEO_SCAN_CAP) || 5000;
 
 /** Map an incident type to the responder skill it requires. */
 function skillForType(type) {
@@ -39,22 +36,18 @@ function skillForType(type) {
  * @returns {Promise<object | undefined>}
  */
 async function findDuplicateActive(payload) {
-  const candidates = await collection('incidents').find({
-    status: 'active',
-    type: payload.type,
-    ...boxFilter(payload.lat, payload.lng, DEDUPE_KM),
-  }).toArray();
-  const match = candidates.find(
-    (d) => haversineKm(payload.lat, payload.lng, d.lat, d.lng) <= DEDUPE_KM
-  );
-  return match ? fromDoc(match) : undefined;
+  const rows = await findWithinRadius('incidents', {
+    lat: payload.lat, lng: payload.lng, radiusKm: DEDUPE_KM,
+    filter: { status: 'active', type: payload.type }, cap: null, map: mapId,
+  });
+  return rows[0];
 }
 
 /**
  * Find opted-in responders eligible for an incident:
  *   - opt-in + carries the required skill, and
  *   - PRIVACY GATE: a residential (is_public=false) incident is restricted to
- *     verified (role='government') responders — PulsePoint's residential model, and
+ *     verified (role='government') responders, and
  *   - has a live device location within THEIR OWN max response radius.
  *
  * Returns one row per matched responder with their device handles (for push)
@@ -154,7 +147,7 @@ async function activateIncident(payload, io) {
     if (res.deadTokens && res.deadTokens.length) {
       await collection('device_push_tokens').deleteMany({ token: { $in: res.deadTokens } });
     }
-  })().catch((err) => console.error('[incidentEngine] responder push failed:', err.message));
+  })().catch((err) => logger.error('incident_responder_push_failed', { error: err.message }));
 
   return { incident, matched: responders.length };
 }
@@ -173,7 +166,6 @@ function withoutId(o) {
  * @param {import('socket.io').Server} [io]
  */
 async function resolveIncident(id, status, io) {
-  const { unwrap } = require('../lib/mongoMap');
   const result = await collection('incidents').findOneAndUpdate(
     { _id: id, status: 'active' },
     { $set: { status, resolved_at: Date.now() } },
@@ -182,7 +174,7 @@ async function resolveIncident(id, status, io) {
   const doc = unwrap(result);
   if (!doc) return null;
   if (io) realtimeService.broadcastIncidentResolved(io, id);
-  return fromDoc(doc);
+  return mapId(doc);
 }
 
 // ── Optional mock 999 feed (demos only) ──────────────────────────────
@@ -206,7 +198,7 @@ async function checkFeeds(io) {
   try {
     return await activateIncident(signal, io);
   } catch (err) {
-    console.error('[incidentEngine.checkFeeds] failed:', err.message);
+    logger.error('incident_feed_check_failed', { error: err.message });
     return null;
   }
 }
@@ -218,7 +210,7 @@ function startPolling(io) {
   const interval = Number(process.env.INCIDENT_POLL_INTERVAL_MS) || 60000;
   const ttl = Math.ceil(interval * 1.1);
   const tick = () => runIfLeader('incident', ttl, () => checkFeeds(io))
-    .catch((err) => console.error('[incidentEngine.startPolling] poll failed:', err.message));
+    .catch((err) => logger.error('incident_poll_failed', { error: err.message }));
   pollTimer = setInterval(tick, interval);
   if (pollTimer.unref) pollTimer.unref();
 }

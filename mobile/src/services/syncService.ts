@@ -7,9 +7,17 @@ import { connectivityWatcher } from './connectivityWatcher';
 /**
  * 3-layer resilient delivery:
  *   1. Direct internet (apiClient)
- *   2. Mesh relay to the strongest nearby peer
+ *   2. Mesh relay to the strongest nearby peer (feature-gated, default OFF)
  *   3. Stay queued locally until a path appears
  */
+
+/**
+ * Layer 2 gate. The mesh transport is currently a mock (no real radio), so the
+ * peer-discovery pass is dead weight on the report path — skip it unless
+ * explicitly enabled (e.g. tests, or a future real transport build).
+ * Evaluated once at module load.
+ */
+const MESH_ENABLED = process.env.MESH_ENABLED === 'true';
 
 export interface DeliveryResult {
   delivered: number;
@@ -87,21 +95,23 @@ export async function attemptDelivery(reportId?: string): Promise<DeliveryResult
       return { delivered, relayed: 0, queued: pending.length - delivered - rejected, rejected, error: lastError };
     }
 
-    // Layer 2: Mesh relay.
-    const peers = await meshTransport.discoverPeers();
-    if (peers.length > 0) {
-      const bestPeer = [...peers].sort(
-        (a, b) => b.signalStrength - a.signalStrength
-      )[0]!;
-      let relayed = 0;
-      for (const report of pending) {
-        const ok = await meshTransport.sendToPeer(bestPeer, [report]);
-        if (ok) {
-          await outboxDb.markRelayed(report.id, bestPeer.id);
-          relayed++;
+    // Layer 2: Mesh relay (only when the mesh transport is enabled).
+    if (MESH_ENABLED) {
+      const peers = await meshTransport.discoverPeers();
+      if (peers.length > 0) {
+        const bestPeer = [...peers].sort(
+          (a, b) => b.signalStrength - a.signalStrength
+        )[0]!;
+        let relayed = 0;
+        for (const report of pending) {
+          const ok = await meshTransport.sendToPeer(bestPeer, [report]);
+          if (ok) {
+            await outboxDb.markRelayed(report.id, bestPeer.id);
+            relayed++;
+          }
         }
+        return { delivered: 0, relayed, queued: pending.length - relayed };
       }
-      return { delivered: 0, relayed, queued: pending.length - relayed };
     }
 
     // Layer 3: Stay queued.

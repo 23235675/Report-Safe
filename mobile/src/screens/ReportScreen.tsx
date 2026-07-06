@@ -7,7 +7,8 @@ import { randomUUID } from 'expo-crypto';
 import { Ionicons } from '@expo/vector-icons';
 import { submitReport } from '../services/syncService';
 import type { PendingReport, ReportStatus } from '../api/apiClient';
-import { isValidHKID, normalizeHKID } from '../utils/hkid';
+import { normalizeHKID } from '../utils/hkid';
+import { validateReportForm } from '../utils/reportForm';
 import { resolveLocation } from '../utils/location';
 import { C, R, SHADOW, statusColor, statusDim, STATUS_ICON } from '../theme';
 import VisibilityChip from '../components/VisibilityChip';
@@ -83,31 +84,9 @@ export default function ReportScreen({ route }: Props): React.JSX.Element {
   }
 
   async function onSubmit(): Promise<void> {
-    if (!subjectName.trim()) {
-      setMessage({ kind: 'error', text: isProxy
-        ? t('report.errSubjectProxy')
-        : t('report.errSubjectSelf') });
-      return;
-    }
-    if (isProxy && !reporterName.trim()) {
-      setMessage({ kind: 'error', text: t('report.errReporter') });
-      return;
-    }
-    // Phone + HKID are required basic data for self-reports. For proxy
-    // reports they are requested but not blocking — the reporter may not
-    // know the subject's HKID, and a missing ID must never stop a rescue.
-    if (!isProxy) {
-      if (!phone.trim()) {
-        setMessage({ kind: 'error', text: t('report.errPhone') });
-        return;
-      }
-      if (!personalId.trim()) {
-        setMessage({ kind: 'error', text: t('report.errHkidRequired') });
-        return;
-      }
-    }
-    if (personalId.trim() && !isValidHKID(personalId)) {
-      setMessage({ kind: 'error', text: t('report.errHkidInvalid') });
+    const invalid = validateReportForm({ isProxy, subjectName, reporterName, phone, personalId });
+    if (invalid) {
+      setMessage({ kind: 'error', text: t(invalid.message) });
       return;
     }
 

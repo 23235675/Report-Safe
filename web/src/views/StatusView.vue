@@ -1,7 +1,8 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed } from 'vue';
 import { getStats, getPeople } from '../api.js';
 import { useSocket } from '../socket.js';
+import { useLiveQuery } from '../composables/useLiveQuery.js';
 import AppIcon from '../components/AppIcon.vue';
 import { t } from '../i18n/index.js';
 // Status colours come from the shared vivid palette so the Status Overview
@@ -20,17 +21,13 @@ const CATEGORY_CONFIGS = [
   { key: 'deceased',           icon: 'remove-circle' },
 ];
 
-const stats = ref({
+const EMPTY_STATS = {
   total: 0, safe: 0, injured: 0, need_help: 0,
   awaiting_response: 0, potentially_missing: 0, missing: 0,
   verified_missing: 0, rescued: 0, deceased: 0, active_disasters: 0,
-});
-const people    = ref([]);
-const peopleTotal = ref(0);
+};
 const peopleOffset = ref(0);
 const PEOPLE_PAGE = 50;
-const loading   = ref(true);
-const error     = ref(false);
 // Clicked dashcard → filter the people roster to that one status (null = all).
 const activeStatus = ref(null);
 
@@ -56,8 +53,27 @@ function clearStatus() {
 }
 
 const { onStatsUpdate } = useSocket();
-let offStats = null;
-let lastUpdatedBySocket = 0; // 用於防範 API 覆蓋最新 WebSocket 數據的標記
+
+// Fetch on mount, silently re-fetch on every stats_update socket push. The
+// composable's monotonic in-flight guard replaces the old manual
+// lastUpdatedBySocket timestamp patch: a stale slow HTTP response can never
+// overwrite data from a newer refresh.
+const { data, loading, error, refresh } = useLiveQuery(
+  async () => {
+    const [r, p] = await Promise.all([
+      getStats(),
+      getPeople({ limit: PEOPLE_PAGE, offset: peopleOffset.value, status: activeStatus.value }),
+    ]);
+    return { stats: r.stats || r, people: p.people || [], peopleTotal: p.total || 0 };
+  },
+  { invalidateOn: [onStatsUpdate] },
+);
+
+const stats       = computed(() => data.value?.stats || EMPTY_STATS);
+const people      = computed(() => data.value?.people || []);
+const peopleTotal = computed(() => data.value?.peopleTotal || 0);
+
+function load() { refresh(); }
 
 const pct = (n) => stats.value.total ? Math.round((n / stats.value.total) * 100) : 0;
 
@@ -71,40 +87,8 @@ const categories = computed(() =>
   }))
 );
 
-async function load() {
-  loading.value = true;
-  error.value   = false;
-  const requestTime = Date.now();
-  try {
-    const [r, p] = await Promise.all([getStats(), getPeople({ limit: PEOPLE_PAGE, offset: peopleOffset.value, status: activeStatus.value })]);
-
-    // 只有在 API 回傳比最後一次 WebSocket 更新還要新，或者還沒收到 WebSocket 時才寫入統計
-    if (requestTime > lastUpdatedBySocket) {
-      stats.value = r.stats || r;
-    }
-    people.value = p.people || [];
-    peopleTotal.value = p.total || 0;
-  } catch {
-    error.value = true;
-  } finally {
-    loading.value = false;
-  }
-}
-
 function nextPeoplePage() { peopleOffset.value += PEOPLE_PAGE; load(); }
 function prevPeoplePage() { peopleOffset.value = Math.max(0, peopleOffset.value - PEOPLE_PAGE); load(); }
-
-onMounted(() => {
-  load();
-  offStats = onStatsUpdate((s) => {
-    lastUpdatedBySocket = Date.now(); // 記錄 WebSocket 更新的時間節點
-    stats.value = s;
-  });
-});
-
-onUnmounted(() => {
-  if (offStats) offStats();
-});
 </script>
 
 <template>

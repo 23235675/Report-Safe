@@ -16,26 +16,20 @@
     "build:web": "cd web && npx vite build",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:memdb": "node scripts/test-with-memory-db.mjs",
+    "check:shared": "node scripts/check-shared-drift.mjs",
     "db:up": "cd server && npm run db:up",
     "db:down": "cd server && npm run db:down",
     "db:reset": "cd server && npm run db:reset"
   },
   "devDependencies": {
-    "@babel/plugin-transform-class-properties": "^7.29.7",
-    "@babel/plugin-transform-private-methods": "^7.29.7",
-    "@babel/plugin-transform-private-property-in-object": "^7.29.7",
-    "@expo/ngrok": "^4.1.3",
-    "@types/react": "~18.3.0",
     "concurrently": "^8.2.2",
     "eslint": "^9.39.4",
+    "mongodb-memory-server": "^11.2.0",
     "eslint-plugin-vue": "^9.33.0",
     "globals": "^17.7.0",
     "typescript-eslint": "^8.62.0",
-    "vitest": "^4.1.9"
-  },
-  "dependencies": {
-    "domexception": "^4.0.0",
     "vite": "8.0.16",
-    "web-streams-polyfill": "^4.3.0"
+    "vitest": "^4.1.9"
   }
 }

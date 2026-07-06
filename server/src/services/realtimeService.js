@@ -12,10 +12,10 @@ const { corsOptions } = require('../lib/httpSecurity');
  *
  * Single-instance: the canonical source of truth.
  * Multi-instance (Redis adapter): each process tracks ONLY its own connected
- * sockets.  broadcastDisasterAlert uses io.fetchSockets() to reach sockets on
- * remote instances (works because the Redis adapter syncs socket membership),
- * so this map is still correct — it is populated by the `register` event from
- * the local socket, not by Redis.  Remote sockets that registered on a different
+ * sockets.  The hub emitters use io.fetchSockets() to reach sockets on remote
+ * instances (works because the Redis adapter syncs socket membership), so this
+ * map is still correct — it is populated by the `register` event from the
+ * local socket, not by Redis.  Remote sockets that registered on a different
  * instance are reached via the Socket.IO adapter routing layer.
  */
 const socketLocations = new Map();
@@ -74,7 +74,7 @@ function initSocketIO(server, redisPair = null) {
   });
 
   const interval = Number(process.env.WS_STATS_INTERVAL_MS) || 10000;
-  // Leader-gated (C4): the periodic broadcast fires once per tick cluster-wide,
+  // Leader-gated: the periodic broadcast fires once per tick cluster-wide,
   // not N× (once per instance). Event-driven broadcastStats() calls (on a new
   // report) stay per-instance — they're idempotent and must feel instant.
   const { runIfLeader } = require('../lib/leaderLock');
@@ -87,38 +87,63 @@ function initSocketIO(server, redisPair = null) {
   return io;
 }
 
+/* ── The hub: the ONE broadcast implementation ──────────────────────────────
+ * Every targeted emit goes through these three. Multi-instance:
+ * io.fetchSockets() spans all instances via the Redis adapter; each instance
+ * matches against its own socketLocations and the adapter routes the emit.
+ */
+
+/** Emit to every socket in the global room. */
+function emitGlobal(io, event, payload) {
+  if (!io) return;
+  io.to(GLOBAL_ROOM).emit(event, payload);
+}
+
+/** Emit to every registered socket whose location entry matches `match(loc)`. */
+async function emitWhere(io, event, payload, match) {
+  if (!io) return;
+  const sockets = await io.fetchSockets();
+  for (const s of sockets) {
+    const loc = socketLocations.get(s.id);
+    if (loc && match(loc)) io.to(s.id).emit(event, payload);
+  }
+}
+
+/**
+ * Emit to the sockets of a set of users, targeted strictly by identity.
+ * mobileOnly (default true) restricts delivery to mobile devices.
+ */
+async function emitToUsers(io, userIds, event, payload, { mobileOnly = true } = {}) {
+  if (!userIds || userIds.length === 0) return;
+  const targets = new Set(userIds);
+  return emitWhere(io, event, payload, (loc) =>
+    (!mobileOnly || loc.userType === 'mobile') && loc.userId != null && targets.has(loc.userId));
+}
+
+/**
+ * Emit to every socket registered inside a radius around a centre point.
+ * mobileOnly (default true) restricts delivery to mobile devices.
+ */
+async function emitInRadius(io, center, radiusKm, event, payload, { mobileOnly = true } = {}) {
+  return emitWhere(io, event, payload, (loc) =>
+    (!mobileOnly || loc.userType === 'mobile') && isWithinRadius(loc, center, radiusKm));
+}
+
+/* ── Named broadcasts (thin wrappers over the hub) ─────────────────────── */
+
 /**
  * Emit disaster_alert to every MOBILE socket whose registered location is
- * inside the disaster radius.
- *
- * Device role split (mobile = emergency, web = data collection): the personal
- * disaster alert that triggers disaster mode + a push notification goes ONLY to
- * mobile devices in the affected zone. Web clients are skipped even when located
- * inside the radius — they never enter disaster mode and are never counted as an
- * affected person. (Rationale: a person carrying both a phone and a laptop must
- * not be alerted twice or generate a duplicate report — the phone is the source
- * of truth for "am I affected".)
- *
- * Multi-instance: uses io.fetchSockets() (spans all instances via the Redis
- * adapter) + the per-process socketLocations map on each instance.  Each
- * instance emits only to the sockets it owns — the adapter handles routing.
- *
- * Single-instance: falls back to iterating socketLocations directly.
+ * inside the disaster radius. Web clients are skipped even when located inside
+ * the radius — they never enter disaster mode and are never counted as an
+ * affected person (a person carrying both a phone and a laptop must not be
+ * alerted twice or generate a duplicate report — the phone is the source of
+ * truth for "am I affected").
  */
 async function broadcastDisasterAlert(io, disaster) {
   try {
     if (!io || !disaster) return;
-    const center = { lat: disaster.lat, lng: disaster.lng };
-
-    // io.fetchSockets() is async and spans all instances with the Redis adapter.
-    const sockets = await io.fetchSockets();
-    for (const socket of sockets) {
-      const loc = socketLocations.get(socket.id);
-      if (!loc || loc.userType !== 'mobile') continue; // mobile-only personal alert
-      if (isWithinRadius(loc, center, disaster.radius_km)) {
-        io.to(socket.id).emit(SOCKET_EVENTS.DISASTER_ALERT, disaster);
-      }
-    }
+    await emitInRadius(io, { lat: disaster.lat, lng: disaster.lng }, disaster.radius_km,
+      SOCKET_EVENTS.DISASTER_ALERT, disaster);
   } catch (err) {
     logger.error('broadcast_disaster_alert_failed', { error: err.message });
   }
@@ -127,12 +152,9 @@ async function broadcastDisasterAlert(io, disaster) {
 /**
  * Emit loved_one_alert to the OPEN mobile apps of a set of users — the confirmed
  * relatives of someone inside a disaster zone. Mirrors the closed-app push path
- * (pushService.sendLovedOneAlert); together they cover both states.
- *
- * Targeted strictly by identity: only sockets that registered with one of the
- * `partnerUserIds` receive it, and only mobile ones. The recipients are NOT in
- * the zone, so this surfaces their loved one's status WITHOUT entering disaster
- * mode (the payload is a loved_one_alert, not a disaster_alert).
+ * (pushService.sendLovedOneAlert); together they cover both states. The
+ * recipients are NOT in the zone, so this surfaces their loved one's status
+ * WITHOUT entering disaster mode.
  *
  * @param {import('socket.io').Server} io
  * @param {string[]} partnerUserIds user ids of the relatives to notify
@@ -140,46 +162,21 @@ async function broadcastDisasterAlert(io, disaster) {
  */
 async function broadcastLovedOneAlert(io, partnerUserIds, payload) {
   try {
-    if (!io || !partnerUserIds || partnerUserIds.length === 0) return;
-    const targets = new Set(partnerUserIds);
-    const sockets = await io.fetchSockets();
-    for (const socket of sockets) {
-      const loc = socketLocations.get(socket.id);
-      if (!loc || loc.userType !== 'mobile' || !loc.userId) continue;
-      if (targets.has(loc.userId)) {
-        io.to(socket.id).emit(SOCKET_EVENTS.LOVED_ONE_ALERT, payload);
-      }
-    }
+    await emitToUsers(io, partnerUserIds, SOCKET_EVENTS.LOVED_ONE_ALERT, payload);
   } catch (err) {
     logger.error('broadcast_loved_one_alert_failed', { error: err.message });
   }
 }
 
 /**
- * CFR: emit incident_alert to the OPEN mobile apps of a set of matched
- * responders. The incidentEngine already did the radius + skill + privacy
- * matching and resolved the responder user ids, so this targets strictly by
- * identity (mirrors broadcastLovedOneAlert) — no radius logic here.
- *
- * NON-GATING: incident_alert never enters disaster mode (only the victim does);
- * the recipient is a volunteer, not the affected person.
- *
- * @param {import('socket.io').Server} io
- * @param {string[]} responderUserIds matched responder user ids
- * @param {object} incident
+ * CFR: emit incident_alert to the OPEN mobile apps of matched responders. The
+ * incidentEngine already did the radius + skill + privacy matching, so this
+ * targets strictly by identity. NON-GATING: incident_alert never enters
+ * disaster mode — the recipient is a volunteer, not the affected person.
  */
 async function broadcastResponderAlert(io, responderUserIds, incident) {
   try {
-    if (!io || !responderUserIds || responderUserIds.length === 0) return;
-    const targets = new Set(responderUserIds);
-    const sockets = await io.fetchSockets();
-    for (const socket of sockets) {
-      const loc = socketLocations.get(socket.id);
-      if (!loc || loc.userType !== 'mobile' || !loc.userId) continue;
-      if (targets.has(loc.userId)) {
-        io.to(socket.id).emit(SOCKET_EVENTS.INCIDENT_ALERT, incident);
-      }
-    }
+    await emitToUsers(io, responderUserIds, SOCKET_EVENTS.INCIDENT_ALERT, incident);
   } catch (err) {
     logger.error('broadcast_responder_alert_failed', { error: err.message });
   }
@@ -187,23 +184,15 @@ async function broadcastResponderAlert(io, responderUserIds, incident) {
 
 /**
  * CFR: notify a set of users (co-responders + dispatcher) that one responder's
- * status/position changed for an incident. Targeted by user id.
+ * status/position changed for an incident. Targeted by user id; NOT
+ * mobile-only — a dispatcher console may be registered from the web.
  * @param {import('socket.io').Server} io
  * @param {string[]} userIds
  * @param {object} payload { incidentId, response }
  */
 async function broadcastIncidentUpdate(io, userIds, payload) {
   try {
-    if (!io || !userIds || userIds.length === 0) return;
-    const targets = new Set(userIds);
-    const sockets = await io.fetchSockets();
-    for (const socket of sockets) {
-      const loc = socketLocations.get(socket.id);
-      if (!loc || !loc.userId) continue;
-      if (targets.has(loc.userId)) {
-        io.to(socket.id).emit(SOCKET_EVENTS.INCIDENT_UPDATE, payload);
-      }
-    }
+    await emitToUsers(io, userIds, SOCKET_EVENTS.INCIDENT_UPDATE, payload, { mobileOnly: false });
   } catch (err) {
     logger.error('broadcast_incident_update_failed', { error: err.message });
   }
@@ -216,8 +205,8 @@ async function broadcastIncidentUpdate(io, userIds, payload) {
  */
 function broadcastIncidentResolved(io, incidentId) {
   try {
-    if (!io || !incidentId) return;
-    io.to(GLOBAL_ROOM).emit(SOCKET_EVENTS.INCIDENT_RESOLVED, { id: incidentId });
+    if (!incidentId) return;
+    emitGlobal(io, SOCKET_EVENTS.INCIDENT_RESOLVED, { id: incidentId });
   } catch (err) {
     logger.error('broadcast_incident_resolved_failed', { error: err.message });
   }
@@ -229,22 +218,22 @@ function broadcastIncidentResolved(io, incidentId) {
 async function broadcastStats(io) {
   try {
     if (!io) return;
-    // Official affected counts NEVER include web (proxy) reporters (B2 / A6).
+    // Official affected counts NEVER include web (proxy) reporters.
     const stats = await getStats({ excludeWeb: true });
-    io.to(GLOBAL_ROOM).emit(SOCKET_EVENTS.STATS_UPDATE, stats);
+    emitGlobal(io, SOCKET_EVENTS.STATS_UPDATE, stats);
   } catch (err) {
     logger.error('broadcast_stats_failed', { error: err.message });
   }
 }
 
 /**
- * Notify all clients that a disaster was ended (B20). Clients clear it from
- * their active list / map; the mobile gate self-heals on its next poll too.
+ * Notify all clients that a disaster was ended. Clients clear it from their
+ * active list / map; the mobile gate self-heals on its next poll too.
  */
 function broadcastDisasterDeactivated(io, disasterId) {
   try {
-    if (!io || !disasterId) return;
-    io.to(GLOBAL_ROOM).emit(SOCKET_EVENTS.DISASTER_DEACTIVATED, { id: disasterId });
+    if (!disasterId) return;
+    emitGlobal(io, SOCKET_EVENTS.DISASTER_DEACTIVATED, { id: disasterId });
   } catch (err) {
     logger.error('broadcast_disaster_deactivated_failed', { error: err.message });
   }
@@ -255,8 +244,8 @@ function broadcastDisasterDeactivated(io, disasterId) {
  */
 function broadcastMissingAlert(io, ids) {
   try {
-    if (!io || !ids || ids.length === 0) return;
-    io.to(GLOBAL_ROOM).emit(SOCKET_EVENTS.MISSING_ALERT, { ids });
+    if (!ids || ids.length === 0) return;
+    emitGlobal(io, SOCKET_EVENTS.MISSING_ALERT, { ids });
   } catch (err) {
     logger.error('broadcast_missing_alert_failed', { error: err.message });
   }
@@ -271,6 +260,9 @@ function stopStatsTimer() {
 
 module.exports = {
   initSocketIO,
+  emitGlobal,
+  emitToUsers,
+  emitInRadius,
   broadcastDisasterAlert,
   broadcastDisasterDeactivated,
   broadcastLovedOneAlert,

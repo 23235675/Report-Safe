@@ -246,7 +246,7 @@ export function currentUserId(): string | null {
 }
 
 /** The full stored user profile (or null). */
-export function getCurrentUser(): any | null {
+function getCurrentUser(): any | null {
   try {
     const raw = userStorage.get(USER_KEY);
     return raw ? JSON.parse(raw) : null;
@@ -254,7 +254,7 @@ export function getCurrentUser(): any | null {
 }
 
 /** This user's role (citizen | volunteer | government | super_admin), or null. */
-export function currentUserRole(): string | null {
+function currentUserRole(): string | null {
   return getCurrentUser()?.role ?? null;
 }
 
@@ -405,16 +405,6 @@ export interface SafePlace {
   created_at:  number;
   submitter_name?:  string | null;
   submitter_phone?: string | null;
-}
-
-/** Public list of APPROVED safe places. */
-export async function listSafePlaces(): Promise<SafePlace[]> {
-  try {
-    const res = await fetchWithTimeout(`${API_BASE_URL}/api/safe-places`);
-    if (!res.ok) return [];
-    const body = await res.json();
-    return body.data ?? [];
-  } catch { return []; }
 }
 
 /** Any logged-in user (incl. citizens) can suggest a safe place (starts pending). */

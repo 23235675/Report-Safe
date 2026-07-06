@@ -28,4 +28,17 @@ function ilike(q) {
   return new RegExp(escapeRegex(q), 'i');
 }
 
-module.exports = { mapId, unwrap, escapeRegex, ilike };
+/**
+ * Partial-update helper: only the fields the caller actually provided
+ * (non-null, non-undefined) — the one implementation of the COALESCE-style
+ * "$set only what was sent" pattern.
+ */
+function pickProvided(src, fields) {
+  const out = {};
+  for (const f of fields) {
+    if (src[f] != null) out[f] = src[f];
+  }
+  return out;
+}
+
+module.exports = { mapId, unwrap, escapeRegex, ilike, pickProvided };

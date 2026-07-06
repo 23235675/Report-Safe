@@ -13,7 +13,9 @@ process.env.MONGODB_DB  = process.env.TEST_MONGODB_DB  || 'reportsafe_test';
 // docker-compose redis service is on localhost:6379 by default. The redis.test.js
 // suite uses describe.skipIf(!REDIS_HOST) so it self-skips when Redis is absent.
 // Don't clobber an explicit caller override (e.g. CI sets REDIS_HOST=localhost).
-if (!process.env.REDIS_HOST && !process.env.REDIS_URL) {
+// NO_REDIS=1 (set by scripts/test-with-memory-db.mjs on machines with no Redis)
+// suppresses the localhost default so the redis suite's self-skip actually fires.
+if (!process.env.REDIS_HOST && !process.env.REDIS_URL && process.env.NO_REDIS !== '1') {
   // Local dev: default to the docker-compose Redis.
   process.env.REDIS_HOST = 'localhost';
   process.env.REDIS_PORT = '6379';

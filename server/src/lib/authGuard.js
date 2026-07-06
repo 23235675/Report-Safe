@@ -3,12 +3,15 @@
 /**
  * Authentication for privileged + user-scoped routes.
  *
- *  - `authGuard`     — government/admin only (static GOV_TOKEN). Used by
- *                      /rescue, /disasters/trigger, shelter writes.
- *  - `authenticate`  — resolves a Bearer token to a principal: the gov token
- *                      (admin) OR a user's personal access token (issued at
- *                      registration). Attaches `req.auth = { kind, userId, user }`.
- *                      Used to close the unauthenticated IDOR on /api/users/* (M1).
+ * One resolution core (`resolvePrincipal`) + one middleware factory
+ * (`requireRole`) back every guard:
+ *
+ *  - `authGuard`           — government/admin only (static GOV_TOKEN, no DB).
+ *  - `authenticate`        — any principal: gov token OR a user's personal
+ *                            access token. Attaches `req.auth = { kind, userId, user }`.
+ *  - `allowGovOrVolunteer` — gov token OR user with role government|volunteer.
+ *  - `requireSuperAdmin`   — user with role super_admin (the static gov token
+ *                            is NOT accepted). Attaches `req.admin`.
  *
  * PRODUCTION NOTE: replace the static gov token with OAuth2/OIDC + RBAC; the
  * middleware contracts stay the same.
@@ -16,6 +19,7 @@
 
 const crypto = require('crypto');
 const { collection } = require('../db/mongo');
+const { logger } = require('./logger');
 
 const DEFAULT_GOV_TOKEN = 'GOV-SECRET-TOKEN-2024';
 
@@ -51,7 +55,7 @@ function getGovToken() {
   // Loud warning if the well-known default token is used outside development —
   // a public deployment MUST override GOV_TOKEN with a real secret.
   if (tok === DEFAULT_GOV_TOKEN && process.env.NODE_ENV === 'production') {
-    console.warn('[authGuard] SECURITY: GOV_TOKEN is still the built-in default in production. Set a strong GOV_TOKEN env var.');
+    logger.warn('gov_token_default_in_production', { note: 'set a strong GOV_TOKEN env var' });
   }
   return tok;
 }
@@ -103,7 +107,73 @@ function bearer(req) {
 }
 
 /**
+ * Resolve a bearer token to a principal. The single implementation behind
+ * every role guard.
+ *
+ * @param {string|null} token the presented bearer token
+ * @param {{ roles?: string[]|null, allowGovToken?: boolean }} [opts]
+ *   roles         — restrict user principals to these roles. The role is part
+ *                   of the LOOKUP filter (matching the original guards), so a
+ *                   wrong-role token and an unknown token are indistinguishable
+ *                   (both resolve `forbidden`) — no token-validity oracle.
+ *   allowGovToken — whether the static gov token is an acceptable principal.
+ * @returns {Promise<
+ *   { kind: 'gov', userId: null, user: null } |
+ *   { kind: 'user', userId: string, user: object } |
+ *   { kind: 'none' | 'invalid' | 'forbidden' | 'expired' }
+ * >}
+ */
+async function resolvePrincipal(token, { roles = null, allowGovToken = true } = {}) {
+  if (!token) return { kind: 'none' };
+
+  if (allowGovToken && timingEqual(token, getGovToken())) {
+    return { kind: 'gov', userId: null, user: null };
+  }
+
+  const filter = { access_token_hash: hashToken(token) };
+  if (roles) filter.role = { $in: roles };
+  const doc = await collection('users').findOne(filter, { projection: PRINCIPAL_PROJECTION });
+  if (!doc) return { kind: roles ? 'forbidden' : 'invalid' };
+
+  // Enforce expiry. NULL/absent = legacy token minted before lifecycles
+  // existed → still honoured (back-compat) until the user re-registers/refreshes.
+  const exp = doc.access_token_expires_at;
+  if (exp != null && Number(exp) < Date.now()) return { kind: 'expired' };
+
+  const user = mapPrincipal(doc);
+  return { kind: 'user', userId: user.id, user };
+}
+
+/**
+ * Middleware factory over resolvePrincipal. Attaches the principal to
+ * req[attach] ('auth' by default; 'admin' for the super-admin guard) and maps
+ * the failure kinds to the guards' original status codes and bodies.
+ */
+function requireRole({ roles = null, allowGovToken = true, attach = 'auth', forbiddenMsg = 'Forbidden' } = {}) {
+  return async function roleGuard(req, res, next) {
+    try {
+      const p = await resolvePrincipal(bearer(req), { roles, allowGovToken });
+      if (p.kind === 'none' || p.kind === 'invalid') {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      if (p.kind === 'forbidden') {
+        return res.status(403).json({ error: forbiddenMsg });
+      }
+      if (p.kind === 'expired') {
+        return res.status(401).json({ error: 'Access token expired', code: 'token_expired' });
+      }
+      req[attach] = attach === 'admin' ? p.user : p;
+      return next();
+    } catch (err) {
+      logger.error('auth_guard_failed', { reqId: req.id, error: err.message });
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+  };
+}
+
+/**
  * Government/admin-only guard (static bearer token, timing-safe compare).
+ * Deliberately DB-free and attaches nothing — a pure gate.
  */
 function authGuard(req, res, next) {
   try {
@@ -113,7 +183,7 @@ function authGuard(req, res, next) {
     }
     return next();
   } catch (err) {
-    console.error('[authGuard] failed to evaluate authorization header:', err);
+    logger.error('auth_guard_failed', { reqId: req.id, error: err.message });
     return res.status(401).json({ error: 'Unauthorized' });
   }
 }
@@ -124,37 +194,27 @@ function authGuard(req, res, next) {
  *   - user token → req.auth = { kind:'user', userId, user:{id,phone,name,role} }
  * 401 if absent/invalid.
  */
-async function authenticate(req, res, next) {
-  try {
-    const token = bearer(req);
-    if (!token) return res.status(401).json({ error: 'Unauthorized' });
+const authenticate = requireRole();
 
-    if (timingEqual(token, getGovToken())) {
-      req.auth = { kind: 'gov', userId: null, user: null };
-      return next();
-    }
+/**
+ * Gov token OR authenticated user with role='government' or 'volunteer'.
+ * Used for shelter management + safe-place moderation. Attaches req.auth.
+ */
+const allowGovOrVolunteer = requireRole({
+  roles: ['government', 'volunteer'],
+  forbiddenMsg: 'Forbidden — government or volunteer role required',
+});
 
-    const doc = await collection('users').findOne(
-      { access_token_hash: hashToken(token) },
-      { projection: PRINCIPAL_PROJECTION }
-    );
-    if (!doc) return res.status(401).json({ error: 'Unauthorized' });
-
-    // Enforce expiry. NULL/absent = legacy token minted before lifecycles
-    // existed → still honoured (back-compat) until the user re-registers/refreshes.
-    const exp = doc.access_token_expires_at;
-    if (exp != null && Number(exp) < Date.now()) {
-      return res.status(401).json({ error: 'Access token expired', code: 'token_expired' });
-    }
-
-    const user = mapPrincipal(doc);
-    req.auth = { kind: 'user', userId: user.id, user };
-    return next();
-  } catch (err) {
-    console.error('[authenticate] failed:', err);
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-}
+/**
+ * Requires a Bearer token resolving to a user with role='super_admin' (the
+ * static gov token is not accepted). Attaches `req.admin`.
+ */
+const requireSuperAdmin = requireRole({
+  roles: ['super_admin'],
+  allowGovToken: false,
+  attach: 'admin',
+  forbiddenMsg: 'Forbidden — super_admin role required',
+});
 
 /**
  * After `authenticate`, require the principal to be gov OR the owner.
@@ -188,77 +248,14 @@ function verifyPassword(password, stored) {
   }
 }
 
-/**
- * Express middleware: allows government token OR authenticated user with
- * role='government' or 'volunteer'. Used for shelter management.
- * Attaches either `req.auth` (user) or signals gov token via 401 if denied.
- */
-async function allowGovOrVolunteer(req, res, next) {
-  try {
-    const token = bearer(req);
-    if (!token) return res.status(401).json({ error: 'Unauthorized' });
-
-    // Allow the static gov token
-    if (timingEqual(token, getGovToken())) {
-      req.auth = { kind: 'gov', userId: null, user: null };
-      return next();
-    }
-
-    // Allow user token with role='government' or 'volunteer'
-    const doc = await collection('users').findOne(
-      { access_token_hash: hashToken(token), role: { $in: ['government', 'volunteer'] } },
-      { projection: PRINCIPAL_PROJECTION }
-    );
-    if (!doc) return res.status(403).json({ error: 'Forbidden — government or volunteer role required' });
-
-    const exp = doc.access_token_expires_at;
-    if (exp != null && Number(exp) < Date.now()) {
-      return res.status(401).json({ error: 'Access token expired', code: 'token_expired' });
-    }
-
-    const user = mapPrincipal(doc);
-    req.auth = { kind: 'user', userId: user.id, user };
-    return next();
-  } catch (err) {
-    console.error('[allowGovOrVolunteer] failed:', err);
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-}
-
-/**
- * Express middleware: requires the request to carry a valid Bearer token that
- * resolves to a user with role = 'super_admin'. Attaches `req.admin`.
- */
-async function requireSuperAdmin(req, res, next) {
-  try {
-    const token = bearer(req);
-    if (!token) return res.status(401).json({ error: 'Unauthorized' });
-
-    const doc = await collection('users').findOne(
-      { access_token_hash: hashToken(token), role: 'super_admin' },
-      { projection: PRINCIPAL_PROJECTION }
-    );
-    if (!doc) return res.status(403).json({ error: 'Forbidden — super_admin role required' });
-
-    const exp = doc.access_token_expires_at;
-    if (exp != null && Number(exp) < Date.now()) {
-      return res.status(401).json({ error: 'Access token expired', code: 'token_expired' });
-    }
-
-    req.admin = mapPrincipal(doc);
-    return next();
-  } catch (err) {
-    console.error('[requireSuperAdmin] failed:', err);
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-}
-
 module.exports = {
   authGuard,
   authenticate,
   isOwnerOrGov,
   allowGovOrVolunteer,
   requireSuperAdmin,
+  resolvePrincipal,
+  requireRole,
   hashPassword,
   verifyPassword,
   getGovToken,

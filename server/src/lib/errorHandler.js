@@ -3,25 +3,32 @@
 const { logger } = require('./logger');
 
 /**
- * Last-resort Express error middleware (L6). Routes still hand-roll their own
- * try/catch + JSON responses; this catches anything that escapes them so a
- * thrown error becomes a clean JSON envelope with the request id — never a
- * stack trace leaked to the client. Register as the final app.use().
+ * Central error middleware — the only try/catch in the request path.
+ * A thrown HttpError(4xx) surfaces its message and optional code in the same
+ * `{ error, code? }` body shape the routes have always returned; anything else
+ * is a masked 500. Never leaks a stack to the client. Register as the final
+ * app.use().
  */
 function errorHandler(err, req, res, next) {
-  logger.error('unhandled_error', {
+  const status = err.status || 500;
+  logger[status >= 500 ? 'error' : 'warn']('request_failed', {
     reqId: req.id,
     method: req.method,
     path: req.path,
+    status,
     userId: req.auth?.userId ?? null,
     error: err.message,
-    stack: err.stack,
+    ...(status >= 500 ? { stack: err.stack } : {}),
   });
   if (res.headersSent) return next(err);
-  res.status(err.status || 500).json({
-    ok: false,
-    error: { code: err.code || 'internal_error', message: 'Internal server error', reqId: req.id },
-  });
+  if (err.expose) {
+    return res.status(status).json({
+      error: err.message,
+      ...(err.code ? { code: err.code } : {}),
+      reqId: req.id,
+    });
+  }
+  return res.status(status).json({ error: 'Internal server error', reqId: req.id });
 }
 
 module.exports = { errorHandler };

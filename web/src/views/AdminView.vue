@@ -9,6 +9,8 @@ import {
   adminListDevices, adminDeleteDevice,
   getAdminToken, getAdminUser, setAdminSession, clearAdminSession,
 } from '../api.js';
+import LoginPanel from '../components/LoginPanel.vue';
+import DataTable from '../components/DataTable.vue';
 
 const adminToken = ref(getAdminToken() || '');
 const adminUser  = ref(getAdminUser());
@@ -94,6 +96,167 @@ async function ensureDisasterOptions() {
   try { const res = await adminListDisasters(); disasterOptions.value = res.rows || []; } catch {}
 }
 
+function fmt(ts) { if (!ts) return '—'; return new Date(Number(ts)).toLocaleString('en-HK', { dateStyle: 'short', timeStyle: 'short' }); }
+function shortId(id) { return id ? id.split('-')[0] : '—'; }
+const dash = (v) => v || '—';
+
+/**
+ * Declarative tab registry — drives the one generic loader below plus the
+ * DataTable columns, modal form and delete action for every tab.
+ *  - fetch(params):  list call; params = q? + limit/offset? + active filters
+ *  - searchable:     tab sends the free-text q param
+ *  - paged:          tab sends limit/offset and tracks res.total (shows pager)
+ *  - columns:        DataTable spec; cells with markup override via slots
+ *  - form:           { fields, create, update } for the modal (creatable tabs)
+ *  - remove(id):     delete call for the confirm dialog
+ */
+const TAB_CONFIG = {
+  overview: {
+    load: async () => { stats.value = await adminGetStats(); },
+  },
+  users: {
+    fetch: adminListUsers,
+    searchable: true,
+    paged: true,
+    columns: [
+      { key: 'id', label: 'ID', tdClass: 'mono', title: (r) => r.id, format: shortId },
+      { key: 'phone', label: 'Phone' },
+      { key: 'name', label: 'Name', format: dash },
+      { key: 'email', label: 'Email', format: dash },
+      { key: 'personal_id', label: 'HKID', tdClass: 'mono', format: dash },
+      { key: 'role', label: 'Role' },
+      { key: 'user_type', label: 'Type' },
+      { key: 'privacy_consent', label: 'Consent', format: (v) => (v ? 'Y' : 'N') },
+      { key: 'created_at', label: 'Created', tdClass: 'ts', format: fmt },
+      { key: 'actions', label: '', tdClass: 'acts' },
+    ],
+    form: {
+      fields: [
+        { key: 'phone', label: 'Phone', required: true },
+        { key: 'name', label: 'Name', required: true },
+        { key: 'email', label: 'Email', required: false },
+        { key: 'personal_id', label: 'HKID', required: false },
+        { key: 'role', label: 'Role', required: false, type: 'select', options: ['citizen','volunteer','government','super_admin'] },
+        { key: 'user_type', label: 'User Type', required: false, type: 'select', options: ['mobile','web'] },
+        { key: 'password', label: 'Password', required: false, type: 'password', note: 'Required for super_admin' },
+        { key: 'privacy_consent', label: 'Privacy Consent', required: false, type: 'checkbox' },
+      ],
+      create: adminCreateUser,
+      update: adminUpdateUser,
+    },
+    remove: adminDeleteUser,
+  },
+  reports: {
+    fetch: adminListReports,
+    searchable: true,
+    paged: true,
+    columns: [
+      { key: 'id', label: 'ID', tdClass: 'mono', title: (r) => r.id, format: shortId },
+      { key: 'name', label: 'Name' },
+      { key: 'status', label: 'Status' },
+      { key: 'lat', label: 'Lat', tdClass: 'mono', format: (v) => Number(v).toFixed(4) },
+      { key: 'lng', label: 'Lng', tdClass: 'mono', format: (v) => Number(v).toFixed(4) },
+      { key: 'phone', label: 'Phone', format: dash },
+      { key: 'personal_id', label: 'HKID', tdClass: 'mono', format: dash },
+      { key: 'medical_notes', label: 'Medical', tdClass: 'clip', format: dash },
+      { key: 'linked', label: 'Linked User' },
+      { key: 'relay_count', label: 'Relays' },
+      { key: 'updated_at', label: 'Updated', tdClass: 'ts', format: fmt },
+      { key: 'actions', label: '', tdClass: 'acts' },
+    ],
+    form: {
+      fields: [
+        { key: 'name', label: 'Name', required: true },
+        { key: 'status', label: 'Status', required: true, type: 'select', options: ['safe','injured','need_help','awaiting_response','potentially_missing','missing','verified_missing','rescued','deceased'] },
+        { key: 'lat', label: 'Latitude', required: true, type: 'number' },
+        { key: 'lng', label: 'Longitude', required: true, type: 'number' },
+        { key: 'phone', label: 'Phone', required: false },
+        { key: 'personal_id', label: 'HKID', required: false },
+        { key: 'medical_notes', label: 'Medical Notes', required: false, type: 'textarea' },
+        { key: 'disaster_id', label: 'Disaster ID', required: false },
+      ],
+      create: adminCreateReport,
+      update: adminUpdateReport,
+    },
+    remove: adminDeleteReport,
+  },
+  disasters: {
+    fetch: adminListDisasters,
+    columns: [
+      { key: 'id', label: 'ID', tdClass: 'mono', title: (r) => r.id, format: shortId },
+      { key: 'type', label: 'Type' },
+      { key: 'severity', label: 'Severity', format: (v) => v ?? '—' },
+      { key: 'magnitude', label: 'Magnitude', format: (v) => v ?? '—' },
+      { key: 'lat', label: 'Lat', tdClass: 'mono', format: (v) => Number(v).toFixed(4) },
+      { key: 'lng', label: 'Lng', tdClass: 'mono', format: (v) => Number(v).toFixed(4) },
+      { key: 'radius_km', label: 'Radius', format: (v) => `${v ?? ''}km` },
+      { key: 'description', label: 'Description', tdClass: 'clip', format: dash },
+      { key: 'active', label: 'Active', format: (v) => (v ? 'Y' : 'N') },
+      { key: 'started_at', label: 'Started', tdClass: 'ts', format: fmt },
+      { key: 'actions', label: '', tdClass: 'acts' },
+    ],
+    form: {
+      fields: [
+        { key: 'type', label: 'Type', required: true, type: 'select', options: ['typhoon','flood','earthquake','landslide','fire','tsunami','other'] },
+        { key: 'severity', label: 'Severity 1–5', required: false, type: 'number' },
+        { key: 'magnitude', label: 'Magnitude', required: false, type: 'number' },
+        { key: 'lat', label: 'Latitude', required: true, type: 'number' },
+        { key: 'lng', label: 'Longitude', required: true, type: 'number' },
+        { key: 'radius_km', label: 'Radius (km)', required: true, type: 'number' },
+        { key: 'description', label: 'Description', required: false, type: 'textarea' },
+        { key: 'active', label: 'Active', required: false, type: 'checkbox' },
+      ],
+      create: adminCreateDisaster,
+      update: adminUpdateDisaster,
+    },
+    remove: adminDeleteDisaster,
+  },
+  links: {
+    fetch: adminListLinks,
+    searchable: true,
+    paged: true,
+    columns: [
+      { key: 'id', label: 'ID', tdClass: 'mono', title: (r) => r.id, format: shortId },
+      { key: 'user_a_name', label: 'User A', format: dash },
+      { key: 'user_a_phone', label: 'Phone A' },
+      { key: 'user_b_name', label: 'User B', format: dash },
+      { key: 'user_b_phone', label: 'Phone B' },
+      { key: 'status', label: 'Status' },
+      { key: 'confirmed_at', label: 'Confirmed', tdClass: 'ts', format: fmt },
+      { key: 'created_at', label: 'Created', tdClass: 'ts', format: fmt },
+      { key: 'actions', label: '', tdClass: 'acts' },
+    ],
+    remove: adminDeleteLink,
+  },
+  devices: {
+    fetch: adminListDevices,
+    paged: true,
+    columns: [
+      { key: 'id', label: 'ID', tdClass: 'mono', title: (r) => r.id, format: shortId },
+      { key: 'user_name', label: 'User', format: dash },
+      { key: 'user_phone', label: 'Phone', format: dash },
+      { key: 'platform', label: 'Platform' },
+      { key: 'token', label: 'Token', tdClass: 'mono clip', format: (v) => `${v?.slice(0, 20) ?? ''}…` },
+      { key: 'lat', label: 'Lat', format: (v) => (v != null ? Number(v).toFixed(4) : '—') },
+      { key: 'lng', label: 'Lng', format: (v) => (v != null ? Number(v).toFixed(4) : '—') },
+      { key: 'updated_at', label: 'Updated', tdClass: 'ts', format: fmt },
+      { key: 'actions', label: '', tdClass: 'acts' },
+    ],
+    remove: adminDeleteDevice,
+  },
+  audit: {
+    fetch: adminGetAudit,
+    columns: [
+      { key: 'created_at', label: 'Time', tdClass: 'ts', format: fmt },
+      { key: 'action', label: 'Action' },
+      { key: 'entity', label: 'Entity' },
+      { key: 'entity_id', label: 'Entity ID', tdClass: 'mono', title: (r) => r.entity_id, format: shortId },
+      { key: 'actor', label: 'Actor' },
+      { key: 'details', label: 'Details', tdClass: 'clip sub', format: dash },
+    ],
+  },
+};
+
 async function switchTab(tab) {
   activeTab.value = tab;
   error.value     = null;
@@ -104,34 +267,23 @@ async function switchTab(tab) {
   await loadTab(tab);
 }
 
+// One generic loader for every tab, driven by TAB_CONFIG.
 async function loadTab(tab, q = '', off = 0) {
   loading.value = true;
   error.value   = null;
   try {
-    if (tab === 'overview') {
-      stats.value = await adminGetStats();
-    } else if (tab === 'users') {
-      const res = await adminListUsers({ q, limit: PAGE, offset: off, ...filterParams('users') });
-      rows.value   = { ...rows.value, users: res.rows };
-      totals.value = { ...totals.value, users: res.total };
-    } else if (tab === 'reports') {
-      const res = await adminListReports({ q, limit: PAGE, offset: off, ...filterParams('reports') });
-      rows.value   = { ...rows.value, reports: res.rows };
-      totals.value = { ...totals.value, reports: res.total };
-    } else if (tab === 'disasters') {
-      const res = await adminListDisasters(filterParams('disasters'));
-      rows.value   = { ...rows.value, disasters: res.rows };
-    } else if (tab === 'links') {
-      const res = await adminListLinks({ q, limit: PAGE, offset: off, ...filterParams('links') });
-      rows.value   = { ...rows.value, links: res.rows };
-      totals.value = { ...totals.value, links: res.total };
-    } else if (tab === 'devices') {
-      const res = await adminListDevices({ limit: PAGE, offset: off, ...filterParams('devices') });
-      rows.value   = { ...rows.value, devices: res.rows };
-      totals.value = { ...totals.value, devices: res.total };
-    } else if (tab === 'audit') {
-      const res = await adminGetAudit(filterParams('audit'));
-      rows.value   = { ...rows.value, audit: res.rows };
+    const cfg = TAB_CONFIG[tab];
+    if (cfg.load) {
+      await cfg.load();
+    } else {
+      const params = {
+        ...(cfg.searchable ? { q } : {}),
+        ...(cfg.paged ? { limit: PAGE, offset: off } : {}),
+        ...filterParams(tab),
+      };
+      const res = await cfg.fetch(params);
+      rows.value = { ...rows.value, [tab]: res.rows };
+      if (cfg.paged) totals.value = { ...totals.value, [tab]: res.total };
     }
   } catch (e) {
     error.value = e.message || 'Failed to load data';
@@ -151,50 +303,19 @@ const formData  = ref({});
 const formBusy  = ref(false);
 const formError = ref(null);
 
-const FORM_FIELDS = {
-  users: [
-    { key: 'phone', label: 'Phone', required: true },
-    { key: 'name', label: 'Name', required: true },
-    { key: 'email', label: 'Email', required: false },
-    { key: 'personal_id', label: 'HKID', required: false },
-    { key: 'role', label: 'Role', required: false, type: 'select', options: ['citizen','volunteer','government','super_admin'] },
-    { key: 'user_type', label: 'User Type', required: false, type: 'select', options: ['mobile','web'] },
-    { key: 'password', label: 'Password', required: false, type: 'password', note: 'Required for super_admin' },
-    { key: 'privacy_consent', label: 'Privacy Consent', required: false, type: 'checkbox' },
-  ],
-  reports: [
-    { key: 'name', label: 'Name', required: true },
-    { key: 'status', label: 'Status', required: true, type: 'select', options: ['safe','injured','need_help','awaiting_response','potentially_missing','missing','verified_missing','rescued','deceased'] },
-    { key: 'lat', label: 'Latitude', required: true, type: 'number' },
-    { key: 'lng', label: 'Longitude', required: true, type: 'number' },
-    { key: 'phone', label: 'Phone', required: false },
-    { key: 'personal_id', label: 'HKID', required: false },
-    { key: 'medical_notes', label: 'Medical Notes', required: false, type: 'textarea' },
-    { key: 'disaster_id', label: 'Disaster ID', required: false },
-  ],
-  disasters: [
-    { key: 'type', label: 'Type', required: true, type: 'select', options: ['typhoon','flood','earthquake','landslide','fire','tsunami','other'] },
-    { key: 'severity', label: 'Severity 1–5', required: false, type: 'number' },
-    { key: 'magnitude', label: 'Magnitude', required: false, type: 'number' },
-    { key: 'lat', label: 'Latitude', required: true, type: 'number' },
-    { key: 'lng', label: 'Longitude', required: true, type: 'number' },
-    { key: 'radius_km', label: 'Radius (km)', required: true, type: 'number' },
-    { key: 'description', label: 'Description', required: false, type: 'textarea' },
-    { key: 'active', label: 'Active', required: false, type: 'checkbox' },
-  ],
-};
-
 function openCreate(tab) { formMode.value = 'create'; editId.value = null; formData.value = tab === 'disasters' ? { active: true } : {}; formError.value = null; showForm.value = true; }
 function openEdit(tab, row) { formMode.value = 'edit'; editId.value = row.id; formData.value = { ...row }; formError.value = null; showForm.value = true; }
 function closeForm() { showForm.value = false; formData.value = {}; formError.value = null; }
 
 async function submitForm() {
   formBusy.value = true; formError.value = null;
-  const tab = activeTab.value;
+  const tab  = activeTab.value;
+  const form = TAB_CONFIG[tab]?.form;
   try {
-    if (tab === 'users') { if (formMode.value === 'create') await adminCreateUser(formData.value); else await adminUpdateUser(editId.value, formData.value); }
-    else if (tab === 'reports') { if (formMode.value === 'create') await adminCreateReport(formData.value); else await adminUpdateReport(editId.value, formData.value); }
-    else if (tab === 'disasters') { if (formMode.value === 'create') await adminCreateDisaster(formData.value); else await adminUpdateDisaster(editId.value, formData.value); }
+    if (form) {
+      if (formMode.value === 'create') await form.create(formData.value);
+      else await form.update(editId.value, formData.value);
+    }
     closeForm(); await loadTab(tab, searchQ.value, offset.value);
   } catch (e) { formError.value = e.message || 'Save failed'; }
   finally { formBusy.value = false; }
@@ -208,11 +329,8 @@ async function doDelete() {
   deleteBusy.value = true;
   const { tab, row } = deleteTarget.value;
   try {
-    if (tab === 'users') await adminDeleteUser(row.id);
-    else if (tab === 'reports') await adminDeleteReport(row.id);
-    else if (tab === 'disasters') await adminDeleteDisaster(row.id);
-    else if (tab === 'links') await adminDeleteLink(row.id);
-    else if (tab === 'devices') await adminDeleteDevice(row.id);
+    const remove = TAB_CONFIG[tab]?.remove;
+    if (remove) await remove(row.id);
     deleteTarget.value = null; await loadTab(tab, searchQ.value, offset.value);
   } catch (e) { error.value = e.message || 'Delete failed'; deleteTarget.value = null; }
   finally { deleteBusy.value = false; }
@@ -223,10 +341,8 @@ async function setLinkStatus(row, status) {
   catch (e) { error.value = e.message; }
 }
 
-function fmt(ts) { if (!ts) return '—'; return new Date(Number(ts)).toLocaleString('en-HK', { dateStyle: 'short', timeStyle: 'short' }); }
-function shortId(id) { return id ? id.split('-')[0] : '—'; }
 const currentRows = computed(() => rows.value[activeTab.value] ?? []);
-const canPage     = computed(() => ['users','reports','links','devices'].includes(activeTab.value));
+const canPage     = computed(() => !!TAB_CONFIG[activeTab.value]?.paged);
 const total       = computed(() => totals.value[activeTab.value] ?? currentRows.value.length);
 
 const nowStr = ref('');
@@ -249,25 +365,12 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 
 <template>
   <!-- LOGIN -->
-  <div v-if="!adminToken" class="login-wrap">
-    <div class="login-card">
-      <div class="login-hd">
-        <div class="login-crest">報</div>
-        <div class="login-titles">
-          <h1>Report Safe</h1>
-          <p>Administration Console</p>
-        </div>
-      </div>
-      <form @submit.prevent="login" class="login-form">
-        <label>Phone</label>
-        <input v-model="loginPhone" class="inp" type="tel" placeholder="+852 9xxx xxxx" autocomplete="username" required />
-        <label>Password</label>
-        <input v-model="loginPass" class="inp" type="password" placeholder="••••••••" autocomplete="current-password" required />
-        <div v-if="loginError" class="form-err">{{ loginError }}</div>
-        <button class="btn btn-dark" type="submit" :disabled="loginBusy">{{ loginBusy ? 'Signing in…' : 'Sign in' }}</button>
-      </form>
-    </div>
-  </div>
+  <LoginPanel v-if="!adminToken" subtitle="Administration Console" :error="loginError" :busy="loginBusy" @submit="login">
+    <label class="field-label">Phone</label>
+    <input v-model="loginPhone" class="login-input" type="tel" placeholder="+852 9xxx xxxx" autocomplete="username" required />
+    <label class="field-label">Password</label>
+    <input v-model="loginPass" class="login-input" type="password" placeholder="••••••••" autocomplete="current-password" required />
+  </LoginPanel>
 
   <!-- DASHBOARD -->
   <div v-else class="shell">
@@ -328,8 +431,9 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
           </div>
           <div v-if="loading" class="state-msg">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
-          <div v-else class="tbl-wrap"><table class="tbl"><thead><tr><th>ID</th><th>Phone</th><th>Name</th><th>Email</th><th>HKID</th><th>Role</th><th>Type</th><th>Consent</th><th>Created</th><th></th></tr></thead>
-            <tbody><tr v-for="u in currentRows" :key="u.id"><td class="mono" :title="u.id">{{ shortId(u.id) }}</td><td>{{ u.phone }}</td><td>{{ u.name || '—' }}</td><td>{{ u.email || '—' }}</td><td class="mono">{{ u.personal_id || '—' }}</td><td>{{ u.role }}</td><td>{{ u.user_type }}</td><td>{{ u.privacy_consent ? 'Y' : 'N' }}</td><td class="ts">{{ fmt(u.created_at) }}</td><td class="acts"><button class="btn btn-xs" @click="openEdit('users', u)">Edit</button><button class="btn btn-xs" @click="confirmDelete('users', u)">Del</button></td></tr></tbody></table></div>
+          <DataTable v-else :columns="TAB_CONFIG.users.columns" :rows="currentRows">
+            <template #cell-actions="{ row }"><button class="btn btn-xs" @click="openEdit('users', row)">Edit</button><button class="btn btn-xs" @click="confirmDelete('users', row)">Del</button></template>
+          </DataTable>
         </section>
 
         <!-- REPORTS -->
@@ -348,8 +452,12 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
           </div>
           <div v-if="loading" class="state-msg">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
-          <div v-else class="tbl-wrap"><table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Lat</th><th>Lng</th><th>Phone</th><th>HKID</th><th>Medical</th><th>Linked User</th><th>Relays</th><th>Updated</th><th></th></tr></thead>
-            <tbody><tr v-for="r in currentRows" :key="r.id"><td class="mono" :title="r.id">{{ shortId(r.id) }}</td><td>{{ r.user_name || r.name }}<span v-if="r.user_name && r.name && r.user_name !== r.name" class="sub"> ({{ r.name }})</span></td><td><span class="badge">{{ r.status }}</span></td><td class="mono">{{ Number(r.lat).toFixed(4) }}</td><td class="mono">{{ Number(r.lng).toFixed(4) }}</td><td>{{ r.phone || '—' }}</td><td class="mono">{{ r.personal_id || '—' }}</td><td class="clip">{{ r.medical_notes || '—' }}</td><td>{{ r.user_name || '—' }}<br v-if="r.user_name" /><span class="sub">{{ r.user_phone || '' }}</span></td><td>{{ r.relay_count }}</td><td class="ts">{{ fmt(r.updated_at) }}</td><td class="acts"><button class="btn btn-xs" @click="openEdit('reports', r)">Edit</button><button class="btn btn-xs" @click="confirmDelete('reports', r)">Del</button></td></tr></tbody></table></div>
+          <DataTable v-else :columns="TAB_CONFIG.reports.columns" :rows="currentRows">
+            <template #cell-name="{ row }">{{ row.user_name || row.name }}<span v-if="row.user_name && row.name && row.user_name !== row.name" class="sub"> ({{ row.name }})</span></template>
+            <template #cell-status="{ row }"><span class="badge">{{ row.status }}</span></template>
+            <template #cell-linked="{ row }">{{ row.user_name || '—' }}<br v-if="row.user_name" /><span class="sub">{{ row.user_phone || '' }}</span></template>
+            <template #cell-actions="{ row }"><button class="btn btn-xs" @click="openEdit('reports', row)">Edit</button><button class="btn btn-xs" @click="confirmDelete('reports', row)">Del</button></template>
+          </DataTable>
         </section>
 
         <!-- DISASTERS -->
@@ -363,8 +471,9 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
           </div>
           <div v-if="loading" class="state-msg">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
-          <div v-else class="tbl-wrap"><table class="tbl"><thead><tr><th>ID</th><th>Type</th><th>Severity</th><th>Magnitude</th><th>Lat</th><th>Lng</th><th>Radius</th><th>Description</th><th>Active</th><th>Started</th><th></th></tr></thead>
-            <tbody><tr v-for="d in currentRows" :key="d.id"><td class="mono" :title="d.id">{{ shortId(d.id) }}</td><td>{{ d.type }}</td><td>{{ d.severity ?? '—' }}</td><td>{{ d.magnitude ?? '—' }}</td><td class="mono">{{ Number(d.lat).toFixed(4) }}</td><td class="mono">{{ Number(d.lng).toFixed(4) }}</td><td>{{ d.radius_km }}km</td><td class="clip">{{ d.description || '—' }}</td><td>{{ d.active ? 'Y' : 'N' }}</td><td class="ts">{{ fmt(d.started_at) }}</td><td class="acts"><button class="btn btn-xs" @click="openEdit('disasters', d)">Edit</button><button class="btn btn-xs" @click="confirmDelete('disasters', d)">Del</button></td></tr></tbody></table></div>
+          <DataTable v-else :columns="TAB_CONFIG.disasters.columns" :rows="currentRows">
+            <template #cell-actions="{ row }"><button class="btn btn-xs" @click="openEdit('disasters', row)">Edit</button><button class="btn btn-xs" @click="confirmDelete('disasters', row)">Del</button></template>
+          </DataTable>
         </section>
 
         <!-- LINKS -->
@@ -377,8 +486,10 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
           </div>
           <div v-if="loading" class="state-msg">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
-          <div v-else class="tbl-wrap"><table class="tbl"><thead><tr><th>ID</th><th>User A</th><th>Phone A</th><th>User B</th><th>Phone B</th><th>Status</th><th>Confirmed</th><th>Created</th><th></th></tr></thead>
-            <tbody><tr v-for="l in currentRows" :key="l.id"><td class="mono" :title="l.id">{{ shortId(l.id) }}</td><td>{{ l.user_a_name || '—' }}</td><td>{{ l.user_a_phone }}</td><td>{{ l.user_b_name || '—' }}</td><td>{{ l.user_b_phone }}</td><td><select class="flt inline" :value="l.status" @change="setLinkStatus(l, $event.target.value)"><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="blocked">blocked</option></select></td><td class="ts">{{ fmt(l.confirmed_at) }}</td><td class="ts">{{ fmt(l.created_at) }}</td><td class="acts"><button class="btn btn-xs" @click="confirmDelete('links', l)">Del</button></td></tr></tbody></table></div>
+          <DataTable v-else :columns="TAB_CONFIG.links.columns" :rows="currentRows">
+            <template #cell-status="{ row }"><select class="flt inline" :value="row.status" @change="setLinkStatus(row, $event.target.value)"><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="blocked">blocked</option></select></template>
+            <template #cell-actions="{ row }"><button class="btn btn-xs" @click="confirmDelete('links', row)">Del</button></template>
+          </DataTable>
         </section>
 
         <!-- DEVICES -->
@@ -392,8 +503,9 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
           </div>
           <div v-if="loading" class="state-msg">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
-          <div v-else class="tbl-wrap"><table class="tbl"><thead><tr><th>ID</th><th>User</th><th>Phone</th><th>Platform</th><th>Token</th><th>Lat</th><th>Lng</th><th>Updated</th><th></th></tr></thead>
-            <tbody><tr v-for="d in currentRows" :key="d.id"><td class="mono" :title="d.id">{{ shortId(d.id) }}</td><td>{{ d.user_name || '—' }}</td><td>{{ d.user_phone || '—' }}</td><td>{{ d.platform }}</td><td class="mono clip">{{ d.token?.slice(0, 20) }}…</td><td>{{ d.lat != null ? Number(d.lat).toFixed(4) : '—' }}</td><td>{{ d.lng != null ? Number(d.lng).toFixed(4) : '—' }}</td><td class="ts">{{ fmt(d.updated_at) }}</td><td class="acts"><button class="btn btn-xs" @click="confirmDelete('devices', d)">Del</button></td></tr></tbody></table></div>
+          <DataTable v-else :columns="TAB_CONFIG.devices.columns" :rows="currentRows">
+            <template #cell-actions="{ row }"><button class="btn btn-xs" @click="confirmDelete('devices', row)">Del</button></template>
+          </DataTable>
         </section>
 
         <!-- AUDIT -->
@@ -406,8 +518,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
           </div>
           <div v-if="loading" class="state-msg">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
-          <div v-else class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>Action</th><th>Entity</th><th>Entity ID</th><th>Actor</th><th>Details</th></tr></thead>
-            <tbody><tr v-for="a in currentRows" :key="a.id"><td class="ts">{{ fmt(a.created_at) }}</td><td>{{ a.action }}</td><td>{{ a.entity }}</td><td class="mono" :title="a.entity_id">{{ shortId(a.entity_id) }}</td><td>{{ a.actor }}</td><td class="clip sub">{{ a.details || '—' }}</td></tr></tbody></table></div>
+          <DataTable v-else :columns="TAB_CONFIG.audit.columns" :rows="currentRows" />
         </section>
 
         <div v-if="canPage && !loading" class="pager">
@@ -423,7 +534,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
       <div class="modal">
         <div class="modal-hd"><h3>{{ formMode === 'create' ? 'New' : 'Edit' }} {{ activeTab.replace(/s$/, '') }}</h3><button class="modal-x" @click="closeForm">✕</button></div>
         <form @submit.prevent="submitForm" class="modal-body">
-          <template v-for="field in FORM_FIELDS[activeTab] || []" :key="field.key">
+          <template v-for="field in TAB_CONFIG[activeTab]?.form?.fields || []" :key="field.key">
             <label>{{ field.label }} <span v-if="field.required" class="req">*</span><span v-if="field.note" class="sub"> — {{ field.note }}</span></label>
             <textarea v-if="field.type === 'textarea'" v-model="formData[field.key]" class="inp" rows="3" />
             <select v-else-if="field.type === 'select'" v-model="formData[field.key]" class="inp"><option value="">—</option><option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option></select>
@@ -456,15 +567,10 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 <style scoped>
 * { box-sizing:border-box; transition:none !important; }
 
-/* ── Login ─────────────────────────────────────────────── */
-.login-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; background:#f0f0f0; }
-.login-card { width:360px; background:#fff; border:1px solid #d0d0d0; padding:32px 28px; }
-.login-hd { display:flex; align-items:center; gap:12px; margin-bottom:24px; border-bottom:1px solid #d0d0d0; padding-bottom:16px; }
-.login-crest { width:40px; height:40px; background:#e0e0e0; border:1px solid #c0c0c0; display:flex; align-items:center; justify-content:center; color:#333; font-size:20px; font-weight:700; }
-.login-titles h1 { font-size:15px; font-weight:700; color:#222; margin:0; }
-.login-titles p { font-size:11px; color:#888; margin:2px 0 0; }
-.login-form { display:flex; flex-direction:column; gap:6px; }
-.login-form label { font-size:11px; font-weight:600; color:#555; margin-top:6px; }
+/* ── Login (fields slotted into the shared LoginPanel) ─── */
+.field-label { font-size:11px; font-weight:600; color:#555; margin-top:10px; margin-bottom:4px; }
+.login-input { padding:8px 10px; border:1px solid #d0d0d0; font-size:13px; color:#222; background:#fff; width:100%; box-sizing:border-box; font-family:inherit; border-radius:2px; }
+.login-input:focus { outline:none; border-color:#999; }
 
 /* ── Shell ──────────────────────────────────────────────── */
 .shell { display:flex; flex-direction:column; height:100vh; background:#fff; font-family:var(--font-ui); font-size:13px; color:#222; overflow:hidden; }
@@ -518,19 +624,9 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 .btn-dark:hover:not(:disabled) { background:#444; }
 .btn-xs { padding:2px 6px; font-size:10px; }
 
-/* ── Tables ────────────────────────────────────────────── */
-.tbl-wrap { overflow:auto; border:1px solid #d0d0d0; background:#fff; }
-.tbl { width:100%; border-collapse:collapse; font-size:12px; }
-.tbl th { background:#e8e8e8; color:#333; font-weight:600; font-size:11px; padding:7px 8px; border-bottom:1px solid #d0d0d0; text-align:left; white-space:nowrap; }
-.tbl td { padding:6px 8px; border-bottom:1px solid #eee; vertical-align:middle; color:#222; }
-.tbl tr:last-child td { border-bottom:none; }
-.tbl tr:hover td { background:#f9f9f9; }
-.mono { font-family:var(--font-mono); color:#555; }
+/* ── Table cell content (rendered into DataTable slots) ── */
 .sub { color:#888; font-size:11px; }
-.ts { font-size:11px; color:#888; white-space:nowrap; font-family:var(--font-mono); }
-.clip { max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.acts { white-space:nowrap; }
-.badge { font-size:11px; color:#555; font-weight:500; }
+.badge { display:inline-block; padding:3px 8px; border:1px solid #d0d0d0; background:#fff; font-size:11px; color:#333; font-weight:500; border-radius:0; }
 
 /* ── Stats Grid ────────────────────────────────────────── */
 .stat-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:8px; }

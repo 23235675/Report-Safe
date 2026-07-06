@@ -25,6 +25,8 @@ const express = require('express');
 const { collection } = require('../../db/mongo');
 const { requireSuperAdmin, verifyPassword, generateTokenPair } = require('../../lib/authGuard');
 const { rateLimit } = require('../../lib/rateLimit');
+const { HttpError, asyncHandler } = require('../../lib/http');
+const { errorHandler } = require('../../lib/errorHandler');
 const { blank, mapId, normPhone, auditLog } = require('./shared');
 
 const adminUsersRouter     = require('./users');
@@ -54,92 +56,83 @@ module.exports = function createAdminRouter() {
     message: 'Too many admin login attempts — try again in 15 minutes.' });
 
   // ── POST /api/admin/login ─────────────────────────────────────────
-  router.post('/login', loginLimiter, async (req, res) => {
+  router.post('/login', loginLimiter, asyncHandler(async (req, res) => {
     const { phone, password } = req.body || {};
     if (!phone || !password) {
-      return res.status(400).json({ error: 'phone and password are required' });
+      throw new HttpError(400, 'phone and password are required');
     }
-    try {
-      // Normalise the input to the canonical +852XXXXXXXX form so the admin can
-      // log in with bare 8 digits OR the full +852 number — matching how citizen
-      // login/register already work, and how phones are stored.
-      const user = await collection('users').findOne(
-        { phone: normPhone(phone), role: 'super_admin' },
-        { projection: { phone: 1, name: 1, role: 1, password_hash: 1 } }
-      );
-      if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-      if (!user.password_hash || !verifyPassword(password, user.password_hash)) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
 
-      const now = Date.now();
-      const tok = generateTokenPair(now);
-      await collection('users').updateOne(
-        { _id: user._id },
-        { $set: {
-            access_token_hash: tok.accessTokenHash, access_token_expires_at: tok.accessTokenExpiresAt,
-            refresh_token_hash: tok.refreshTokenHash, refresh_token_expires_at: tok.refreshTokenExpiresAt,
-            updated_at: now,
-        } }
-      );
-
-      await auditLog('login', 'users', user._id, `${user.name} (${user.phone})`, null);
-      return res.json({
-        ok: true,
-        user: { id: user._id, phone: user.phone, name: user.name, role: user.role },
-        access_token: tok.accessToken,
-        refresh_token: tok.refreshToken,
-        expires_at: tok.accessTokenExpiresAt,
-      });
-    } catch (err) {
-      console.error('[admin/login]', err);
-      return res.status(500).json({ error: 'Login failed' });
+    // Normalise the input to the canonical +852XXXXXXXX form so the admin can
+    // log in with bare 8 digits OR the full +852 number — matching how citizen
+    // login/register already work, and how phones are stored.
+    const user = await collection('users').findOne(
+      { phone: normPhone(phone), role: 'super_admin' },
+      { projection: { phone: 1, name: 1, role: 1, password_hash: 1 } }
+    );
+    if (!user) throw new HttpError(401, 'Invalid credentials');
+    if (!user.password_hash || !verifyPassword(password, user.password_hash)) {
+      throw new HttpError(401, 'Invalid credentials');
     }
-  });
+
+    const now = Date.now();
+    const tok = generateTokenPair(now);
+    await collection('users').updateOne(
+      { _id: user._id },
+      { $set: {
+          access_token_hash: tok.accessTokenHash, access_token_expires_at: tok.accessTokenExpiresAt,
+          refresh_token_hash: tok.refreshTokenHash, refresh_token_expires_at: tok.refreshTokenExpiresAt,
+          updated_at: now,
+      } }
+    );
+
+    await auditLog('login', 'users', user._id, `${user.name} (${user.phone})`, null);
+    res.json({
+      ok: true,
+      user: { id: user._id, phone: user.phone, name: user.name, role: user.role },
+      access_token: tok.accessToken,
+      refresh_token: tok.refreshToken,
+      expires_at: tok.accessTokenExpiresAt,
+    });
+  }));
 
   // All routes below require super_admin.
   router.use(requireSuperAdmin);
 
   // ── GET /api/admin/stats ──────────────────────────────────────────
-  router.get('/stats', async (req, res) => {
-    try {
-      const users = collection('users');
-      const reports = collection('reports');
-      const disasters = collection('disasters');
-      const links = collection('account_links');
-      const [
-        uTotal, uSuper, uCit, uVol, uGov,
-        rTotal, rSafe, rInj, rNeed, rMiss,
-        dTotal, dActive, lTotal, lConf, lPend, devTotal, audTotal,
-      ] = await Promise.all([
-        users.countDocuments({}), users.countDocuments({ role: 'super_admin' }),
-        users.countDocuments({ role: 'citizen' }), users.countDocuments({ role: 'volunteer' }),
-        users.countDocuments({ role: 'government' }),
-        reports.countDocuments({}), reports.countDocuments({ status: 'safe' }),
-        reports.countDocuments({ status: 'injured' }), reports.countDocuments({ status: 'need_help' }),
-        reports.countDocuments({ status: 'missing' }),
-        disasters.countDocuments({}), disasters.countDocuments({ active: true }),
-        links.countDocuments({}), links.countDocuments({ status: 'confirmed' }),
-        links.countDocuments({ status: 'pending' }),
-        collection('device_push_tokens').countDocuments({}),
-        collection('audit_logs').countDocuments({}),
-      ]);
-      return res.json({
-        ok: true,
-        data: {
-          users:     { total: uTotal, super_admin: uSuper, citizen: uCit, volunteer: uVol, government: uGov },
-          reports:   { total: rTotal, safe: rSafe, injured: rInj, need_help: rNeed, missing: rMiss },
-          disasters: { total: dTotal, active: dActive },
-          links:     { total: lTotal, confirmed: lConf, pending: lPend },
-          devices:   { total: devTotal },
-          audits:    { total: audTotal },
-        },
-      });
-    } catch (err) {
-      console.error('[admin/stats]', err);
-      return res.status(500).json({ error: 'Failed to load stats' });
-    }
-  });
+  router.get('/stats', asyncHandler(async (req, res) => {
+    const users = collection('users');
+    const reports = collection('reports');
+    const disasters = collection('disasters');
+    const links = collection('account_links');
+    const [
+      uTotal, uSuper, uCit, uVol, uGov,
+      rTotal, rSafe, rInj, rNeed, rMiss,
+      dTotal, dActive, lTotal, lConf, lPend, devTotal, audTotal,
+    ] = await Promise.all([
+      users.countDocuments({}), users.countDocuments({ role: 'super_admin' }),
+      users.countDocuments({ role: 'citizen' }), users.countDocuments({ role: 'volunteer' }),
+      users.countDocuments({ role: 'government' }),
+      reports.countDocuments({}), reports.countDocuments({ status: 'safe' }),
+      reports.countDocuments({ status: 'injured' }), reports.countDocuments({ status: 'need_help' }),
+      reports.countDocuments({ status: 'missing' }),
+      disasters.countDocuments({}), disasters.countDocuments({ active: true }),
+      links.countDocuments({}), links.countDocuments({ status: 'confirmed' }),
+      links.countDocuments({ status: 'pending' }),
+      collection('device_push_tokens').countDocuments({}),
+      collection('audit_logs').countDocuments({}),
+    ]);
+    res.json({
+      ok: true,
+      data: {
+        users:     { total: uTotal, super_admin: uSuper, citizen: uCit, volunteer: uVol, government: uGov },
+        reports:   { total: rTotal, safe: rSafe, injured: rInj, need_help: rNeed, missing: rMiss },
+        disasters: { total: dTotal, active: dActive },
+        links:     { total: lTotal, confirmed: lConf, pending: lPend },
+        devices:   { total: devTotal },
+        audits:    { total: audTotal },
+      },
+    });
+  }));
 
   // ── Resource CRUD (each its own module) ───────────────────────────
   router.use('/users',     adminUsersRouter());
@@ -149,7 +142,7 @@ module.exports = function createAdminRouter() {
   router.use('/devices',   adminDevicesRouter());
 
   // ── GET /api/admin/audit — recent audit trail ─────────────────────
-  router.get('/audit', async (req, res) => {
+  router.get('/audit', asyncHandler(async (req, res) => {
     const limit  = Math.min(Number(req.query.limit) || 50, 200);
     const action = blank(req.query.action); // create | update | delete | login
     const entity = blank(req.query.entity); // users | reports | disasters | ...
@@ -158,15 +151,15 @@ module.exports = function createAdminRouter() {
     if (action) filter.action = action;
     if (entity) filter.entity = entity;
 
-    try {
-      const docs = await collection('audit_logs')
-        .find(filter).sort({ created_at: -1 }).limit(limit).toArray();
-      return res.json({ ok: true, data: docs.map(mapId) });
-    } catch (err) {
-      console.error('[admin/audit GET]', err);
-      return res.status(500).json({ error: 'Failed to load audit log' });
-    }
-  });
+    const docs = await collection('audit_logs')
+      .find(filter).sort({ created_at: -1 }).limit(limit).toArray();
+    res.json({ ok: true, data: docs.map(mapId) });
+  }));
+
+  // Single router-scoped error handler — catches errors thrown by the
+  // handlers above AND by the mounted sub-routers (they deliberately have
+  // none of their own). The app-level one in index.js is the backstop.
+  router.use(errorHandler);
 
   return router;
 };

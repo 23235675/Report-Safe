@@ -9,40 +9,36 @@ import StatusBadge from '../components/StatusBadge.vue';
 import VisibilityChip from '../components/VisibilityChip.vue';
 import { statusColor, genderIcon } from '../iconography.js';
 import { t } from '../i18n/index.js';
+import { useLiveQuery } from '../composables/useLiveQuery.js';
 
 const router = useRouter();
 
 /* ── Loved ones (real account links) ─────────────────────────────── */
 const hasAccount  = ref(!!currentUserId());
-const links       = ref([]);
-const linksLoading = ref(false);
-const linksError  = ref(null);
 const addPhone    = ref('');
 const adding      = ref(false);
 const notice      = ref(null);
 
+// Fetch on mount + silent 20s background polling (polls never flash the
+// loading spinner, same as the old isPolling flag). The composable's monotonic
+// guard means an overlapping slow poll can never clobber a newer reload.
+const { data: linksData, loading: linksLoading, error: linksLoadError, refresh: loadLinks } = useLiveQuery(
+  async () => {
+    const uid = currentUserId();
+    hasAccount.value = !!uid;
+    if (!uid) return [];
+    const res = await listLovedOnes();
+    return res.links || [];
+  },
+  { pollMs: 20000 },
+);
+
+const links      = computed(() => linksData.value || []);
+const linksError = computed(() => (linksLoadError.value ? t('family.errLoad') : null));
+
 const confirmed = computed(() => links.value.filter((l) => l.link_status === 'confirmed'));
 const incoming  = computed(() => links.value.filter((l) => l.link_status === 'pending' && l.is_incoming));
 const outgoing  = computed(() => links.value.filter((l) => l.link_status === 'pending' && !l.is_incoming));
-
-async function loadLinks(isPolling = false) {
-  const uid = currentUserId();
-  hasAccount.value = !!uid;
-  if (!uid) { links.value = []; return; }
-
-  // 如果是背景輪詢，不顯示全域的 loading 轉圈，提升 UX
-  if (!isPolling) linksLoading.value = true;
-  linksError.value = null;
-
-  try {
-    const res = await listLovedOnes();
-    links.value = res.links || [];
-  } catch {
-    linksError.value = t('family.errLoad');
-  } finally {
-    if (!isPolling) linksLoading.value = false;
-  }
-}
 
 async function onAdd() {
   const phone = addPhone.value.trim();
@@ -119,25 +115,12 @@ function isAlert(s) { return ALERT_STATUSES.has(s); }
 
 function onFocus() { loadLinks(); }
 
-// 使用安全的地毯式定時器，防範 Race Condition
-let pollTimer = null;
-function startPolling() {
-  pollTimer = setInterval(async () => {
-    if (hasAccount.value && !linksLoading.value) {
-      await loadLinks(true);
-    }
-  }, 20000);
-}
-
 onMounted(() => {
-  loadLinks();
   window.addEventListener('focus', onFocus);
-  startPolling();
 });
 
 onUnmounted(() => {
   window.removeEventListener('focus', onFocus);
-  if (pollTimer) clearInterval(pollTimer);
 });
 </script>
 

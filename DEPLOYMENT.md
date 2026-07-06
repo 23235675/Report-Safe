@@ -1,6 +1,6 @@
 # Deployment — Environment Reference
 
-Report Safe is a Node 20 / Express / Socket.IO server backed by MongoDB (Azure
+Report Safe is a Node 22 / Express / Socket.IO server backed by MongoDB (Azure
 Cosmos DB for MongoDB in production) and an optional Redis (required for
 multi-instance). All hardening is application-level and runs on Azure B1 /
 Cosmos Free / Notification Hubs Free.

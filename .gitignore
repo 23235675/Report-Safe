@@ -24,3 +24,6 @@ mobile/GoogleService-Info.plist
 **/AuthKey_*.p8
 *.p8
 .agents/
+
+# Claude Code local launch config (per-machine dev convenience)
+.claude/launch.json

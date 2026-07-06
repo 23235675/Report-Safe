@@ -18,9 +18,9 @@ export default [
     ],
   },
 
-  // JS: server, web (non-Vue), root scripts, tests.
+  // JS: server, web (non-Vue), shared vocabulary, root scripts, tests.
   {
-    files: ['server/**/*.js', 'web/**/*.js', 'scripts/**/*.js', 'tests/**/*.js', '*.{js,cjs,mjs}'],
+    files: ['server/**/*.js', 'web/**/*.js', 'shared/**/*.js', 'scripts/**/*.{js,mjs}', 'tests/**/*.js', '*.{js,cjs,mjs}'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
@@ -32,6 +32,29 @@ export default [
       'no-console': 'off',
       'no-empty': ['error', { allowEmptyCatch: true }],
       eqeqeq: ['warn', 'smart'],
+    },
+  },
+
+  // Server request/engine paths log through lib/logger (structured JSON + reqId),
+  // never console.* — console is only for the db/ CLI scripts (guardrail #4).
+  {
+    files: ['server/src/routes/**/*.js', 'server/src/services/**/*.js', 'server/src/lib/**/*.js'],
+    rules: {
+      'no-console': 'error',
+    },
+  },
+
+  // Guardrail #2: top-level route files parse, authorize and delegate — all
+  // MongoDB access lives behind a services/*Store module (or lib/geo's
+  // findWithinRadius). routes/admin is exempt this pass (it reuses shared
+  // helpers pending its own store extraction).
+  {
+    files: ['server/src/routes/*.js'],
+    rules: {
+      'no-restricted-syntax': ['error', {
+        selector: "CallExpression[callee.name='require'] > Literal[value=/db\\u002Fmongo$/]",
+        message: 'Routes must not access MongoDB directly — go through a services/*Store module (CLAUDE.md guardrail #2).',
+      }],
     },
   },
 

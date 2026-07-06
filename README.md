@@ -4,11 +4,13 @@ Disaster-status reporting system for Hong Kong. Citizens submit "I am safe / I a
 
 **Core Invariant:** Reports are never lost. Always delivered the moment connectivity returns.
 
+**Live:** https://report-safe-api-23235675.azurewebsites.net/
+
 ## Tech Stack
 
 | Component | Technology |
 |---|---|
-| Backend | Node.js 20 + Express 4 + Socket.IO 4 |
+| Backend | Node.js 22 LTS + Express 4 + Socket.IO 4 |
 | Database | MongoDB 7 (Azure Cosmos DB for MongoDB in production) |
 | Cache/Real-time | Redis 7 (optional — multi-instance Socket.IO + rate limiting) |
 | Web Frontend | Vue 3 + Vite + Leaflet |
@@ -33,14 +35,37 @@ Web (Vue 3)  ────────────┤    ├─ MongoDB / Azure C
 2. Mesh relay → peer-to-peer (if internet down)
 3. SQLite queue → survive app restart
 
+## Deployment
+
+- **Production URL:** https://report-safe-api-23235675.azurewebsites.net/
+- **Hosting:** Azure App Service (Linux, Node 22 LTS)
+- **Resource group:** `23235675`
+- **App Service Plan:** `report-safe-plan-sea` (B1 tier)
+- **Startup command:** `node server/src/index.js`
+- **Azure account:** `kinglee.10695@gmail.com`
+- **Deploy method:** Zip deploy via `az webapp deploy --type zip` (use 7-Zip to create the zip, not PowerShell `Compress-Archive`)
+- **GitHub Pages:** Also deployed at `https://23235675.github.io/Report-Safe/` from `test` branch (front-end only, cannot reach API)
+
+**Deploy steps:**
+```bash
+cd web && npx vite build && cd ..
+"C:\Program Files\7-Zip\7z.exe" a -tzip deploy.zip package.json package-lock.json server/ shared/ web/dist/ -xr!node_modules -xr!.git
+az webapp deploy --name report-safe-api-23235675 --resource-group 23235675 --src-path deploy.zip --type zip
+```
+
+**Downgrade to free tier when ready:**
+```bash
+az appservice plan update --name report-safe-plan-sea --resource-group 23235675 --sku F1
+```
+
 ## Installation & Running
 
-**Prerequisites:** Docker, Node 20, npm 10
+**Prerequisites:** Docker, Node 22, npm 10
 
 ```bash
 # Setup
-git clone https://github.com/anthropics/report-safe.git
-cd report-safe
+git clone https://github.com/23235675/Report-Safe.git
+cd Report-Safe
 npm install
 
 # Start database (local MongoDB 7 via Docker; mirrors Cosmos v7.0)
@@ -64,32 +89,44 @@ Then open **http://localhost:5173** for the web app.
 - `:27017` — MongoDB (host)
 - `:6379` — Redis (optional, only used for multi-instance scaling)
 
+## Branches
+
+- **`main`** — stable base
+- **`test`** — active development; deployed to Azure and GitHub Pages
+
+## Web UI Design
+
+**AdminView (`/admin`) and GovView (`/gov`)** use a Word-document aesthetic:
+- **Fonts:** Plus Jakarta Sans (`--font-ui`), IBM Plex Mono (`--font-mono`)
+- **Chrome colours:** grey toolbars (`#e8e8e8`), grey sidebar (`#f0f0f0`), white content (`#fff`), grey borders (`#d0d0d0`)
+- **Login:** centred 報 icon, "Report Safe" title, subtitle, form, sign-in button, footer note
+- **AdminView:** fully monochrome — no status colours
+- **GovView:** same grey/white chrome but keeps vivid status colours for rescue triage
+- **Other views** (Home, Status, Account, Shelters, Report, Family) use the app's Pine design tokens
+
 ## Device Roles
 
 ### 1. Mobile (Emergency Path)
 - **Citizens report their own status** from their phone: `safe` / `injured` / `need_help`
-- **Disaster Mode:** When inside an active disaster radius, a full-screen gate replaces all other features until the user self-reports. This forces every device to declare its safety before using any function.
-- **Notifications:** Receives targeted disaster alerts via local OS notification (running app) **and** remote push for closed apps via Azure Notification Hubs (see "Remote Push" below). Remote push requires a dev/production build — Expo Go can't expose native handles.
-- **Offline-first:** Writes to local SQLite queue, syncs the moment connectivity returns.
-- **Only mobile counts toward affected statistics** — a person carrying both phone and laptop in the zone is counted once (via the phone).
+- **Disaster Mode:** When inside an active disaster radius, a full-screen gate replaces all other features until the user self-reports
+- **Notifications:** Receives targeted disaster alerts via local OS notification and remote push via Azure Notification Hubs
+- **Offline-first:** Writes to local SQLite queue, syncs the moment connectivity returns
+- **Only mobile counts toward affected statistics**
 
 ### 2. Web (Data-Collection Path)
-- **Families file proxy reports** on behalf of others (elderly, injured) who can't self-report.
-- **Proxy-only:** Cannot self-report, cannot submit "safe" status (only the affected person can confirm safety via their phone), cannot use browser GPS.
-- **Location is resolved server-side** from the affected person's own mobile report; the web report is purely identity + status information.
-- **No disaster mode, no alerts:** Web is excluded from real-time notifications and never counted in official statistics.
-- **Identity-based linking** (HKID + phone match) connects proxy reports to the person being reported for.
+- **Families file proxy reports** on behalf of others who can't self-report
+- **Proxy-only:** Cannot self-report, cannot submit "safe", no browser GPS, excluded from stats
+- **No disaster mode, no alerts:** Web is data-collection only
 
-### 3. Government (Gov Dashboard)
-- Access: token-protected via the `GOV_TOKEN` env var. The built-in fallback when it is unset is `GOV-SECRET-TOKEN-2024` (see `authGuard.js`); set a strong secret in production — the compare is timing-safe regardless, and the server warns if the default is left in production.
+### 3. Government (Gov Dashboard — `/gov`)
+- Access: token-protected via the `GOV_TOKEN` env var (default `GOV-SECRET-TOKEN-2024`)
 - View triage: prioritized by need (Need Help → Injured → Safe)
-- Trigger disasters (Typhoon, Rainstorm, etc.)
-- Full GPS + medical notes + phone (coarse location hidden from public)
+- Trigger disasters, full GPS + medical notes + phone
 
 ### 4. Super Admin (Admin Panel — `/admin`)
-- Separate `super_admin` role with a password login (scrypt-hashed) → `POST /api/admin/login`
-- Full CRUD over users, reports, disasters, account links and device tokens, plus an audit trail (every mutating action is logged)
-- Provisioned at boot by `db/seedAdmin.js` from `SUPER_ADMIN_PHONE` / `SUPER_ADMIN_PASSWORD` env vars — **never hardcoded in source**. Local/testing default: `+85212345678` / `12345678`.
+- Separate `super_admin` role with password login (scrypt-hashed) → `POST /api/admin/login`
+- Full CRUD over users, reports, disasters, account links, device tokens + audit trail
+- Provisioned at boot from `SUPER_ADMIN_PHONE` / `SUPER_ADMIN_PASSWORD` env vars. Local default: `+85212345678` / `12345678`
 
 ## Authentication
 
@@ -105,209 +142,93 @@ curl -X POST http://localhost:3001/api/users/register \
     "privacy_consent": true,
     "user_type": "mobile"
   }'
-# Returns: { user: {...}, access_token: "..." }
+# Returns: { user: {...}, access_token: "...", refresh_token: "...", expires_at: ... }
 ```
 
-Registration returns a short-lived **access token** plus a long-lived
-**refresh token** and an `expires_at`:
+**Refresh:** exchange the one-time-use refresh token for a new pair via `POST /api/users/token/refresh`.
 
-```json
-{ "access_token": "…", "refresh_token": "…", "expires_at": 1750000000000, "token_type": "Bearer" }
-```
+**Gov Token:** the `GOV_TOKEN` env var. Timing-safe compare; the server warns if the default is left in production.
 
-**Refresh:** when the access token expires (401 `token_expired`), exchange the
-refresh token for a new pair. Refresh tokens **rotate** (one-time use):
+**OTP:** OFF by default. Set `OTP_ENABLED=true` to require phone verification.
 
-```bash
-curl -X POST http://localhost:3001/api/users/token/refresh \
-  -H "Content-Type: application/json" \
-  -d '{ "refresh_token": "…" }'
-```
-
-Lifetimes are configurable: `ACCESS_TOKEN_TTL_HOURS` (default 24) and
-`REFRESH_TOKEN_TTL_DAYS` (default 30). Only token **hashes** are stored; legacy
-tokens with no expiry keep working until next refresh. The web client refreshes
-transparently on a 401.
-
-**Gov Token:** the `GOV_TOKEN` env var (built-in fallback `GOV-SECRET-TOKEN-2024` when unset).
-The compare is timing-safe and the value is read only from config — override with
-a strong secret in production; the server warns at boot if the built-in default
-is left in place while `NODE_ENV=production`.
-
-**OTP (phone verification):** production-ready logic, **OFF by default** so test
-account creation stays frictionless. Set `OTP_ENABLED=true` to require a verified
-one-time passcode on register/login:
-
-```bash
-# 1) request a code (in dev the code is returned as dev_code and logged)
-curl -X POST http://localhost:3001/api/users/request-otp \
-  -H "Content-Type: application/json" -d '{ "phone": "+85291234567" }'
-# 2) include it on register/login
-curl -X POST http://localhost:3001/api/users/register \
-  -H "Content-Type: application/json" \
-  -d '{ "phone":"+85291234567","name":"Mei","gender":"female","personal_id":"A123456","privacy_consent":true,"otp":"123456" }'
-```
-
-Wire a real SMS provider in `server/src/lib/otpService.js` (`sendSms`) for
-production delivery.
-
-**HKID validation:** lenient by default (`HKID_STRICT=false`) — any value with a
-letter and 6+ digits is accepted, so testers don't need a real ID. The full HK
-mod-11 check-digit algorithm is implemented (`isValidHKIDChecksum`) and enforced
-when `HKID_STRICT=true`.
-
-## Special Features
-
-### Disaster-Mode Gate (Mobile Only)
-- When a mobile device is inside an active disaster radius, a **full-screen gate** replaces the entire app
-- User must declare their safety (safe / injured / need_help) before accessing any other feature
-- Prevents confusion and ensures every device in the zone commits to a status
-- A **single** safety report clears the gate for **every** overlapping disaster zone the device is currently inside (declaring yourself safe is a statement about you, not one disaster) — acknowledgement persists across app restarts
-
-### Community First Responder (999 / CPR Dispatch)
-- **Crowdsourced emergency response:** opted-in users near a medical emergency (e.g. cardiac arrest) are alerted to respond and start CPR before the ambulance arrives — the minutes that matter most.
-- **Explicit opt-in (PDPO):** users opt in as responders and set their skills + max travel radius (`PATCH /api/users/:id/responder`). Non-responders never receive the incident feed.
-- **Incident lifecycle:** a 999/CAD-style dispatch creates an incident (`POST /api/incidents`); nearby opted-in responders see it (`GET /api/incidents/nearby`), accept and share live position while `enroute`/`onscene` (`POST /api/incidents/:id/respond`), and gov resolves it (`POST /api/incidents/:id/resolve`).
-- **Privacy-gated:** residential incidents (`is_public=false`) are visible only to verified (gov) responders; public incidents carry **only type + location**, never PII. Responder positions are shared with the team only while actively responding.
-- **Nearest AEDs + co-responder roster** are returned with incident detail (`GET /api/incidents/:id`) so responders can grab a defibrillator en route.
-
-### Never Lose Data
-- Mobile always writes to SQLite before sending network request
-- 3-layer sync fallback ensures delivery
-- Idempotent relay (UUID + relay_count)
-
-### Real-Time Alerts
-- **Disaster triggers broadcast only to mobile devices** inside the affected radius (via Socket.IO + location tracking)
-- Mobile receives a local OS notification + enters disaster-mode gate (user must self-report to proceed)
-- Web clients never receive disaster alerts (even if browser is geolocalised in the zone)
-- Stats update every 10s (mobile-only counts; web-submitted reports excluded)
-
-### Remote Push — Wakes Closed Apps (Azure Notification Hubs)
-- The socket alert only reaches apps that are **currently running**. A disaster can strike while the app is closed, so the backend **also** pushes a native notification via **Azure Notification Hubs** (→ FCM on Android, APNs on iOS).
-- Mobile devices register their native push handle + location (`POST /api/devices/register`); a disaster trigger **direct-sends only to handles inside the radius** (`server/src/lib/pushService.js`).
-- **Graceful degradation:** with no `AZURE_NH_*` env config the push path is a clean no-op — local + socket notifications still work, and all tests pass without Azure.
-- Requires a dev/production mobile build (Expo Go can't expose native handles). See [DEPLOYMENT_AZURE.md](DEPLOYMENT_AZURE.md).
-
-### Unified UI + Live Map (Web + Mobile)
-- **Shared "Pine" design system** across web and mobile so both surfaces read as one product (aligned tokens: brand, status hues, neutrals).
-- **Live map on the mobile Home** (Leaflet + OpenStreetMap in a WebView — no Google Maps key/billing): active incidents, nearby need, and in-zone shelters as pins, with an expand-to-full-screen view.
-- **Shelters tab** (`ShelterScreen`): shelter info with capacity / beds-free for everyone, plus a safe-place request queue for gov/volunteer managers.
-
-### PDPO Compliant (HK Privacy Law)
-- Consent required at registration
-- User erasure endpoint (`DELETE /api/users/:id`)
-- HKID always masked in responses
-- Audit logs for all privileged actions
-
-### HK Localization
-- Disaster model: HKO Typhoon Signals (T1–T10) + Rainstorm Warnings
-- Seed data: 100 HK users by default (valid HKIDs + +852 numbers); set `SEED_USER_COUNT` to scale up (e.g. 10k)
-- 3 test disasters: T10 typhoon, Black Rainstorm, Mid-Levels landslip
-
-### Web = Proxy-Only (Enforced)
-- Families file reports on behalf of relatives without needing an app
-- **Cannot report "safe"** — only the affected person (via mobile) can confirm their own safety
-- **Cannot self-report** — web users cannot submit their own status
-- **No browser GPS** — location resolved server-side from the affected person's mobile report
-- **Never counted in stats** — web-submitted reports excluded from official affected counts (via `excludeWeb=true`)
-- **Never receive disaster alerts** — web is data-collection only, not emergency reporting
-
-### Multi-Instance Ready
-- Redis syncs Socket.IO across backend instances
-- Rate limiter works cross-instance
-- Single-instance fallback if Redis unavailable
+**HKID:** lenient by default (`HKID_STRICT=false`). Set `true` for full mod-11 check.
 
 ## Core APIs
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | POST | `/api/users/register` | — | Create account → access + refresh tokens |
-| POST | `/api/users/request-otp` | — | Request a phone OTP (only enforced when `OTP_ENABLED=true`) |
-| POST | `/api/users/login` | — | Phone login for an existing account → token pair |
-| POST | `/api/users/token/refresh` | — | Exchange refresh token for a new pair (rotates) |
-| GET | `/api/users/:phone/profile` | — | Look up a user's profile by phone |
-| DELETE | `/api/users/:id` | Token | Account erasure (PDPO DPP6 cascade) |
-| GET/PUT/DELETE | `/api/users/:id/links` | Token | View/manage family account links |
-| POST | `/api/users/:id/links` | Token | Create a family account link |
-| POST | `/api/reports` | — | Submit/relay report (idempotent upsert on UUID) |
-| GET | `/api/reports/stats` | — | Affected counts (mobile-only; web proxy-reports excluded) |
-| GET | `/api/reports/search?q=` | — | Search by name (coarse location) |
-| GET | `/api/reports/rescue?lat&lng&radius` | Bearer | Full triage view (gov only) |
+| POST | `/api/users/request-otp` | — | Request a phone OTP |
+| POST | `/api/users/login` | — | Phone login → token pair |
+| POST | `/api/users/token/refresh` | — | Rotate refresh token |
+| GET | `/api/users/:phone/profile` | — | Look up user by phone |
+| DELETE | `/api/users/:id` | Token | Account erasure (PDPO) |
+| GET/PUT/DELETE | `/api/users/:id/links` | Token | Family account links |
+| POST | `/api/reports` | — | Submit/relay report (idempotent) |
+| GET | `/api/reports/stats` | — | Affected counts (mobile-only) |
+| GET | `/api/reports/search?q=` | — | Search by name |
+| GET | `/api/reports/rescue?lat&lng&radius` | Bearer | Full triage (gov) |
 | GET | `/api/disasters` | — | Active disasters |
-| POST | `/api/disasters/trigger` | Bearer | Trigger disaster (gov only) |
-| POST | `/api/devices/register` | Optional | Register native push handle + location |
-| DELETE | `/api/devices/:token` | — | Unregister a push device |
-| POST | `/api/incidents` | Bearer | Create + dispatch a CFR incident (gov/CAD) |
+| POST | `/api/disasters/trigger` | Bearer | Trigger disaster (gov) |
+| POST | `/api/devices/register` | Optional | Register push handle + location |
+| POST | `/api/incidents` | Bearer | Create CFR incident (gov) |
 | GET | `/api/incidents/active` | Bearer | Active incidents (gov) |
-| GET | `/api/incidents/nearby?lat&lng&radius` | Token | Nearby active incidents (opted-in responders only) |
-| GET | `/api/incidents/:id` | Token | Incident detail + nearest AEDs + co-responder roster |
-| POST | `/api/incidents/:id/respond` | Token | Responder sets status (`enroute`/`onscene`/`declined`) |
-| POST | `/api/incidents/:id/resolve` | Bearer | Resolve an incident (gov) |
-| PATCH | `/api/users/:id/responder` | Token | Opt in/out as a Community First Responder (skills + radius) |
+| GET | `/api/incidents/nearby?lat&lng&radius` | Token | Nearby incidents (responders) |
+| POST | `/api/incidents/:id/respond` | Token | Responder status update |
+| POST | `/api/incidents/:id/resolve` | Bearer | Resolve incident (gov) |
+| PATCH | `/api/users/:id/responder` | Token | CFR opt-in/out |
 | GET/POST | `/api/shelters` | — | List / register shelters |
-| GET/POST/PUT/DELETE | `/api/safe-places` | Varies | Community-submitted safe places (moderation queue) |
-| GET | `/api/safe-places/pending` | Admin | Moderation queue |
-| PUT | `/api/safe-places/:id/status` | Admin | Approve/reject a submission |
-| GET/POST/PUT/DELETE | `/api/missing-persons` | Varies | Missing-person case management |
-| POST | `/api/admin/login` | — | Super-admin password login → token pair |
-| GET/POST/PUT/DELETE | `/api/admin/users`, `/reports`, `/disasters`, `/links`, `/devices` | Admin | Super-admin CRUD over all collections |
-| GET | `/api/admin/audit` | Admin | Audit trail of privileged actions |
-| GET | `/api/admin/stats` | Admin | Admin dashboard aggregate counts |
+| GET/POST/PUT/DELETE | `/api/safe-places` | Varies | Community safe places |
+| POST | `/api/admin/login` | — | Super-admin login |
+| GET/POST/PUT/DELETE | `/api/admin/*` | Admin | Super-admin CRUD + audit |
+
+## Special Features
+
+### Disaster-Mode Gate (Mobile Only)
+Full-screen gate forces status declaration before any other feature. A single report clears all overlapping disaster zones.
+
+### Community First Responder (999 / CPR Dispatch)
+Crowdsourced emergency response — opted-in users near a medical emergency are alerted to respond with CPR before ambulance arrival.
+
+### Never Lose Data
+Mobile always writes to SQLite before network request. 3-layer sync fallback. Idempotent relay (UUID + relay_count).
+
+### Real-Time Alerts
+Disaster triggers broadcast only to mobile devices inside the affected radius via Socket.IO + push notifications.
+
+### PDPO Compliant (HK Privacy Law)
+Consent required, user erasure endpoint, HKID masked, audit logs for privileged actions.
 
 ## Testing
 
 ```bash
-npm test
+npm test                         # 20 files / 159 tests (needs local MongoDB)
+cd mobile && npx tsc --noEmit    # strict types
+cd web && npm run build          # web check
 ```
 
-**Coverage** (`tests/` at repo root):
-- Report store (upsert, search, stats, history)
-- Status transitions + escalation priority
-- PDPO erasure
-- Account linking + loved-one disaster cascade
-- Redis multi-instance
-- Web proxy logic
-- Token lifecycle (expiry + refresh rotation)
-- OTP request/verify + register/login gating
-- Super-admin routes (auth, CRUD, audit)
-- Safe places (moderation)
-- Missing-person cases
-- Push targeting (Azure NH payloads + radius device selection)
+Test DB: isolated `reportsafe_test`. MongoDB must be up; Redis optional.
 
-**Test DB:** Isolated `reportsafe_test` (dev data untouched). MongoDB must be up (`npm run db:up`); Redis is optional.
+## Utility Scripts (manual, not wired into any automation)
 
-**Mobile checks:** `cd mobile && npx tsc --noEmit` (strict types) and `npx vitest run --config vitest.config.mjs` (pure-logic units: HKID/phone, severity). **Web check:** `cd web && npm run build`.
-
-## Client Fixes (web + mobile)
-
-Recent correctness fixes applied to **both** client surfaces unless noted:
-
-- **Severity now handles string *and* numeric values.** The API returns `severity` as either a `1–5` number or a label (`"moderate"`, `"high"`). Clients previously did numeric-only comparisons, so string severities failed (`"high" < 3` → `NaN`) and were mislabelled "Extreme" with the wrong colour — and on mobile the disaster-gate "most severe first" sort became non-deterministic. A shared `severityRank`/`severityKey` helper now normalises both forms (`web/src/iconography.js`, `mobile/src/utils/severity.ts`).
-- **Safe-place form validation.** Suggesting a safe place with non-numeric coordinates, an out-of-range lat/lng, or a zero/decimal capacity surfaced the server's generic *"validation failed"*. Both clients now validate client-side with a clear message before submitting (`SheltersView.vue`, `mobile/.../ShelterScreen.tsx`).
-- **Location lookups can no longer hang.** Geolocation calls had no timeout and never resolve without a GPS fix (the disaster case), trapping a safety report on the spinner. All call sites now cap the wait and fall back to last-known → HK-centre (mobile `resolveLocation` util; web `getCurrentPosition({ timeout })`).
-- **Corrupt stored profile no longer crashes the Account screen.** The `JSON.parse` of the saved user is now guarded on both clients.
-- **Mobile:** one safety report clears every overlapping disaster zone (see Disaster-Mode Gate); local disaster notifications carry the `disasterId` so a tap routes into the gate.
+| Script | Purpose |
+|---|---|
+| `inspect-db.cjs` | Ad-hoc MongoDB inspection from the CLI |
+| `scripts/backup-db.ps1` / `scripts/backup-db.sh` | Manual database backup (Windows / POSIX) |
+| `server/scripts/generateData.js` | Demo data generation (`npm run db:generate` in `server/`) |
+| `server/scripts/fillDatabase.js` | Alternative bulk data population (manual) |
 
 ## Configuration
 
-`server/.env` (copy from `server/.env.example` — it ships runnable test values):
+`server/.env` (copy from `server/.env.example`):
 ```bash
 PORT=3001
-GOV_TOKEN=12345678                 # simple test token; strong secret in prod
-
-# Super admin (provisioned at boot from these vars — never hardcoded in source)
+GOV_TOKEN=12345678
 SUPER_ADMIN_PHONE=+85212345678
-SUPER_ADMIN_PASSWORD=12345678      # <12 chars warns at boot when NODE_ENV=production
+SUPER_ADMIN_PASSWORD=12345678
 SUPER_ADMIN_NAME=Super Administrator
-
-# OTP phone verification — OFF by default (frictionless test signup)
 OTP_ENABLED=false
-OTP_TTL_SECONDS=300
-OTP_LENGTH=6
-
-# HKID validation — false = lenient (no real ID needed); true = full mod-11 check
 HKID_STRICT=false
-
 REDIS_HOST=localhost
 REDIS_PORT=6379
 MONGODB_URI=mongodb://localhost:27017
@@ -317,53 +238,23 @@ CORS_ORIGIN=*
 LOG_LEVEL=info
 ```
 
-> The server loads `server/.env` relative to its own location, so
-> `node server/src/index.js` works from any directory (not just `cd server`).
-
 ## Azure Cost Guardrails (Free Tier)
 
-The Azure deployment is designed to sit inside the **Cosmos DB free tier** (1,000 RU/s + 25 GB) at **$0**. Three things keep it there — and **#1 is mandatory**: without it the provisioned 1,000 RU/s is billed against the generic ~100 RU/s account grant (the #1 cause of surprise Cosmos charges).
+The Azure deployment is designed to sit inside the **Cosmos DB free tier** (1,000 RU/s + 25 GB) at **$0**.
 
-1. **Free Tier must be ENABLED on the account.** The 1,000 RU/s + 25 GB are free *only* if the account was created with `--enable-free-tier true`. It is set **at creation only** (cannot be toggled later) and is limited to **one free-tier account per subscription**. Verify: `az cosmosdb show -g <rg> -n <account> --query enableFreeTier` must return `true`; if `false`, the account must be recreated (commands below).
-2. **One database with shared (database-level) throughput = 1,000 RU/s manual.** All collections share this single bucket. Do **not** give collections their own (dedicated) throughput — 13 collections × 400 RU/s min would be ~5,200 RU/s and bill for everything over 1,000. The app's `setup.js` only calls `db.createCollection(name)` with no throughput option, so every collection auto-inherits the shared bucket.
-3. **Account `totalThroughputLimit = 1000`.** This is the hard enforcement: the shared DB already reserves all 1,000 RU/s, so any attempt to add a dedicated-throughput collection (min +400) would exceed the cap and **Azure rejects it** — from code, the portal, or CLI alike. No discipline required; don't remove this cap.
+1. **Free Tier must be ENABLED on the account** (`--enable-free-tier true` at creation). Verify: `az cosmosdb show -g <rg> -n <account> --query enableFreeTier` → `true`.
+2. **One database with shared throughput = 1,000 RU/s manual.** Do NOT create dedicated-throughput collections.
+3. **Account `totalThroughputLimit = 1000`.** Hard enforcement — don't remove this cap.
 
-```bash
-# 0. Verify Free Tier is ON (the step whose absence causes the billing overage).
-az cosmosdb show -g <rg> -n <account> --query enableFreeTier        # must print: true
+Don't remove the totalThroughputLimit = 1000.
 
-# 0b. If false, recreate the account WITH Free Tier (destructive; one free-tier
-#     account per subscription). Collections/indexes + seed auto-create on boot.
-az cosmosdb create -g <rg> -n <account> --kind MongoDB --server-version 7.0 \
-  --enable-free-tier true --default-consistency-level Session
-
-# Recreate the database with shared throughput (one-time, destructive — reseeds from setup/seed on boot)
-az cosmosdb mongodb database delete -g <rg> -a <account> -n <db> --yes
-az cosmosdb mongodb database create -g <rg> -a <account> -n <db> --throughput 1000
-
-# Hard-cap the account so it can never over-provision
-az resource update --ids "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.DocumentDB/databaseAccounts/<account>" \
-  --set "properties.capacity={\"totalThroughputLimit\":1000}" --latest-include-preview
-```
-
-> **Capped, not unlimited:** at 1,000 RU/s the DB throttles (HTTP 429) under heavy load instead of billing — the app's outbox retries handle 429. Lift the cap only if you intentionally want to pay for more throughput.
-
-**Other Azure resources:** keep the **Notification Hubs** namespace on the **Free** tier (1M pushes/mo). Prod skips demo seeding unless `SEED_DATA=true`. Add a low **Cost Management → Budget** ($1, alert at 80%) as a billing tripwire.
+Keep **Notification Hubs** on the **Free** tier (1M pushes/mo). Add a **Cost Management → Budget** ($1, alert at 80%) as a billing tripwire.
 
 ## Next Steps
 
-- **Deploy:** See [DEPLOYMENT.md](DEPLOYMENT.md) for the environment-variable reference, then [DEPLOYMENT_AZURE.md](DEPLOYMENT_AZURE.md) for the full Azure runbook (managed Cosmos DB for MongoDB, HTTPS via Caddy, multi-instance scaling, Notification Hubs push, backups)
-- **QA Testing:** Follow [QA_TEST_PLAN.md](QA_TEST_PLAN.md) (functional checklist) and [UAT_TEST_PLAN.md](UAT_TEST_PLAN.md) (user-acceptance scenarios)
-- **Production:** Monitoring (Azure Monitor / Log Analytics), on-call rotation, runbooks
-
-## Support
-
-- **Questions:** See [CLAUDE.md](CLAUDE.md) (architecture, endpoints, guardrails) or [QA_TEST_PLAN.md](QA_TEST_PLAN.md) (test checklist)
-- **Issues:** Report on GitHub
-- **Security:** Email security@
-
-
-Don't remove the totalThroughputLimit = 1000
+- **Deploy:** See [DEPLOYMENT.md](DEPLOYMENT.md) and [DEPLOYMENT_AZURE.md](DEPLOYMENT_AZURE.md)
+- **QA Testing:** [QA_TEST_PLAN.md](QA_TEST_PLAN.md) and [UAT_TEST_PLAN.md](UAT_TEST_PLAN.md)
+- **Architecture:** [CLAUDE.md](CLAUDE.md)
 
 ---
 

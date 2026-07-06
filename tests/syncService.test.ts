@@ -5,7 +5,12 @@ import type { PendingReport } from '../mobile/src/api/apiClient';
  * The mobile sync service depends on Expo-native modules (expo-sqlite, NetInfo)
  * that cannot load under Node. We replace each dependency with an in-memory
  * fake so the 3-layer fallback logic can be tested in isolation.
+ *
+ * Mesh relay (Layer 2) ships OFF by default (MESH_ENABLED gate); this suite
+ * tests the full 3-layer pipeline, so opt in before syncService loads —
+ * vi.hoisted runs ahead of the hoisted ES imports.
  */
+vi.hoisted(() => { process.env.MESH_ENABLED = 'true'; });
 
 const mocks = vi.hoisted(() => {
   type Entry = { payload: PendingReport; status: string; relay_peer_id: string | null };

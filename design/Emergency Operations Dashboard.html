@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Report Safe — Emergency Operations Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root {
+  --bg-ground: #f1f5f9;
+  --bg-panel: #ffffff;
+  --bg-raised: #f8fafc;
+  --bg-header: #1e293b;
+  --bg-header-hover: #334155;
+
+  --text-hi: #0f172a;
+  --text-md: #475569;
+  --text-lo: #94a3b8;
+  --text-inv: #f8fafc;
+
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  --red: #dc2626;
+  --red-dim: #fef2f2;
+  --red-border: #fecaca;
+  --amber: #d97706;
+  --amber-dim: #fffbeb;
+  --amber-border: #fde68a;
+  --teal: #0d9488;
+  --teal-dim: #f0fdfa;
+  --teal-border: #99f6e4;
+  --green: #16a34a;
+  --green-dim: #f0fdf4;
+  --green-border: #bbf7d0;
+  --blue: #2563eb;
+
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.05);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,.07), 0 2px 4px -2px rgba(0,0,0,.05);
+}
+
+html { font-size: 13px; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-ground);
+  color: var(--text-hi);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Status Bar ─────────────────────────────────────── */
+.status-bar {
+  background: var(--bg-header);
+  color: var(--text-inv);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  height: 40px;
+  gap: 16px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+}
+.status-bar .sys-title {
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-right: auto;
+}
+.status-bar .sys-title span { color: var(--teal); }
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.status-chip.live { background: rgba(13,148,136,.2); color: #5eead4; }
+.status-chip.live .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #14b8a6;
+  animation: pulse-teal 1.5s ease-in-out infinite;
+}
+.status-chip.count { background: rgba(220,38,38,.15); color: #fca5a5; }
+.sys-clock { color: #94a3b8; }
+
+/* ── Intake Form ────────────────────────────────────── */
+.intake-section {
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 20px;
+  flex-shrink: 0;
+}
+.intake-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.intake-header h2 {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-md);
+}
+.intake-header .pipe { color: var(--border-strong); }
+.intake-header .hint { font-size: 11px; color: var(--text-lo); }
+
+.intake-grid {
+  display: grid;
+  grid-template-columns: 180px auto 200px auto 1fr;
+  gap: 10px;
+  align-items: end;
+}
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+}
+
+.field select, .field input[type="text"] {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-hi);
+  background: var(--bg-panel);
+  transition: border-color .15s;
+}
+.field select:focus, .field input:focus {
+  outline: none;
+  border-color: var(--teal);
+  box-shadow: 0 0 0 2px rgba(13,148,136,.12);
+}
+
+/* Severity toggle buttons */
+.severity-group {
+  display: flex;
+  gap: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  height: 34px;
+}
+.sev-btn {
+  flex: 1;
+  border: none;
+  background: var(--bg-panel);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: all .12s;
+  color: var(--text-md);
+  padding: 0 10px;
+  border-right: 1px solid var(--border);
+  text-transform: uppercase;
+}
+.sev-btn:last-child { border-right: none; }
+.sev-btn:hover { background: var(--bg-raised); }
+.sev-btn.active[data-sev="low"] { background: var(--green); color: #fff; }
+.sev-btn.active[data-sev="medium"] { background: var(--amber); color: #fff; }
+.sev-btn.active[data-sev="high"] { background: #ea580c; color: #fff; }
+.sev-btn.active[data-sev="critical"] { background: var(--red); color: #fff; }
+
+/* Asset tag picker */
+.asset-picker-wrap { position: relative; }
+.asset-tags-area {
+  min-height: 34px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.asset-tags-area:focus-within {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 2px rgba(13,148,136,.12);
+}
+.asset-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--teal-dim);
+  color: var(--teal);
+  border: 1px solid var(--teal-border);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+.asset-tag .qty-ctrl {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.asset-tag .qty-btn {
+  width: 14px; height: 14px;
+  border: none; background: rgba(13,148,136,.15);
+  border-radius: 2px; cursor: pointer;
+  font-size: 10px; color: var(--teal);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 700; line-height: 1;
+}
+.asset-tag .qty-btn:hover { background: rgba(13,148,136,.25); }
+.asset-tag .remove-tag {
+  cursor: pointer; margin-left: 2px;
+  opacity: .6; font-size: 12px;
+}
+.asset-tag .remove-tag:hover { opacity: 1; }
+.asset-placeholder {
+  font-size: 11px; color: var(--text-lo);
+  pointer-events: none; user-select: none;
+}
+.asset-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0; right: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+  margin-top: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  display: none;
+}
+.asset-dropdown.open { display: block; }
+.asset-option {
+  padding: 7px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  transition: background .1s;
+}
+.asset-option:hover { background: var(--bg-raised); }
+.asset-option .stock { color: var(--text-lo); font-size: 10px; }
+.asset-option.low .stock { color: var(--red); font-weight: 600; }
+
+/* Dispatch button */
+.dispatch-btn {
+  height: 34px;
+  padding: 0 20px;
+  background: var(--red);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .12s;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(220,38,38,.25);
+}
+.dispatch-btn:hover { background: #b91c1c; transform: translateY(-1px); box-shadow: 0 3px 8px rgba(220,38,38,.3); }
+.dispatch-btn:active { transform: translateY(0); }
+
+/* ── Main workspace ─────────────────────────────────── */
+.workspace {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Emergency Table ────────────────────────────────── */
+.table-pane {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+}
+.table-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.table-header-bar h2 {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--bg-header);
+}
+.table-header-bar .active-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--red);
+  background: var(--red-dim);
+  border: 1px solid var(--red-border);
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+.table-scroll { flex: 1; overflow-y: auto; }
+
+.em-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.em-table thead { position: sticky; top: 0; z-index: 10; }
+.em-table th {
+  background: var(--bg-header);
+  color: var(--text-inv);
+  padding: 8px 10px;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  border-bottom: 2px solid #0f172a;
+}
+.em-table th:first-child { width: 36px; text-align: center; }
+.em-table td {
+  padding: 10px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.em-table tr { transition: background .15s; }
+.em-table tbody tr:hover { background: var(--bg-raised); }
+
+/* Status pulse */
+.status-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  display: block;
+  margin: 3px auto 0;
+}
+.status-dot.active { background: var(--red); animation: pulse-red 1.5s ease-in-out infinite; }
+.status-dot.critical { background: var(--red); animation: pulse-red .8s ease-in-out infinite; }
+.status-dot.resolved { background: #94a3b8; }
+
+.incident-id {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--text-hi);
+}
+.incident-ts {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-lo);
+  margin-top: 2px;
+}
+.incident-desc { font-weight: 500; color: var(--text-hi); }
+.incident-type {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-lo);
+  margin-top: 2px;
+}
+
+/* Priority badge */
+.priority-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.priority-badge.critical { background: var(--red); color: #fff; }
+.priority-badge.high { background: #ea580c; color: #fff; }
+.priority-badge.medium { background: var(--amber); color: #fff; }
+.priority-badge.low { background: var(--green); color: #fff; }
+
+.location-cell {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Deployed assets */
+.deployed-assets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.deployed-tag {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 2px;
+  background: var(--teal-dim);
+  color: var(--teal);
+  border: 1px solid var(--teal-border);
+  white-space: nowrap;
+}
+.deployed-tag .serial {
+  color: var(--text-lo);
+  font-weight: 400;
+}
+
+.personnel-cell {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-md);
+}
+
+/* Action buttons */
+.action-group { display: flex; gap: 4px; flex-wrap: wrap; }
+.action-btn {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 3px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-panel);
+  color: var(--text-md);
+  cursor: pointer;
+  transition: all .12s;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.action-btn:hover { background: var(--bg-raised); border-color: var(--text-lo); }
+.action-btn.resolve { border-color: var(--teal-border); color: var(--teal); }
+.action-btn.resolve:hover { background: var(--teal-dim); }
+.action-btn.replenish { border-color: var(--amber-border); color: var(--amber); }
+.action-btn.replenish:hover { background: var(--amber-dim); }
+
+/* Row flash for over-allocation */
+.em-table tr.flash-amber {
+  animation: flash-warn .6s ease 2;
+}
+
+/* ── Inventory Sidebar ──────────────────────────────── */
+.inventory-pane {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-panel);
+}
+.inv-header {
+  padding: 10px 14px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.inv-header h2 {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--bg-header);
+}
+.inv-scroll { flex: 1; overflow-y: auto; }
+
+/* Shortage alerts */
+.shortage-section {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.shortage-title {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--red);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.shortage-title::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--red);
+  animation: pulse-red 1s ease-in-out infinite;
+}
+.shortage-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+.shortage-item.critical-level {
+  background: var(--red-dim);
+  border: 1px solid var(--red-border);
+  color: var(--red);
+}
+.shortage-item.warning-level {
+  background: var(--amber-dim);
+  border: 1px solid var(--amber-border);
+  color: var(--amber);
+}
+.shortage-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.shortage-none {
+  padding: 12px 8px;
+  text-align: center;
+  color: var(--text-lo);
+  font-size: 11px;
+}
+
+/* Search bar */
+.inv-search-wrap {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.inv-search {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px 0 30px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-hi);
+  background: var(--bg-raised) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") 9px center no-repeat;
+  transition: border-color .15s;
+}
+.inv-search:focus {
+  outline: none;
+  border-color: var(--teal);
+  background-color: var(--bg-panel);
+}
+
+/* Inventory list */
+.inv-list { padding: 6px 14px; }
+.inv-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  transition: background .15s;
+}
+.inv-item:last-child { border-bottom: none; }
+.inv-item:hover { background: var(--bg-raised); }
+.inv-item.hidden { display: none; }
+
+.inv-name {
+  font-weight: 600;
+  color: var(--text-hi);
+}
+.inv-location {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-lo);
+}
+.inv-status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.inv-status-dot.working { background: var(--teal); }
+.inv-status-dot.out-of-order { background: var(--red); }
+.inv-qty {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 13px;
+  min-width: 28px;
+  text-align: right;
+}
+.inv-qty.ok { color: var(--teal); }
+.inv-qty.low { color: var(--amber); }
+.inv-qty.critical { color: var(--red); }
+.inv-threshold {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-lo);
+  text-align: right;
+}
+.inv-bar-wrap {
+  grid-column: 1 / -1;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+.inv-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width .4s ease, background .3s;
+}
+
+/* ── Animations ─────────────────────────────────────── */
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,.4); }
+  50% { box-shadow: 0 0 0 5px rgba(220,38,38,0); }
+}
+@keyframes pulse-teal {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(13,148,136,.4); }
+  50% { box-shadow: 0 0 0 4px rgba(13,148,136,0); }
+}
+@keyframes flash-warn {
+  0%, 100% { background: transparent; }
+  50% { background: var(--amber-dim); }
+}
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.row-new { animation: slide-in .3s ease; }
+
+/* ── Scrollbar ──────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-lo); }
+
+/* ── Responsive ─────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .intake-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .intake-grid .field:nth-child(5) {
+    grid-column: 1 / -1;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Status Bar ──────────────────────────────────────────── -->
+<div class="status-bar">
+  <div class="sys-title"><span>RS</span> Emergency Operations Center</div>
+  <span class="status-chip live"><span class="dot"></span> Connected</span>
+  <span class="status-chip count" id="activeCount">4 Active</span>
+  <span class="sys-clock" id="sysClock">--:--:--</span>
+</div>
+
+<!-- ── Intake Form ─────────────────────────────────────────── -->
+<div class="intake-section">
+  <div class="intake-header">
+    <h2>Quick Incident &amp; Resource Log</h2>
+    <span class="pipe">|</span>
+    <span class="hint">Rapid-entry for field operators</span>
+  </div>
+  <form class="intake-grid" id="intakeForm" autocomplete="off">
+    <div class="field">
+      <span class="field-label">Incident Type</span>
+      <select id="incType">
+        <option value="Hazmat">Hazmat</option>
+        <option value="Medical">Medical</option>
+        <option value="Fire">Fire</option>
+        <option value="Search & Rescue">Search &amp; Rescue</option>
+        <option value="Structural">Structural</option>
+      </select>
+    </div>
+    <div class="field">
+      <span class="field-label">Severity</span>
+      <div class="severity-group" id="sevGroup">
+        <button type="button" class="sev-btn" data-sev="low">Low</button>
+        <button type="button" class="sev-btn active" data-sev="medium">Med</button>
+        <button type="button" class="sev-btn" data-sev="high">High</button>
+        <button type="button" class="sev-btn" data-sev="critical">Crit</button>
+      </div>
+    </div>
+    <div class="field">
+      <span class="field-label">Location / Room</span>
+      <input type="text" id="incLocation" placeholder="e.g. Building C, Lab 4">
+    </div>
+    <div class="field">
+      <span class="field-label">Inventory Dispatched</span>
+      <div class="asset-picker-wrap" id="assetPicker">
+        <div class="asset-tags-area" id="assetArea" tabindex="0">
+          <span class="asset-placeholder" id="assetPlaceholder">Click to add assets...</span>
+        </div>
+        <div class="asset-dropdown" id="assetDropdown"></div>
+      </div>
+    </div>
+    <div class="field">
+      <span class="field-label">&nbsp;</span>
+      <button type="submit" class="dispatch-btn">Dispatch &amp; Log</button>
+    </div>
+  </form>
+</div>
+
+<!-- ── Workspace Grid ──────────────────────────────────────── -->
+<div class="workspace">
+
+  <!-- Emergency Table -->
+  <div class="table-pane">
+    <div class="table-header-bar">
+      <h2>Active Emergency Reports</h2>
+      <span class="active-count" id="tableActiveCount">4 active incidents</span>
+    </div>
+    <div class="table-scroll">
+      <table class="em-table">
+        <thead>
+          <tr>
+            <th>STS</th>
+            <th>Incident ID</th>
+            <th>Description</th>
+            <th>Priority</th>
+            <th>Location</th>
+            <th>Deployed Assets</th>
+            <th>Personnel</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="incidentBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Inventory Sidebar -->
+  <div class="inventory-pane">
+    <div class="inv-header">
+      <h2>Inventory Status</h2>
+    </div>
+    <div class="inv-scroll">
+      <div class="shortage-section" id="shortageSection">
+        <div class="shortage-title">Shortage Alerts</div>
+        <div id="shortageList"></div>
+      </div>
+      <div class="inv-search-wrap">
+        <input type="text" class="inv-search" id="invSearch" placeholder="Search assets...">
+      </div>
+      <div class="inv-list" id="invList"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Global State ───────────────────────────────────────────
+const PERSONNEL = [
+  'SGT Chen', 'CPT Rodriguez', 'LT Park', 'PVT Walsh',
+  'SGT Okoro', 'CPT Nakamura', 'LT Morales', 'PVT Singh'
+];
+
+const inventory = [
+  { id: 'oxy',   name: 'Oxygen Tanks',       stock: 12, max: 20, threshold: 5,  location: 'Storage A-1', status: 'working' },
+  { id: 'haz',   name: 'Hazmat Suits',       stock: 8,  max: 15, threshold: 3,  location: 'Locker B-3',  status: 'working' },
+  { id: 'trk',   name: 'Trauma Kits',        stock: 3,  max: 20, threshold: 4,  location: 'Med Bay C-2', status: 'working' },
+  { id: 'fex',   name: 'Fire Extinguishers',  stock: 20, max: 30, threshold: 6,  location: 'All Floors',  status: 'working' },
+  { id: 'def',   name: 'Defibrillators',     stock: 6,  max: 10, threshold: 2,  location: 'Med Bay C-1', status: 'working' },
+  { id: 'gas',   name: 'Gas Masks',          stock: 4,  max: 15, threshold: 4,  location: 'Storage A-2', status: 'working' },
+  { id: 'str',   name: 'Stretchers',         stock: 7,  max: 12, threshold: 3,  location: 'Med Bay C-3', status: 'working' },
+  { id: 'blk',   name: 'Emergency Blankets', stock: 25, max: 50, threshold: 10, location: 'Storage D-1', status: 'working' },
+  { id: 'rad',   name: 'Radios',             stock: 15, max: 20, threshold: 5,  location: 'Comms Room',  status: 'working' },
+  { id: 'flr',   name: 'Flares',             stock: 18, max: 40, threshold: 8,  location: 'Storage A-3', status: 'working' },
+  { id: 'spb',   name: 'Spine Boards',       stock: 2,  max: 8,  threshold: 2,  location: 'Med Bay C-4', status: 'out-of-order' },
+  { id: 'oxi',   name: 'Pulse Oximeters',    stock: 9,  max: 12, threshold: 3,  location: 'Med Bay C-1', status: 'working' },
+];
+
+let incidentCounter = 5;
+const incidents = [
+  {
+    id: 'EMP-2026-09A', ts: '2026-06-30T08:14:00', type: 'Hazmat',
+    desc: 'Chemical spill in laboratory — evacuate floor', sev: 'critical',
+    location: 'Building C, Lab 4', status: 'active',
+    assets: [{ id: 'haz', qty: 3, serial: 'HZ-441' }, { id: 'gas', qty: 4, serial: 'GM-092' }, { id: 'oxy', qty: 2, serial: 'OX-118' }],
+    personnel: 'SGT Chen, CPT Rodriguez'
+  },
+  {
+    id: 'EMP-2026-09B', ts: '2026-06-30T09:02:00', type: 'Medical',
+    desc: 'Cardiac event reported — AED deployed', sev: 'high',
+    location: 'Floor 3, East Wing', status: 'active',
+    assets: [{ id: 'def', qty: 1, serial: 'DF-007' }, { id: 'trk', qty: 2, serial: 'TK-331' }],
+    personnel: 'LT Park'
+  },
+  {
+    id: 'EMP-2026-09C', ts: '2026-06-30T09:45:00', type: 'Structural',
+    desc: 'Ceiling panel collapse — area cordoned', sev: 'medium',
+    location: 'Parking Level B2', status: 'active',
+    assets: [{ id: 'str', qty: 2, serial: 'ST-215' }, { id: 'rad', qty: 2, serial: 'RD-040' }],
+    personnel: 'PVT Walsh, SGT Okoro'
+  },
+  {
+    id: 'EMP-2026-09D', ts: '2026-06-30T10:22:00', type: 'Search & Rescue',
+    desc: 'Missing worker in collapsed section — K9 unit en route', sev: 'critical',
+    location: 'Section D, Sub-level', status: 'active',
+    assets: [{ id: 'oxy', qty: 4, serial: 'OX-220' }, { id: 'rad', qty: 3, serial: 'RD-051' }, { id: 'flr', qty: 6, serial: 'FL-180' }],
+    personnel: 'CPT Nakamura, LT Morales'
+  },
+  {
+    id: 'EMP-2026-08E', ts: '2026-06-29T16:40:00', type: 'Fire',
+    desc: 'Grease fire in kitchen — extinguished, minor damage', sev: 'low',
+    location: 'Kitchen Block A', status: 'resolved',
+    assets: [{ id: 'fex', qty: 2, serial: 'FE-099' }],
+    personnel: 'PVT Singh'
+  },
+];
+
+// ── Clock ──────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('sysClock').textContent = now.toLocaleTimeString('en-GB');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Severity toggle ────────────────────────────────────────
+let selectedSev = 'medium';
+document.getElementById('sevGroup').addEventListener('click', e => {
+  const btn = e.target.closest('.sev-btn');
+  if (!btn) return;
+  document.querySelectorAll('.sev-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedSev = btn.dataset.sev;
+});
+
+// ── Asset Picker ───────────────────────────────────────────
+const selectedAssets = new Map();
+const assetArea = document.getElementById('assetArea');
+const assetDropdown = document.getElementById('assetDropdown');
+const assetPlaceholder = document.getElementById('assetPlaceholder');
+
+function renderAssetDropdown() {
+  assetDropdown.innerHTML = inventory.map(item => {
+    if (selectedAssets.has(item.id)) return '';
+    const low = item.stock <= item.threshold;
+    return `<div class="asset-option ${low ? 'low' : ''}" data-id="${item.id}">
+      <span>${item.name}</span>
+      <span class="stock">${item.stock} avail</span>
+    </div>`;
+  }).join('');
+}
+
+function renderSelectedAssets() {
+  const tags = [];
+  selectedAssets.forEach((qty, id) => {
+    const item = inventory.find(i => i.id === id);
+    tags.push(`<span class="asset-tag" data-id="${id}">
+      ${item.name}
+      <span class="qty-ctrl">
+        <button type="button" class="qty-btn" data-action="dec" data-id="${id}">-</button>
+        <span>x${qty}</span>
+        <button type="button" class="qty-btn" data-action="inc" data-id="${id}">+</button>
+      </span>
+      <span class="remove-tag" data-id="${id}">&times;</span>
+    </span>`);
+  });
+  assetPlaceholder.style.display = tags.length ? 'none' : '';
+  assetArea.innerHTML = (assetPlaceholder.style.display === 'none' ? '' : assetPlaceholder.outerHTML) + tags.join('');
+}
+
+assetArea.addEventListener('click', e => {
+  const remove = e.target.closest('.remove-tag');
+  const qtyBtn = e.target.closest('.qty-btn');
+  if (remove) {
+    selectedAssets.delete(remove.dataset.id);
+    renderSelectedAssets();
+    renderAssetDropdown();
+    return;
+  }
+  if (qtyBtn) {
+    const id = qtyBtn.dataset.id;
+    let q = selectedAssets.get(id) || 1;
+    if (qtyBtn.dataset.action === 'inc') q++;
+    else if (qtyBtn.dataset.action === 'dec' && q > 1) q--;
+    selectedAssets.set(id, q);
+    renderSelectedAssets();
+    return;
+  }
+  assetDropdown.classList.toggle('open');
+  renderAssetDropdown();
+});
+
+assetDropdown.addEventListener('click', e => {
+  const opt = e.target.closest('.asset-option');
+  if (!opt) return;
+  selectedAssets.set(opt.dataset.id, 1);
+  renderSelectedAssets();
+  renderAssetDropdown();
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#assetPicker')) assetDropdown.classList.remove('open');
+});
+
+// ── Render Incidents ───────────────────────────────────────
+function formatTs(iso) {
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function renderIncidents() {
+  const body = document.getElementById('incidentBody');
+  body.innerHTML = incidents.map((inc, idx) => {
+    const dotClass = inc.status === 'resolved' ? 'resolved' : (inc.sev === 'critical' ? 'critical' : 'active');
+    const assetTags = inc.assets.map(a => {
+      const item = inventory.find(i => i.id === a.id);
+      return `<span class="deployed-tag">${item ? item.name : a.id} x${a.qty} <span class="serial">${a.serial}</span></span>`;
+    }).join('');
+
+    const isNew = idx === 0 && inc._new;
+
+    return `<tr class="${isNew ? 'row-new' : ''}" data-idx="${idx}" id="row-${inc.id}">
+      <td><span class="status-dot ${dotClass}"></span></td>
+      <td><div class="incident-id">#${inc.id}</div><div class="incident-ts">${formatTs(inc.ts)}</div></td>
+      <td><div class="incident-desc">${inc.desc}</div><div class="incident-type">${inc.type}</div></td>
+      <td><span class="priority-badge ${inc.sev}">${inc.sev}</span></td>
+      <td><span class="location-cell">${inc.location}</span></td>
+      <td><div class="deployed-assets">${assetTags}</div></td>
+      <td><span class="personnel-cell">${inc.personnel}</span></td>
+      <td>
+        <div class="action-group">
+          ${inc.status !== 'resolved'
+            ? `<button class="action-btn resolve" onclick="resolveIncident(${idx})">Resolve</button>`
+            : `<span style="color:var(--text-lo);font-size:10px;font-family:var(--font-mono)">RESOLVED</span>`
+          }
+          <button class="action-btn replenish" onclick="replenishIncident(${idx})">Replenish</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Update counters
+  const activeN = incidents.filter(i => i.status !== 'resolved').length;
+  document.getElementById('activeCount').textContent = `${activeN} Active`;
+  document.getElementById('tableActiveCount').textContent = `${activeN} active incident${activeN !== 1 ? 's' : ''}`;
+}
+
+function resolveIncident(idx) {
+  incidents[idx].status = 'resolved';
+  renderIncidents();
+}
+
+function replenishIncident(idx) {
+  const inc = incidents[idx];
+  inc.assets.forEach(a => {
+    const item = inventory.find(i => i.id === a.id);
+    if (item) {
+      item.stock = Math.min(item.max, item.stock + a.qty);
+    }
+  });
+  renderInventory();
+  renderShortages();
+  const row = document.getElementById(`row-${inc.id}`);
+  if (row) {
+    row.classList.add('row-new');
+    setTimeout(() => row.classList.remove('row-new'), 400);
+  }
+}
+
+// ── Render Inventory ───────────────────────────────────────
+function renderInventory() {
+  const list = document.getElementById('invList');
+  list.innerHTML = inventory.map(item => {
+    const pct = Math.round((item.stock / item.max) * 100);
+    const level = item.stock <= item.threshold * 0.5 ? 'critical' : item.stock <= item.threshold ? 'low' : 'ok';
+    const barColor = level === 'critical' ? 'var(--red)' : level === 'low' ? 'var(--amber)' : 'var(--teal)';
+
+    return `<div class="inv-item" data-name="${item.name.toLowerCase()}">
+      <div>
+        <div class="inv-name">${item.name}</div>
+        <div class="inv-location"><span class="inv-status-dot ${item.status}"></span> ${item.location}</div>
+      </div>
+      <div>
+        <div class="inv-qty ${level}">${item.stock}</div>
+        <div class="inv-threshold">/ ${item.max}</div>
+      </div>
+      <div style="grid-column:1/-1;">
+        <div class="inv-bar-wrap">
+          <div class="inv-bar-fill" style="width:${pct}%;background:${barColor}"></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderShortages() {
+  const shortages = inventory.filter(i => i.stock <= i.threshold);
+  const list = document.getElementById('shortageList');
+  if (shortages.length === 0) {
+    list.innerHTML = '<div class="shortage-none">All inventory levels nominal.</div>';
+    return;
+  }
+  list.innerHTML = shortages
+    .sort((a, b) => (a.stock / a.threshold) - (b.stock / b.threshold))
+    .map(item => {
+      const isCrit = item.stock <= item.threshold * 0.5;
+      return `<div class="shortage-item ${isCrit ? 'critical-level' : 'warning-level'}">
+        <span>${item.name}: ${item.stock} left</span>
+        <span class="shortage-badge">${isCrit ? 'CRITICAL' : 'LOW'}</span>
+      </div>`;
+    }).join('');
+}
+
+// ── Search ─────────────────────────────────────────────────
+document.getElementById('invSearch').addEventListener('input', e => {
+  const q = e.target.value.toLowerCase();
+  document.querySelectorAll('.inv-item').forEach(el => {
+    el.classList.toggle('hidden', !el.dataset.name.includes(q));
+  });
+});
+
+// ── Form Submit ────────────────────────────────────────────
+document.getElementById('intakeForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const type = document.getElementById('incType').value;
+  const location = document.getElementById('incLocation').value.trim() || 'Unspecified';
+
+  incidentCounter++;
+  const idSuffix = String(incidentCounter).padStart(2, '0') + String.fromCharCode(64 + (incidentCounter % 26));
+  const newId = `EMP-2026-${idSuffix}`;
+
+  const assets = [];
+  let overAllocation = false;
+
+  selectedAssets.forEach((qty, id) => {
+    const item = inventory.find(i => i.id === id);
+    if (item) {
+      if (qty > item.stock) overAllocation = true;
+      item.stock = Math.max(0, item.stock - qty);
+      const serialNum = String(Math.floor(Math.random() * 900) + 100);
+      const serialPrefix = item.name.substring(0, 2).toUpperCase();
+      assets.push({ id, qty, serial: `${serialPrefix}-${serialNum}` });
+    }
+  });
+
+  const randPersonnel = [];
+  const pCopy = [...PERSONNEL];
+  const pCount = Math.min(1 + Math.floor(Math.random() * 2), pCopy.length);
+  for (let i = 0; i < pCount; i++) {
+    const idx = Math.floor(Math.random() * pCopy.length);
+    randPersonnel.push(pCopy.splice(idx, 1)[0]);
+  }
+
+  const descMap = {
+    'Hazmat': 'Hazardous material incident reported',
+    'Medical': 'Medical emergency — response team dispatched',
+    'Fire': 'Fire reported — suppression underway',
+    'Search & Rescue': 'Search and rescue operation initiated',
+    'Structural': 'Structural integrity concern — area secured',
+  };
+
+  const newIncident = {
+    id: newId,
+    ts: new Date().toISOString(),
+    type,
+    desc: `${descMap[type] || type + ' incident'} at ${location}`,
+    sev: selectedSev,
+    location,
+    status: 'active',
+    assets,
+    personnel: randPersonnel.join(', '),
+    _new: true,
+  };
+
+  incidents.unshift(newIncident);
+
+  // Clear _new flag from previous
+  incidents.forEach((inc, i) => { if (i > 0) delete inc._new; });
+
+  renderIncidents();
+  renderInventory();
+  renderShortages();
+  renderAssetDropdown();
+
+  // Flash row if over-allocated
+  if (overAllocation) {
+    setTimeout(() => {
+      const row = document.getElementById(`row-${newId}`);
+      if (row) row.classList.add('flash-amber');
+    }, 50);
+  }
+
+  // Reset form
+  selectedAssets.clear();
+  renderSelectedAssets();
+  document.getElementById('incLocation').value = '';
+});
+
+// ── Init ───────────────────────────────────────────────────
+renderIncidents();
+renderInventory();
+renderShortages();
+renderAssetDropdown();
+</script>
+</body>
+</html>

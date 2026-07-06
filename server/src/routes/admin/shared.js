@@ -8,6 +8,7 @@
 
 const crypto = require('crypto');
 const { collection } = require('../../db/mongo');
+const { logger } = require('../../lib/logger');
 
 /**
  * Normalise a value for COALESCE-style "update only if provided" semantics:
@@ -64,7 +65,7 @@ async function auditLog(action, entity, entityId, actor, details) {
       details: details ? JSON.stringify(details) : null, created_at: Date.now(),
     });
   } catch (e) {
-    console.error('[admin] audit log failed:', e.message);
+    logger.error('admin_audit_write_failed', { action, entity, entityId, error: e.message });
   }
 }
 
