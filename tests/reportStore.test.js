@@ -209,3 +209,15 @@ describe('reportStore.getStats', () => {
     expect(stats.active_disasters).toBe(0);
   });
 });
+
+describe('B6: concurrent double-submit (dup-key safe)', () => {
+  it('two identical-id submits in parallel yield exactly one row', async () => {
+    const body = makeReport({ id: 'race-1' });
+    await Promise.all([
+      reportStore.upsertReport({ ...body }),
+      reportStore.upsertReport({ ...body }),
+    ]);
+    const docs = await collection('reports').find({ _id: 'race-1' }).toArray();
+    expect(docs).toHaveLength(1); // one insert wins; the other becomes a relay
+  });
+});

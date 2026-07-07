@@ -25,6 +25,7 @@ function errorHandler(err, req, res, next) {
     return res.status(status).json({
       error: err.message,
       ...(err.code ? { code: err.code } : {}),
+      ...(err.details ? { details: err.details } : {}),
       reqId: req.id,
     });
   }

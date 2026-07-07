@@ -215,4 +215,4 @@ End-to-end, role-based acceptance scenarios written from the **user's** point of
 | Super-admin journeys (S1–S3) | | | |
 | End-to-end (E2E-1…4) | | | |
 
-**UAT exit criteria:** all P0/AC items pass; any open defect is triaged and either fixed or explicitly accepted with rationale (see [POST_REMEDIATION_REVIEW.md](remediation/POST_REMEDIATION_REVIEW.md) §4 for the known, accepted limitations).
+**UAT exit criteria:** all P0/AC items pass; any open defect is triaged and either fixed or explicitly accepted with rationale (documented in the release notes / [TEST_RESULTS.md](TEST_RESULTS.md)).

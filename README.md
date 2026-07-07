@@ -213,7 +213,6 @@ Test DB: isolated `reportsafe_test`. MongoDB must be up; Redis optional.
 
 | Script | Purpose |
 |---|---|
-| `inspect-db.cjs` | Ad-hoc MongoDB inspection from the CLI |
 | `scripts/backup-db.ps1` / `scripts/backup-db.sh` | Manual database backup (Windows / POSIX) |
 | `server/scripts/generateData.js` | Demo data generation (`npm run db:generate` in `server/`) |
 | `server/scripts/fillDatabase.js` | Alternative bulk data population (manual) |
@@ -252,7 +251,7 @@ Keep **Notification Hubs** on the **Free** tier (1M pushes/mo). Add a **Cost Man
 
 ## Next Steps
 
-- **Deploy:** See [DEPLOYMENT.md](DEPLOYMENT.md) and [DEPLOYMENT_AZURE.md](DEPLOYMENT_AZURE.md)
+- **Deploy:** See [DEPLOYMENT.md](DEPLOYMENT.md)
 - **QA Testing:** [QA_TEST_PLAN.md](QA_TEST_PLAN.md) and [UAT_TEST_PLAN.md](UAT_TEST_PLAN.md)
 - **Architecture:** [CLAUDE.md](CLAUDE.md)
 

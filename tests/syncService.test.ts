@@ -170,4 +170,19 @@ describe('syncService 3-layer fallback', () => {
     expect(online.delivered).toBe(1);
     expect(mocks.store.get('rep-c3')!.status).toBe('sent');
   });
+
+  it('D5: a 5xx keeps the report pending (transient), not dropped', async () => {
+    mocks.state.connected = true;
+    mocks.apiSubmit.mockResolvedValueOnce({ ok: false, status: 500, error: 'server error' });
+    const result = await submitReport(makeReport('rep-500'));
+    expect(result.delivered).toBe(0);
+    expect(mocks.store.get('rep-500')!.status).toBe('pending'); // retriable
+  });
+
+  it('D5: a 401 keeps the report pending (token-refresh path), not dropped', async () => {
+    mocks.state.connected = true;
+    mocks.apiSubmit.mockResolvedValueOnce({ ok: false, status: 401, error: 'token expired' });
+    await submitReport(makeReport('rep-401'));
+    expect(mocks.store.get('rep-401')!.status).toBe('pending');
+  });
 });

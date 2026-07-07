@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 
 const {
   isValidHKID,
+  hkidIsValid,
   normalizeHKID,
   ReportSchema,
   UserRegisterSchema,
@@ -137,5 +138,25 @@ describe('UserRegisterSchema — registration requires phone + name + HKID + con
     });
     expect(r.success).toBe(true);
     expect(r.data.personal_id).toBe('A1234563');
+  });
+});
+
+describe('HKID_STRICT — mod-11 checksum enforcement (B8)', () => {
+  afterEach(() => { delete process.env.HKID_STRICT; });
+
+  it('lenient (default) accepts a checksum-invalid but format-valid HKID', () => {
+    expect(hkidIsValid('A1234564')).toBe(true); // wrong check digit, but format-valid
+  });
+
+  it('strict rejects a bad check digit and accepts a valid one', () => {
+    process.env.HKID_STRICT = 'true';
+    expect(hkidIsValid('A1234564')).toBe(false); // bad checksum
+    expect(hkidIsValid('A1234563')).toBe(true);  // valid checksum (the synthetic one used repo-wide)
+  });
+
+  it('strict mode makes ReportSchema reject a bad-checksum personal_id', () => {
+    process.env.HKID_STRICT = 'true';
+    const r = ReportSchema.safeParse({ name: 'X', status: 'safe', lat: 22.3, lng: 114.1, personal_id: 'A1234564' });
+    expect(r.success).toBe(false);
   });
 });

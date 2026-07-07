@@ -16,6 +16,7 @@
     "build:web": "cd web && npx vite build",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:memdb": "node scripts/test-with-memory-db.mjs",
     "check:shared": "node scripts/check-shared-drift.mjs",
     "db:up": "cd server && npm run db:up",
@@ -23,11 +24,12 @@
     "db:reset": "cd server && npm run db:reset"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.9",
     "concurrently": "^8.2.2",
     "eslint": "^9.39.4",
-    "mongodb-memory-server": "^11.2.0",
     "eslint-plugin-vue": "^9.33.0",
     "globals": "^17.7.0",
+    "mongodb-memory-server": "^11.2.0",
     "typescript-eslint": "^8.62.0",
     "vite": "8.0.16",
     "vitest": "^4.1.9"

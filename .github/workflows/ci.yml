@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, test]
   pull_request:
 
 jobs:
@@ -50,8 +50,8 @@ jobs:
       - name: Shared-vocabulary drift check (server vs web copies)
         run: npm run check:shared
 
-      - name: Run test suite (Vitest against ephemeral MongoDB + Redis)
-        run: npm test
+      - name: Run test suite + server coverage floor (Vitest against MongoDB + Redis)
+        run: npm run test:coverage
 
       - name: Build web frontend
         run: npm run build:web

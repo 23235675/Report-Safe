@@ -4,6 +4,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 const express = require('express');
 const { setup } = require('../server/src/db/setup');
 const { collection, closeDb } = require('../server/src/db/mongo');
+const { hashToken } = require('../server/src/lib/authGuard');
 const createUsersRouter = require('../server/src/routes/users');
 
 let server, base;
@@ -74,5 +75,19 @@ describe('H4: refresh rotation + reuse detection', () => {
     // ...now even the legitimately-rotated token is dead (family invalidated).
     const after = await j('/api/users/token/refresh', { refresh_token: rotated.body.refresh_token });
     expect(after.status).toBe(401);
+  });
+});
+
+describe('A9: refresh token past its TTL', () => {
+  it('rejects an expired refresh token with 401 refresh_expired', async () => {
+    const now = Date.now();
+    await collection('users').insertOne({
+      _id: 'u-exp', phone: '+85298760000', name: 'Exp', user_type: 'mobile', privacy_consent: true,
+      refresh_token_hash: hashToken('expired-refresh'), refresh_token_expires_at: now - 1000,
+      created_at: now, updated_at: now,
+    });
+    const res = await j('/api/users/token/refresh', { refresh_token: 'expired-refresh' });
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('refresh_expired');
   });
 });

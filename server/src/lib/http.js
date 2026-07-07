@@ -24,7 +24,13 @@ const asyncHandler = (fn) => (req, res, next) =>
 const validate = (schema, source = 'body') => (req, res, next) => {
   const parsed = schema.safeParse(req[source]);
   if (!parsed.success) {
-    return res.status(400).json({ error: 'Validation failed', details: parsed.error.errors });
+    // Route through the central errorHandler (one envelope for every error,
+    // including the reqId correlation id) rather than responding here. `details`
+    // carries the field-level Zod errors that web/mobile surface as inline
+    // messages (err.details[0].message).
+    const err = new HttpError(400, 'Validation failed', 'validation');
+    err.details = parsed.error.errors;
+    return next(err);
   }
   req.valid = parsed.data;
   return next();

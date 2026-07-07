@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from 'vitest';
 
 // HTTP-level tests for the super-admin REST API (/api/admin/*): the dynamic
 // filter/sort builders AND the deploy-hardening guards (self-lockout,
@@ -237,5 +237,190 @@ describe('finding #4 — enum validation returns 400, not 500', () => {
   it('self-delete is still blocked (regression of existing guard)', async () => {
     const res = await authed(`/api/admin/users/${ADMIN_ID}`, { method: 'DELETE' });
     expect(res.status).toBe(400);
+  });
+});
+
+// ── P2: the remaining admin sub-routers + the audit-write guarantee ──────────
+// Guardrail #6 says "privileged actions are audited" — assert an audit_logs row
+// is written for each mutation (the sub-routers `await auditLog(...)`, so it is
+// deterministic). Also covers disasters/links/devices CRUD, /stats, /audit and
+// /login, which the suite above did not touch.
+const auditCount = (action, entity, entity_id) =>
+  collection('audit_logs').countDocuments({ action, entity, entity_id });
+
+describe('admin disasters CRUD + audit', () => {
+  it('creates, lists, updates and deletes a disaster, auditing each mutation', async () => {
+    const created = await authed('/api/admin/disasters', {
+      method: 'POST',
+      body: JSON.stringify({ type: 'flood', severity: 3, lat: 22.3, lng: 114.17, radius_km: 10 }),
+    });
+    expect(created.status).toBe(201);
+    const id = (await created.json()).data.id;
+    expect(await auditCount('create', 'disasters', id)).toBe(1);
+
+    const list = await (await authed('/api/admin/disasters')).json();
+    expect(list.data.some((d) => d.id === id)).toBe(true);
+
+    const upd = await authed(`/api/admin/disasters/${id}`, {
+      method: 'PUT', body: JSON.stringify({ active: false }),
+    });
+    expect(upd.status).toBe(200);
+    expect((await upd.json()).data.active).toBe(false);
+    expect(await auditCount('update', 'disasters', id)).toBe(1);
+
+    // DELETE also nulls reports.disaster_id (emulated FK ON DELETE SET NULL).
+    await collection('reports').insertOne({
+      _id: 'r-linked', name: 'x', name_lower: 'x', status: 'safe', lat: 22.3, lng: 114.1,
+      user_type: 'mobile', disaster_id: id, created_at: Date.now(), updated_at: Date.now(),
+    });
+    const del = await authed(`/api/admin/disasters/${id}`, { method: 'DELETE' });
+    expect(del.status).toBe(200);
+    expect((await collection('reports').findOne({ _id: 'r-linked' })).disaster_id).toBeNull();
+    expect(await auditCount('delete', 'disasters', id)).toBe(1);
+  });
+
+  it('404 on updating a missing disaster', async () => {
+    const res = await authed('/api/admin/disasters/ghost', { method: 'PUT', body: JSON.stringify({ active: false }) });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('admin links CRUD + audit', () => {
+  beforeEach(async () => {
+    await addUser('la', { name: 'Link A' });
+    await addUser('lb', { name: 'Link B' });
+    await collection('account_links').insertOne({
+      _id: 'lk-1', user_a_id: 'la', user_b_id: 'lb', status: 'pending', confirmed_at: null, created_at: Date.now(),
+    });
+  });
+
+  it('lists links joined to both parties', async () => {
+    const { data } = await (await authed('/api/admin/links')).json();
+    const row = data.find((l) => l.id === 'lk-1');
+    expect(row).toBeTruthy();
+    expect(row.user_a_name).toBe('Link A');
+    expect(row.user_b_name).toBe('Link B');
+  });
+
+  it('updates a link status (confirm) and audits it', async () => {
+    const res = await authed('/api/admin/links/lk-1', { method: 'PUT', body: JSON.stringify({ status: 'confirmed' }) });
+    expect(res.status).toBe(200);
+    const doc = await collection('account_links').findOne({ _id: 'lk-1' });
+    expect(doc.status).toBe('confirmed');
+    expect(doc.confirmed_at).toBeTruthy();
+    expect(await auditCount('update', 'account_links', 'lk-1')).toBe(1);
+  });
+
+  it('rejects an invalid status (400)', async () => {
+    const res = await authed('/api/admin/links/lk-1', { method: 'PUT', body: JSON.stringify({ status: 'friends' }) });
+    expect(res.status).toBe(400);
+  });
+
+  it('deletes a link and audits it, 404 for missing', async () => {
+    expect((await authed('/api/admin/links/lk-1', { method: 'DELETE' })).status).toBe(200);
+    expect(await collection('account_links').findOne({ _id: 'lk-1' })).toBeNull();
+    expect(await auditCount('delete', 'account_links', 'lk-1')).toBe(1);
+    expect((await authed('/api/admin/links/lk-1', { method: 'DELETE' })).status).toBe(404);
+  });
+});
+
+describe('admin devices CRUD + audit', () => {
+  beforeEach(async () => {
+    await collection('device_push_tokens').insertOne({
+      _id: 'dv-1', token: 'push-token-abcdef', platform: 'ios', user_id: null, lat: 22.3, lng: 114.1,
+      created_at: Date.now(), updated_at: Date.now(),
+    });
+  });
+
+  it('lists devices with paging meta', async () => {
+    const body = await (await authed('/api/admin/devices')).json();
+    expect(body.data.some((d) => d.id === 'dv-1')).toBe(true);
+    expect(body.meta.total).toBeGreaterThanOrEqual(1);
+  });
+
+  it('deletes a device and audits it, 404 for missing', async () => {
+    expect((await authed('/api/admin/devices/dv-1', { method: 'DELETE' })).status).toBe(200);
+    expect(await collection('device_push_tokens').findOne({ _id: 'dv-1' })).toBeNull();
+    expect(await auditCount('delete', 'device_push_tokens', 'dv-1')).toBe(1);
+    expect((await authed('/api/admin/devices/ghost', { method: 'DELETE' })).status).toBe(404);
+  });
+});
+
+describe('admin stats + audit trail', () => {
+  it('GET /stats returns the aggregate shape', async () => {
+    const { data } = await (await authed('/api/admin/stats')).json();
+    expect(data.users.total).toBeGreaterThanOrEqual(1); // at least the seeded admin
+    expect(data).toHaveProperty('reports');
+    expect(data).toHaveProperty('disasters');
+    expect(data).toHaveProperty('links');
+  });
+
+  it('GET /audit surfaces a freshly written audit row', async () => {
+    const created = await authed('/api/admin/disasters', {
+      method: 'POST', body: JSON.stringify({ type: 'fire', lat: 22.3, lng: 114.17, radius_km: 5 }),
+    });
+    const id = (await created.json()).data.id;
+    const { data } = await (await authed('/api/admin/audit?entity=disasters')).json();
+    expect(data.some((a) => a.entity_id === id && a.action === 'create')).toBe(true);
+  });
+});
+
+describe('admin login', () => {
+  it('issues tokens for correct credentials and audits the login, 401 for a wrong password', async () => {
+    const admin = await collection('users').findOne({ _id: ADMIN_ID });
+    const ok = await fetch(`${base}/api/admin/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: admin.phone, password: 'correct-horse' }),
+    });
+    expect(ok.status).toBe(200);
+    const body = await ok.json();
+    expect(body.access_token).toBeTruthy();
+    expect(body.user.role).toBe('super_admin');
+    expect(await auditCount('login', 'users', ADMIN_ID)).toBe(1);
+
+    const bad = await fetch(`${base}/api/admin/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: admin.phone, password: 'wrong' }),
+    });
+    expect(bad.status).toBe(401);
+  });
+
+  it('400 when phone or password is missing', async () => {
+    const res = await fetch(`${base}/api/admin/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: '123' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('A14 — accepts both bare 8-digit and full +852 phone formats', async () => {
+    const admin = await collection('users').findOne({ _id: ADMIN_ID });
+    const login = (phone) => fetch(`${base}/api/admin/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, password: 'correct-horse' }),
+    });
+    expect((await login(admin.phone.slice(-8))).status).toBe(200); // bare 8 digits
+    expect((await login(admin.phone)).status).toBe(200);           // full +852
+  });
+});
+
+describe('M9 — admin IP allowlist', () => {
+  afterEach(() => { delete process.env.ADMIN_IP_ALLOWLIST; });
+
+  it('refuses a request from a non-allowlisted address (403), even with a valid token', async () => {
+    process.env.ADMIN_IP_ALLOWLIST = '203.0.113.1'; // TEST-NET-3, never the loopback
+    expect((await authed('/api/admin/users')).status).toBe(403);
+  });
+
+  it('is a no-op when unset (request allowed)', async () => {
+    expect((await authed('/api/admin/users')).status).toBe(200);
+  });
+});
+
+describe('M10 — HKID unmasked in the admin console only', () => {
+  it('returns the full personal_id in the admin user list', async () => {
+    await addUser('hkid-user', { role: 'citizen', personal_id: 'A1234563' });
+    const { data } = await (await authed('/api/admin/users')).json();
+    const row = data.find((u) => u.id === 'hkid-user');
+    expect(row.personal_id).toBe('A1234563'); // full — masked everywhere else
   });
 });

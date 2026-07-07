@@ -28,7 +28,10 @@
       "Bash(/Users/patricklee0106/Library/Android/sdk/platform-tools/adb reverse *)",
       "Bash(/Users/patricklee0106/Library/Android/sdk/platform-tools/adb logcat *)",
       "Bash(/Users/patricklee0106/Library/Android/sdk/platform-tools/adb pull *)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "mcp__claude-in-chrome__select_browser",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "mcp__claude-in-chrome__navigate"
     ]
   }
 }
