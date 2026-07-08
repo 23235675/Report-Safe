@@ -296,8 +296,10 @@ async function getRescueView(lat, lng, radiusKm, { limit = 500, offset = 0 } = {
 
     const page = within.slice(off, off + lim);
 
-    // Attach the affected person's gender (proxy → reported_for_user_id, else the
-    // reporter's own user_id) so the triage roster can show a gender avatar.
+    // Attach the affected person's gender for the triage avatar. Prefer the
+    // linked account's gender (proxy → reported_for_user_id, else the reporter's
+    // own user_id); fall back to the report's own `gender` field for reports that
+    // aren't tied to an account.
     const uids = [...new Set(page.map((r) => r.reported_for_user_id || r.user_id).filter(Boolean))];
     const genderById = new Map();
     if (uids.length) {
@@ -313,7 +315,7 @@ async function getRescueView(lat, lng, radiusKm, { limit = 500, offset = 0 } = {
       const uid = r.reported_for_user_id || r.user_id;
       return {
         ...r,
-        gender:         uid ? (genderById.get(uid) || null) : null,
+        gender:         (uid && genderById.get(uid)) || r.gender || null,
         created_at:     Number(r.created_at),
         updated_at:     Number(r.updated_at),
         distance_km:    Number(r.distance_km),

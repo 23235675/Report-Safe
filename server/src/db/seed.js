@@ -94,10 +94,10 @@ const AEDS = [
 // the socket alert + the matching logic exercise fully. 'government' role
 // responders also receive residential (non-public) incidents.
 const RESPONDERS = [
-  { phone: '+85251110001', name: 'CFR Alice Chan',  role: 'citizen',    skills: ['cpr', 'aed'], radius: 1.5, lat: 22.3025, lng: 114.1775 }, // ~by Central incident
-  { phone: '+85251110002', name: 'CFR Bobby Wong',  role: 'citizen',    skills: ['cpr', 'aed'], radius: 0.8, lat: 22.3010, lng: 114.1760 },
-  { phone: '+85251110003', name: 'CFR Carol Lam',   role: 'citizen',    skills: ['cpr', 'fire'], radius: 1.5, lat: 22.3355, lng: 114.1920 }, // ~by Kowloon fire
-  { phone: '+85251110004', name: 'CFR Dr. Dorothy', role: 'government', skills: ['cpr', 'aed'], radius: 2.0, lat: 22.3030, lng: 114.1780 }, // verified — gets residential
+  { phone: '+85251110001', name: 'CFR Alice Chan',  role: 'citizen',    gender: 'female', skills: ['cpr', 'aed'], radius: 1.5, lat: 22.3025, lng: 114.1775 }, // ~by Central incident
+  { phone: '+85251110002', name: 'CFR Bobby Wong',  role: 'citizen',    gender: 'male',   skills: ['cpr', 'aed'], radius: 0.8, lat: 22.3010, lng: 114.1760 },
+  { phone: '+85251110003', name: 'CFR Carol Lam',   role: 'citizen',    gender: 'female', skills: ['cpr', 'fire'], radius: 1.5, lat: 22.3355, lng: 114.1920 }, // ~by Kowloon fire
+  { phone: '+85251110004', name: 'CFR Dr. Dorothy', role: 'government', gender: 'female', skills: ['cpr', 'aed'], radius: 2.0, lat: 22.3030, lng: 114.1780 }, // verified — gets residential
 ];
 
 // ── Random HK user generation ────────────────────────────────────────
@@ -266,7 +266,7 @@ async function seed() {
           {
             $setOnInsert: { _id: userId, phone: r.phone, user_type: 'mobile', created_at: now },
             $set: {
-              name: r.name, role: r.role, privacy_consent: true,
+              name: r.name, role: r.role, gender: r.gender, privacy_consent: true,
               personal_id: fakeHKID(),
               responder_opt_in: true, responder_skills: r.skills, responder_max_radius_km: r.radius,
               updated_at: now,

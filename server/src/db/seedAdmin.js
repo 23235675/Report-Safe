@@ -67,6 +67,7 @@ async function seedAdmin() {
     // personal_id is intentionally OMITTED (no HKID) so the sparse-unique index skips it.
     await collection('users').insertOne({
       _id: id, phone, name, role: 'super_admin', user_type: 'mobile',
+      gender: process.env.SUPER_ADMIN_GENDER || 'male',
       password_hash: passwordHash, privacy_consent: true,
       access_token_hash: tok.accessTokenHash, access_token_expires_at: tok.accessTokenExpiresAt,
       refresh_token_hash: tok.refreshTokenHash, refresh_token_expires_at: tok.refreshTokenExpiresAt,
