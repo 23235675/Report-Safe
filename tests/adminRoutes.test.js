@@ -387,6 +387,12 @@ describe('admin stats + audit trail', () => {
     expect(data).toHaveProperty('reports');
     expect(data).toHaveProperty('disasters');
     expect(data).toHaveProperty('links');
+    // Devices carry a platform breakdown and audits an action breakdown (drives
+    // the Devices / Audit dashboard charts).
+    expect(data.devices).toHaveProperty('ios');
+    expect(data.devices).toHaveProperty('android');
+    expect(data.audits).toHaveProperty('create');
+    expect(data.audits).toHaveProperty('login');
   });
 
   it('GET /audit surfaces a freshly written audit row', async () => {

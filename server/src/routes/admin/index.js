@@ -104,10 +104,14 @@ module.exports = function createAdminRouter() {
     const reports = collection('reports');
     const disasters = collection('disasters');
     const links = collection('account_links');
+    const devices = collection('device_push_tokens');
+    const audits = collection('audit_logs');
     const [
       uTotal, uSuper, uCit, uVol, uGov,
       rTotal, rSafe, rInj, rNeed, rMiss,
-      dTotal, dActive, lTotal, lConf, lPend, devTotal, audTotal,
+      dTotal, dActive, lTotal, lConf, lPend,
+      devTotal, devIos, devAndroid,
+      audTotal, audCreate, audUpdate, audDelete, audLogin,
     ] = await Promise.all([
       users.countDocuments({}), users.countDocuments({ role: 'super_admin' }),
       users.countDocuments({ role: 'citizen' }), users.countDocuments({ role: 'volunteer' }),
@@ -118,8 +122,9 @@ module.exports = function createAdminRouter() {
       disasters.countDocuments({}), disasters.countDocuments({ active: true }),
       links.countDocuments({}), links.countDocuments({ status: 'confirmed' }),
       links.countDocuments({ status: 'pending' }),
-      collection('device_push_tokens').countDocuments({}),
-      collection('audit_logs').countDocuments({}),
+      devices.countDocuments({}), devices.countDocuments({ platform: 'ios' }), devices.countDocuments({ platform: 'android' }),
+      audits.countDocuments({}), audits.countDocuments({ action: 'create' }), audits.countDocuments({ action: 'update' }),
+      audits.countDocuments({ action: 'delete' }), audits.countDocuments({ action: 'login' }),
     ]);
     res.json({
       ok: true,
@@ -128,8 +133,8 @@ module.exports = function createAdminRouter() {
         reports:   { total: rTotal, safe: rSafe, injured: rInj, need_help: rNeed, missing: rMiss },
         disasters: { total: dTotal, active: dActive },
         links:     { total: lTotal, confirmed: lConf, pending: lPend },
-        devices:   { total: devTotal },
-        audits:    { total: audTotal },
+        devices:   { total: devTotal, ios: devIos, android: devAndroid, other: Math.max(0, devTotal - devIos - devAndroid) },
+        audits:    { total: audTotal, create: audCreate, update: audUpdate, delete: audDelete, login: audLogin },
       },
     });
   }));

@@ -265,6 +265,7 @@ const TAB_CONFIG = {
 
 async function switchTab(tab) {
   activeTab.value = tab;
+  activeChart.value = null; // always land on the dashboard card grid
   error.value     = null;
   searchQ.value   = '';
   offset.value    = 0;
@@ -362,20 +363,30 @@ const canPage     = computed(() => !!TAB_CONFIG[activeTab.value]?.paged);
 const total       = computed(() => totals.value[activeTab.value] ?? currentRows.value.length);
 
 // ── Dashboard view-models (Overview tab) — derived from the /stats payload ──
-const kpiCards = computed(() => {
+// The overview is a drill-down: a grid of clickable cards (activeChart === null),
+// then ONE domain chart at a time. Each domain uses a different chart form.
+const activeChart = ref(null);
+function openChart(key) { activeChart.value = key; }
+function closeChart()   { activeChart.value = null; }
+
+const DASH_META = [
+  { key: 'users',     label: 'Users',     chart: 'donut', kpi: (s) => s.users?.total,      sub: (s) => `${s.users?.citizen ?? 0} citizens` },
+  { key: 'reports',   label: 'Reports',   chart: 'hbar',  kpi: (s) => s.reports?.total,    sub: (s) => `${s.reports?.safe ?? 0} marked safe` },
+  { key: 'disasters', label: 'Disasters', chart: 'gauge', kpi: (s) => s.disasters?.active, sub: (s) => `of ${s.disasters?.total ?? 0} total` },
+  { key: 'links',     label: 'Links',     chart: 'donut', kpi: (s) => s.links?.total,      sub: (s) => `${s.links?.confirmed ?? 0} confirmed` },
+  { key: 'devices',   label: 'Devices',   chart: 'hbar',  kpi: (s) => s.devices?.total,    sub: () => 'push tokens' },
+  { key: 'audits',    label: 'Audit',     chart: 'vbar',  kpi: (s) => s.audits?.total,     sub: () => 'logged actions' },
+];
+const dashCards = computed(() => {
   const s = stats.value;
   if (!s) return [];
-  return [
-    { key: 'users',     label: 'Total Users',      value: s.users?.total ?? 0,      sub: `${s.users?.citizen ?? 0} citizens` },
-    { key: 'reports',   label: 'Status Reports',   value: s.reports?.total ?? 0,    sub: `${s.reports?.safe ?? 0} marked safe` },
-    { key: 'disasters', label: 'Active Disasters', value: s.disasters?.active ?? 0, sub: `of ${s.disasters?.total ?? 0} total` },
-    { key: 'devices',   label: 'Devices',          value: s.devices?.total ?? 0,    sub: 'push tokens' },
-    { key: 'links',     label: 'Account Links',    value: s.links?.total ?? 0,      sub: `${s.links?.confirmed ?? 0} confirmed` },
-    { key: 'audits',    label: 'Audit Events',     value: s.audits?.total ?? 0,     sub: 'logged actions' },
-  ];
+  return DASH_META.map((m) => ({ key: m.key, label: m.label, chart: m.chart, value: m.kpi(s) ?? 0, sub: m.sub(s) }));
 });
+const currentCard = computed(() => dashCards.value.find((c) => c.key === activeChart.value) || null);
+const CHART_SUBTITLE = { users: 'by role', reports: 'by status', disasters: 'active vs ended', links: 'by status', devices: 'by platform', audits: 'by action' };
+const chartTitle = computed(() => CHART_SUBTITLE[activeChart.value] || '');
 
-// Scale bars to the tallest value; a non-zero count always gets a visible sliver.
+// Horizontal-bar scaling: tallest = 100%, a non-zero count always gets a sliver.
 function toBars(list) {
   const max = Math.max(1, ...list.map((r) => r.n));
   return list.map((r) => ({ ...r, pct: r.n > 0 ? Math.max(4, Math.round((r.n / max) * 100)) : 0 }));
@@ -387,22 +398,55 @@ const reportBars = computed(() => toBars([
   { key: 'need_help', label: 'Need Help', n: stats.value?.reports?.need_help ?? 0, color: STATUS_COLOR_VIVID.need_help },
   { key: 'missing',   label: 'Missing',   n: stats.value?.reports?.missing   ?? 0, color: STATUS_COLOR_VIVID.missing },
 ]));
-// Users by role — one charcoal hue (magnitude comparison, not categorical colour).
-const roleBars = computed(() => toBars([
-  { key: 'citizen',     label: 'Citizen',     n: stats.value?.users?.citizen     ?? 0 },
-  { key: 'volunteer',   label: 'Volunteer',   n: stats.value?.users?.volunteer   ?? 0 },
-  { key: 'government',  label: 'Government',   n: stats.value?.users?.government  ?? 0 },
-  { key: 'super_admin', label: 'Super Admin', n: stats.value?.users?.super_admin ?? 0 },
+// Devices by platform — single charcoal hue.
+const deviceBars = computed(() => toBars([
+  { key: 'ios',     label: 'iOS',     n: stats.value?.devices?.ios     ?? 0 },
+  { key: 'android', label: 'Android', n: stats.value?.devices?.android ?? 0 },
+  { key: 'other',   label: 'Other',   n: stats.value?.devices?.other   ?? 0 },
 ]));
-const linkSplit = computed(() => {
+// Audit events by action — vertical bars (a different form from the h-bars).
+const auditBars = computed(() => {
+  const a = stats.value?.audits || {};
+  const list = [
+    { key: 'create', label: 'Create', n: a.create ?? 0 },
+    { key: 'update', label: 'Update', n: a.update ?? 0 },
+    { key: 'delete', label: 'Delete', n: a.delete ?? 0 },
+    { key: 'login',  label: 'Login',  n: a.login  ?? 0 },
+  ];
+  const max = Math.max(1, ...list.map((x) => x.n));
+  return list.map((x) => ({ ...x, h: x.n > 0 ? Math.max(6, Math.round((x.n / max) * 100)) : 0 }));
+});
+// Donut via the r=15.9155 (circumference≈100) trick: dash = "pct rest",
+// offset = 25 - cumulative puts the first slice at 12 o'clock, going clockwise.
+function donutSegments(items) {
+  const total = items.reduce((s, x) => s + (x.n || 0), 0);
+  let acc = 0;
+  return items.map((it) => {
+    const pct = total > 0 ? (it.n / total) * 100 : 0;
+    const seg = { ...it, pct, dash: `${pct} ${100 - pct}`, offset: 25 - acc };
+    acc += pct;
+    return seg;
+  });
+}
+const roleDonut = computed(() => donutSegments([
+  { key: 'citizen',     label: 'Citizen',     n: stats.value?.users?.citizen     ?? 0, color: '#26262b' },
+  { key: 'volunteer',   label: 'Volunteer',   n: stats.value?.users?.volunteer   ?? 0, color: '#55585f' },
+  { key: 'government',  label: 'Government',   n: stats.value?.users?.government  ?? 0, color: '#8a8b93' },
+  { key: 'super_admin', label: 'Super Admin', n: stats.value?.users?.super_admin ?? 0, color: '#c4c4ca' },
+]));
+const linkDonut = computed(() => {
   const l = stats.value?.links || {};
-  const total = l.total ?? 0, confirmed = l.confirmed ?? 0, pending = l.pending ?? 0;
-  return { total, confirmed, pending, other: Math.max(0, total - confirmed - pending) };
+  const other = Math.max(0, (l.total ?? 0) - (l.confirmed ?? 0) - (l.pending ?? 0));
+  return donutSegments([
+    { key: 'confirmed', label: 'Confirmed', n: l.confirmed ?? 0, color: '#26262b' },
+    { key: 'pending',   label: 'Pending',   n: l.pending ?? 0,   color: '#9a9ba3' },
+    { key: 'other',     label: 'Other',     n: other,            color: '#d8d8dd' },
+  ]);
 });
 const disasterRatio = computed(() => {
   const d = stats.value?.disasters || {};
   const total = d.total ?? 0, active = d.active ?? 0;
-  return { total, active, pct: total > 0 ? Math.round((active / total) * 100) : 0 };
+  return { total, active, ended: Math.max(0, total - active), pct: total > 0 ? Math.round((active / total) * 100) : 0 };
 });
 
 const nowStr = ref('');
@@ -456,70 +500,81 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
       <main class="content">
         <div v-if="error" class="err-bar" role="alert">{{ error }} <button aria-label="Dismiss error" @click="error = null">✕</button></div>
 
-        <!-- OVERVIEW -->
+        <!-- OVERVIEW — drill-down dashboard: card grid → one domain chart -->
         <section v-if="activeTab === 'overview'">
-          <div class="toolbar"><h2 class="page-title">System Overview</h2></div>
+          <div class="toolbar">
+            <h2 v-if="!activeChart" class="page-title">System Overview</h2>
+            <h2 v-else class="page-title crumb">
+              <button class="crumb-back" @click="closeChart"><AppIcon name="chevron-down" :size="15" class="crumb-ico" /> Dashboard</button>
+              <span class="crumb-sep">/</span>{{ currentCard?.label }}
+            </h2>
+          </div>
           <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!stats" class="state-msg">No data available.</div>
-          <template v-else>
-            <!-- KPI tiles -->
-            <div class="kpi-grid">
-              <div class="kpi-card" v-for="k in kpiCards" :key="k.key">
-                <div class="kpi-label">{{ k.label }}</div>
-                <div class="kpi-value">{{ k.value }}</div>
-                <div class="kpi-sub">{{ k.sub }}</div>
+
+          <!-- GRID: clickable domain cards -->
+          <div v-else-if="!activeChart" class="kpi-grid">
+            <button v-for="c in dashCards" :key="c.key" class="kpi-card kpi-click" @click="openChart(c.key)">
+              <div class="kpi-label">{{ c.label }}</div>
+              <div class="kpi-value">{{ c.value }}</div>
+              <div class="kpi-sub">{{ c.sub }}</div>
+              <span class="kpi-cta">View chart <AppIcon name="chevron-down" :size="13" class="cta-ico" /></span>
+            </button>
+          </div>
+
+          <!-- DETAIL: the selected domain's chart -->
+          <div v-else class="dash-card chart-stage">
+            <div class="dash-head"><h3>{{ currentCard?.label }} <span class="dash-sub">· {{ chartTitle }}</span></h3><span class="dash-total">{{ currentCard?.value }} total</span></div>
+
+            <!-- Reports → horizontal bars in status colours -->
+            <div v-if="activeChart === 'reports'" class="bars bars-lg">
+              <div class="bar-row" v-for="b in reportBars" :key="b.key" :title="`${b.label}: ${b.n}`">
+                <span class="bar-cat">{{ b.label }}</span>
+                <div class="bar-track"><div class="bar-fill" :style="{ width: b.pct + '%', background: b.color }"></div></div>
+                <span class="bar-val">{{ b.n }}</span>
               </div>
             </div>
 
-            <!-- Bar charts: reports by status (status colours) + users by role (charcoal) -->
-            <div class="dash-grid">
-              <div class="dash-card">
-                <div class="dash-head"><h3>Reports by status</h3><span class="dash-total">{{ stats.reports.total }} total</span></div>
-                <div class="bars">
-                  <div class="bar-row" v-for="b in reportBars" :key="b.key" :title="`${b.label}: ${b.n}`">
-                    <span class="bar-cat">{{ b.label }}</span>
-                    <div class="bar-track"><div class="bar-fill" :style="{ width: b.pct + '%', background: b.color }"></div></div>
-                    <span class="bar-val">{{ b.n }}</span>
-                  </div>
-                </div>
-              </div>
-              <div class="dash-card">
-                <div class="dash-head"><h3>Users by role</h3><span class="dash-total">{{ stats.users.total }} total</span></div>
-                <div class="bars">
-                  <div class="bar-row" v-for="b in roleBars" :key="b.key" :title="`${b.label}: ${b.n}`">
-                    <span class="bar-cat">{{ b.label }}</span>
-                    <div class="bar-track"><div class="bar-fill charcoal" :style="{ width: b.pct + '%' }"></div></div>
-                    <span class="bar-val">{{ b.n }}</span>
-                  </div>
-                </div>
+            <!-- Devices → horizontal bars (charcoal) -->
+            <div v-else-if="activeChart === 'devices'" class="bars bars-lg">
+              <div class="bar-row" v-for="b in deviceBars" :key="b.key" :title="`${b.label}: ${b.n}`">
+                <span class="bar-cat">{{ b.label }}</span>
+                <div class="bar-track"><div class="bar-fill charcoal" :style="{ width: b.pct + '%' }"></div></div>
+                <span class="bar-val">{{ b.n }}</span>
               </div>
             </div>
 
-            <!-- Health strip: account links split + disasters ratio -->
-            <div class="dash-grid">
-              <div class="dash-card">
-                <div class="dash-head"><h3>Account links</h3><span class="dash-total">{{ linkSplit.total }} total</span></div>
-                <div v-if="linkSplit.total" class="split-bar">
-                  <div class="split-seg s-confirmed" :style="{ flexGrow: linkSplit.confirmed }" :title="`Confirmed: ${linkSplit.confirmed}`"></div>
-                  <div class="split-seg s-pending" :style="{ flexGrow: linkSplit.pending }" :title="`Pending: ${linkSplit.pending}`"></div>
-                  <div class="split-seg s-other" :style="{ flexGrow: linkSplit.other }" :title="`Other: ${linkSplit.other}`"></div>
-                </div>
-                <div v-else class="dash-empty">No account links yet.</div>
-                <div class="split-legend">
-                  <span><i class="lg s-confirmed"></i>Confirmed · {{ linkSplit.confirmed }}</span>
-                  <span><i class="lg s-pending"></i>Pending · {{ linkSplit.pending }}</span>
-                </div>
+            <!-- Audit → vertical bars -->
+            <div v-else-if="activeChart === 'audits'" class="vbars">
+              <div class="vbar-col" v-for="b in auditBars" :key="b.key" :title="`${b.label}: ${b.n}`">
+                <span class="vbar-val">{{ b.n }}</span>
+                <div class="vbar-track"><div class="vbar-fill" :style="{ height: b.h + '%' }"></div></div>
+                <span class="vbar-cat">{{ b.label }}</span>
               </div>
-              <div class="dash-card">
-                <div class="dash-head"><h3>Disasters</h3><span class="dash-total">{{ disasterRatio.total }} total</span></div>
-                <div class="ratio-wrap">
-                  <div class="ratio-num">{{ disasterRatio.active }}<span class="ratio-den"> / {{ disasterRatio.total }}</span></div>
-                  <div class="ratio-cap">active zones</div>
-                  <div class="bar-track ratio-track"><div class="bar-fill charcoal" :style="{ width: disasterRatio.pct + '%' }"></div></div>
+            </div>
+
+            <!-- Users / Links → donut · Disasters → gauge -->
+            <div v-else class="donut-wrap">
+              <svg class="donut-svg" viewBox="0 0 42 42" role="img" :aria-label="`${currentCard?.label} ${chartTitle}`">
+                <circle class="donut-track" cx="21" cy="21" r="15.9155" fill="none" stroke="#f0f0f2" stroke-width="4.5" />
+                <circle v-if="activeChart === 'disasters'" class="donut-seg" cx="21" cy="21" r="15.9155" fill="none" stroke="#26262b" stroke-width="4.5" :stroke-dasharray="`${disasterRatio.pct} ${100 - disasterRatio.pct}`" stroke-dashoffset="25" />
+                <circle v-else v-for="s in (activeChart === 'users' ? roleDonut : linkDonut)" :key="s.key" class="donut-seg" cx="21" cy="21" r="15.9155" fill="none" :stroke="s.color" stroke-width="4.5" :stroke-dasharray="s.dash" :stroke-dashoffset="s.offset" />
+                <text x="21" y="20.5" class="donut-c-n">{{ activeChart === 'disasters' ? disasterRatio.active : currentCard?.value }}</text>
+                <text x="21" y="25.6" class="donut-c-l">{{ activeChart === 'disasters' ? 'active' : 'total' }}</text>
+              </svg>
+              <div class="donut-legend">
+                <template v-if="activeChart === 'disasters'">
+                  <div class="dleg-row"><span class="dleg-dot" style="background:#26262b"></span><span class="dleg-label">Active</span><span class="dleg-val">{{ disasterRatio.active }} · {{ disasterRatio.pct }}%</span></div>
+                  <div class="dleg-row"><span class="dleg-dot" style="background:#e4e4e8"></span><span class="dleg-label">Ended</span><span class="dleg-val">{{ disasterRatio.ended }}</span></div>
+                </template>
+                <div v-else v-for="s in (activeChart === 'users' ? roleDonut : linkDonut)" :key="s.key" class="dleg-row">
+                  <span class="dleg-dot" :style="{ background: s.color }"></span>
+                  <span class="dleg-label">{{ s.label }}</span>
+                  <span class="dleg-val">{{ s.n }} · {{ Math.round(s.pct) }}%</span>
                 </div>
               </div>
             </div>
-          </template>
+          </div>
         </section>
 
         <!-- USERS -->
@@ -745,24 +800,40 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 /* ── Table cell content (rendered into DataTable slots) ── */
 .sub { color:#9a9ba3; font-size:12px; }
 
-/* ── Dashboard (Overview) ──────────────────────────────── */
-.kpi-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(178px, 1fr)); gap:14px; }
+/* ── Dashboard (Overview) — drill-down: clickable cards → one domain chart ── */
+.kpi-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:14px; }
 .kpi-card { background:#fff; border:1px solid #e9e9ec; border-radius:14px; padding:16px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
 .kpi-label { font-size:11.5px; font-weight:600; color:#9a9ba3; text-transform:uppercase; letter-spacing:0.03em; }
 .kpi-value { font-size:32px; font-weight:700; color:#1e1e22; font-family:var(--font-mono); line-height:1.1; margin-top:8px; }
 .kpi-sub { font-size:12px; color:#8a8b93; margin-top:4px; }
+/* Clickable card (button reset) — the drill-down entry point */
+.kpi-click { display:block; width:100%; height:auto; text-align:left; cursor:pointer; font-family:inherit; }
+.kpi-click:hover { border-color:#c4c4ca; box-shadow:0 3px 10px rgba(0,0,0,0.07); }
+.kpi-click:focus-visible { outline:2px solid #26262b; outline-offset:2px; }
+.kpi-cta { display:inline-flex; align-items:center; gap:3px; margin-top:12px; font-size:11.5px; font-weight:700; color:#26262b; opacity:0; }
+.kpi-click:hover .kpi-cta, .kpi-click:focus-visible .kpi-cta { opacity:1; }
+.cta-ico { transform:rotate(-90deg); }
 
-.dash-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-@media (max-width:760px) { .dash-grid { grid-template-columns:1fr; } }
-.dash-card { background:#fff; border:1px solid #e9e9ec; border-radius:14px; padding:16px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
-.dash-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:16px; }
+/* Breadcrumb header while a chart is open */
+.crumb { display:flex; align-items:center; gap:8px; }
+.crumb-back { display:inline-flex; align-items:center; gap:3px; height:auto; padding:0; background:none; border:none; cursor:pointer; font-family:inherit; font-size:19px; font-weight:700; color:#9a9ba3; letter-spacing:-0.01em; }
+.crumb-back:hover { color:#1e1e22; }
+.crumb-ico { transform:rotate(90deg); }
+.crumb-sep { color:#c4c4ca; }
+
+/* Detail card holding one chart */
+.dash-card { background:#fff; border:1px solid #e9e9ec; border-radius:14px; padding:18px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+.chart-stage { max-width:640px; }
+.dash-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:20px; }
 .dash-head h3 { margin:0; font-size:14px; font-weight:700; color:#1e1e22; }
+.dash-sub { color:#9a9ba3; font-weight:500; }
 .dash-total { font-size:12px; color:#9a9ba3; font-family:var(--font-mono); white-space:nowrap; }
-.dash-empty { font-size:13px; color:#9a9ba3; padding:8px 0; }
 
 /* Horizontal bars — category | recessive track+fill | mono value */
 .bars { display:flex; flex-direction:column; gap:12px; }
-.bar-row { display:grid; grid-template-columns:90px 1fr 32px; align-items:center; gap:10px; }
+.bars-lg { gap:16px; }
+.bar-row { display:grid; grid-template-columns:96px 1fr 34px; align-items:center; gap:10px; }
+.bars-lg .bar-track { height:14px; }
 .bar-cat { font-size:12.5px; color:#5b5c63; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .bar-track { height:10px; background:#f0f0f2; border-radius:999px; overflow:hidden; }
 .bar-fill { height:100%; border-radius:999px; min-width:0; background:#26262b; }
@@ -770,22 +841,25 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 .bar-row:hover .bar-fill { filter:brightness(0.9); }
 .bar-val { font-size:13px; font-weight:700; color:#1e1e22; font-family:var(--font-mono); text-align:right; }
 
-/* Account-links split bar */
-.split-bar { display:flex; height:14px; border-radius:999px; overflow:hidden; background:#f0f0f2; gap:2px; }
-.split-seg { height:100%; min-width:2px; }
-.split-seg.s-confirmed { background:#26262b; }
-.split-seg.s-pending { background:#9a9ba3; }
-.split-seg.s-other { background:#d8d8dd; }
-.split-legend { display:flex; flex-wrap:wrap; gap:16px; margin-top:14px; font-size:12px; color:#5b5c63; }
-.split-legend .lg { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:5px; vertical-align:middle; }
-.lg.s-confirmed { background:#26262b; } .lg.s-pending { background:#9a9ba3; }
+/* Vertical bars (Audit by action) */
+.vbars { display:flex; align-items:flex-end; gap:22px; height:220px; padding:8px 4px 0; }
+.vbar-col { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:8px; height:100%; justify-content:flex-end; }
+.vbar-val { font-size:13px; font-weight:700; color:#1e1e22; font-family:var(--font-mono); }
+.vbar-track { width:46px; max-width:70%; flex:1; min-height:0; display:flex; align-items:flex-end; background:#f0f0f2; border-radius:8px 8px 0 0; overflow:hidden; }
+.vbar-fill { width:100%; background:#26262b; border-radius:8px 8px 0 0; min-height:0; }
+.vbar-col:hover .vbar-fill { filter:brightness(0.9); }
+.vbar-cat { font-size:12px; color:#5b5c63; font-weight:500; }
 
-/* Disasters ratio tile */
-.ratio-wrap { display:flex; flex-direction:column; gap:5px; }
-.ratio-num { font-size:34px; font-weight:700; color:#1e1e22; font-family:var(--font-mono); line-height:1; }
-.ratio-den { font-size:18px; color:#9a9ba3; }
-.ratio-cap { font-size:12px; color:#8a8b93; }
-.ratio-track { margin-top:10px; }
+/* Donut / gauge (Users, Links, Disasters) */
+.donut-wrap { display:flex; align-items:center; gap:30px; flex-wrap:wrap; }
+.donut-svg { width:170px; height:170px; flex-shrink:0; }
+.donut-c-n { fill:#1e1e22; font-family:var(--font-mono); font-weight:700; font-size:7.5px; text-anchor:middle; dominant-baseline:central; }
+.donut-c-l { fill:#9a9ba3; font-size:2.6px; text-anchor:middle; dominant-baseline:central; text-transform:uppercase; letter-spacing:0.08em; }
+.donut-legend { display:flex; flex-direction:column; gap:10px; min-width:180px; }
+.dleg-row { display:grid; grid-template-columns:14px 1fr auto; align-items:center; gap:9px; font-size:13px; }
+.dleg-dot { width:11px; height:11px; border-radius:3px; }
+.dleg-label { color:#5b5c63; font-weight:500; }
+.dleg-val { color:#1e1e22; font-weight:700; font-family:var(--font-mono); font-size:12.5px; }
 
 /* ── Pagination ────────────────────────────────────────── */
 .pager { display:flex; align-items:center; gap:8px; padding-top:2px; }
