@@ -240,6 +240,40 @@ describe('finding #4 — enum validation returns 400, not 500', () => {
   });
 });
 
+describe('gender is recorded through admin user CRUD', () => {
+  it('POST persists gender, GET lists it, PUT changes it, blank keeps it', async () => {
+    const p = phone();
+    const create = await authed('/api/admin/users', {
+      method: 'POST', body: JSON.stringify({ phone: p, name: 'Gendered', gender: 'male', role: 'citizen' }),
+    });
+    expect(create.status).toBe(201);
+    const { user } = await create.json();
+    expect(user.gender).toBe('male');
+
+    const list = await (await authed(`/api/admin/users?q=${encodeURIComponent(p)}`)).json();
+    expect(list.data.find((u) => u.id === user.id)?.gender).toBe('male');
+
+    const upd = await authed(`/api/admin/users/${user.id}`, {
+      method: 'PUT', body: JSON.stringify({ gender: 'female' }),
+    });
+    expect(upd.status).toBe(200);
+    expect((await upd.json()).data.gender).toBe('female');
+
+    // A blank gender on PUT means "keep existing" (blankable → skip), never a wipe.
+    const keep = await authed(`/api/admin/users/${user.id}`, {
+      method: 'PUT', body: JSON.stringify({ name: 'Renamed', gender: '' }),
+    });
+    expect((await keep.json()).data.gender).toBe('female');
+  });
+
+  it('rejects an invalid gender on POST (400, not 500)', async () => {
+    const res = await authed('/api/admin/users', {
+      method: 'POST', body: JSON.stringify({ phone: phone(), name: 'X', gender: 'other' }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 // ── P2: the remaining admin sub-routers + the audit-write guarantee ──────────
 // Guardrail #6 says "privileged actions are audited" — assert an audit_logs row
 // is written for each mutation (the sub-routers `await auditLog(...)`, so it is

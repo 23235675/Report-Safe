@@ -294,6 +294,7 @@ const blankable = (schema) =>
 const AdminUserCreateSchema = z.object({
   phone:           z.string().optional().nullable(),
   name:            z.string().optional().nullable(),
+  gender:          blankable(z.enum(['male', 'female'])),
   email:           z.string().optional().nullable(),
   personal_id:     z.string().optional().nullable(),
   role:            z.string().optional().nullable(),
@@ -306,6 +307,7 @@ const AdminUserCreateSchema = z.object({
 const AdminUserUpdateSchema = z.object({
   phone:           blankable(z.string()),
   name:            blankable(z.string()),
+  gender:          blankable(z.enum(['male', 'female'])),
   email:           blankable(z.string()),
   personal_id:     blankable(z.string()),
   role:            blankable(z.string()),

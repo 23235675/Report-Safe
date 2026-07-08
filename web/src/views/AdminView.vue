@@ -124,6 +124,7 @@ const TAB_CONFIG = {
       { key: 'id', label: 'ID', tdClass: 'mono', title: (r) => r.id, format: shortId },
       { key: 'phone', label: 'Phone' },
       { key: 'name', label: 'Name', format: dash },
+      { key: 'gender', label: 'Gender', format: dash },
       { key: 'email', label: 'Email', format: dash },
       { key: 'personal_id', label: 'HKID', tdClass: 'mono', format: dash },
       { key: 'role', label: 'Role' },
@@ -136,6 +137,7 @@ const TAB_CONFIG = {
       fields: [
         { key: 'phone', label: 'Phone', required: true },
         { key: 'name', label: 'Name', required: true },
+        { key: 'gender', label: 'Gender', required: false, type: 'select', options: ['male', 'female'] },
         { key: 'email', label: 'Email', required: false },
         { key: 'personal_id', label: 'HKID', required: false },
         { key: 'role', label: 'Role', required: false, type: 'select', options: ['citizen','volunteer','government','super_admin'] },

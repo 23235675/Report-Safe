@@ -49,7 +49,7 @@ module.exports = function adminUsersRouter() {
     // legacy offset/created_at path the web admin UI uses is unchanged.
     const cursorMode = req.query.after !== undefined;
     const after = blank(req.query.after);
-    const proj = { phone: 1, name: 1, email: 1, personal_id: 1, role: 1, user_type: 1, privacy_consent: 1, created_at: 1, updated_at: 1 };
+    const proj = { phone: 1, name: 1, gender: 1, email: 1, personal_id: 1, role: 1, user_type: 1, privacy_consent: 1, created_at: 1, updated_at: 1 };
     const [rows, total] = await Promise.all([
       cursorMode
         ? collection('users').find(after ? { ...filter, _id: { $gt: after } } : filter).project(proj).sort({ _id: 1 }).limit(limit).toArray()
@@ -62,7 +62,7 @@ module.exports = function adminUsersRouter() {
 
   router.post('/', validate(AdminUserCreateSchema), asyncHandler(async (req, res) => {
     const {
-      phone, name, email, personal_id, role = 'citizen',
+      phone, name, gender, email, personal_id, role = 'citizen',
       user_type = 'mobile', privacy_consent = false, password,
     } = req.valid;
     if (!phone || !name) throw new HttpError(400, 'phone and name are required');
@@ -88,6 +88,7 @@ module.exports = function adminUsersRouter() {
       refresh_token_hash: tok.refreshTokenHash, refresh_token_expires_at: tok.refreshTokenExpiresAt,
       created_at: now, updated_at: now,
     };
+    if (gender) doc.gender = gender; // 'male' | 'female' — absent when not provided
     // personal_id is OMITTED when absent so the sparse-unique index skips it
     // (storing null would collide with every other HKID-less account).
     if (pid !== null) doc.personal_id = pid;
@@ -97,13 +98,13 @@ module.exports = function adminUsersRouter() {
     await auditLog('create', 'users', id, actorLabel(req), { phone, name, role });
     res.status(201).json({
       ok: true,
-      user: { id, phone: doc.phone, name, email: doc.email, personal_id: pid, role, user_type, privacy_consent, created_at: now },
+      user: { id, phone: doc.phone, name, gender: doc.gender ?? null, email: doc.email, personal_id: pid, role, user_type, privacy_consent, created_at: now },
     });
   }));
 
   router.put('/:id', validate(AdminUserUpdateSchema), asyncHandler(async (req, res) => {
     const {
-      phone, name, email, personal_id, role, user_type, privacy_consent, password,
+      phone, name, gender, email, personal_id, role, user_type, privacy_consent, password,
     } = req.valid;
 
     // Validate the former CHECK values up front → clean 400 instead of a bad write.
@@ -132,6 +133,7 @@ module.exports = function adminUsersRouter() {
     const set = { updated_at: Date.now() };
     const phoneVal = normPhone(phone); if (phoneVal !== null) set.phone = phoneVal;
     const nameVal  = blank(name);       if (nameVal !== null) set.name = nameVal;
+    if (gender !== undefined) set.gender = gender; // blankable → 'male'|'female' or undefined (skip)
     const emailVal = blank(email);      if (emailVal !== null) set.email = emailVal;
     const pidVal   = blank(personal_id); if (pidVal !== null) set.personal_id = pidVal;
     const roleVal  = blank(role);       if (roleVal !== null) set.role = roleVal;
@@ -148,7 +150,7 @@ module.exports = function adminUsersRouter() {
     res.json({
       ok: true,
       data: {
-        id: doc._id, phone: doc.phone, name: doc.name, email: doc.email ?? null,
+        id: doc._id, phone: doc.phone, name: doc.name, gender: doc.gender ?? null, email: doc.email ?? null,
         personal_id: doc.personal_id ?? null, role: doc.role, user_type: doc.user_type,
         privacy_consent: doc.privacy_consent, updated_at: doc.updated_at,
       },
