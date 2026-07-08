@@ -11,7 +11,9 @@ import {
 } from '../api.js';
 import LoginPanel from '../components/LoginPanel.vue';
 import DataTable from '../components/DataTable.vue';
+import StatusBadge from '../components/StatusBadge.vue';
 import AppIcon from '../components/AppIcon.vue';
+import { STATUS_COLOR_VIVID } from '../iconography.js';
 import { useFocusTrap } from '../composables/useFocusTrap.js';
 
 const adminToken = ref(getAdminToken() || '');
@@ -296,6 +298,10 @@ async function loadTab(tab, q = '', off = 0) {
   }
 }
 
+// Reload whatever the active tab currently shows (overview stats, or the current
+// page + filters of a list tab) — driven by the topbar refresh button.
+function refreshCurrent() { loadTab(activeTab.value, searchQ.value, offset.value); }
+
 async function doSearch() { offset.value = 0; await loadTab(activeTab.value, searchQ.value, 0); }
 async function prevPage() { if (offset.value <= 0) return; offset.value = Math.max(0, offset.value - PAGE); await loadTab(activeTab.value, searchQ.value, offset.value); }
 async function nextPage() { const t = totals.value[activeTab.value] ?? 0; if (offset.value + PAGE >= t) return; offset.value += PAGE; await loadTab(activeTab.value, searchQ.value, offset.value); }
@@ -355,6 +361,50 @@ const currentRows = computed(() => rows.value[activeTab.value] ?? []);
 const canPage     = computed(() => !!TAB_CONFIG[activeTab.value]?.paged);
 const total       = computed(() => totals.value[activeTab.value] ?? currentRows.value.length);
 
+// ── Dashboard view-models (Overview tab) — derived from the /stats payload ──
+const kpiCards = computed(() => {
+  const s = stats.value;
+  if (!s) return [];
+  return [
+    { key: 'users',     label: 'Total Users',      value: s.users?.total ?? 0,      sub: `${s.users?.citizen ?? 0} citizens` },
+    { key: 'reports',   label: 'Status Reports',   value: s.reports?.total ?? 0,    sub: `${s.reports?.safe ?? 0} marked safe` },
+    { key: 'disasters', label: 'Active Disasters', value: s.disasters?.active ?? 0, sub: `of ${s.disasters?.total ?? 0} total` },
+    { key: 'devices',   label: 'Devices',          value: s.devices?.total ?? 0,    sub: 'push tokens' },
+    { key: 'links',     label: 'Account Links',    value: s.links?.total ?? 0,      sub: `${s.links?.confirmed ?? 0} confirmed` },
+    { key: 'audits',    label: 'Audit Events',     value: s.audits?.total ?? 0,     sub: 'logged actions' },
+  ];
+});
+
+// Scale bars to the tallest value; a non-zero count always gets a visible sliver.
+function toBars(list) {
+  const max = Math.max(1, ...list.map((r) => r.n));
+  return list.map((r) => ({ ...r, pct: r.n > 0 ? Math.max(4, Math.round((r.n / max) * 100)) : 0 }));
+}
+// Reports by status — the app's vivid status colours (shipped with text labels).
+const reportBars = computed(() => toBars([
+  { key: 'safe',      label: 'Safe',      n: stats.value?.reports?.safe      ?? 0, color: STATUS_COLOR_VIVID.safe },
+  { key: 'injured',   label: 'Injured',   n: stats.value?.reports?.injured   ?? 0, color: STATUS_COLOR_VIVID.injured },
+  { key: 'need_help', label: 'Need Help', n: stats.value?.reports?.need_help ?? 0, color: STATUS_COLOR_VIVID.need_help },
+  { key: 'missing',   label: 'Missing',   n: stats.value?.reports?.missing   ?? 0, color: STATUS_COLOR_VIVID.missing },
+]));
+// Users by role — one charcoal hue (magnitude comparison, not categorical colour).
+const roleBars = computed(() => toBars([
+  { key: 'citizen',     label: 'Citizen',     n: stats.value?.users?.citizen     ?? 0 },
+  { key: 'volunteer',   label: 'Volunteer',   n: stats.value?.users?.volunteer   ?? 0 },
+  { key: 'government',  label: 'Government',   n: stats.value?.users?.government  ?? 0 },
+  { key: 'super_admin', label: 'Super Admin', n: stats.value?.users?.super_admin ?? 0 },
+]));
+const linkSplit = computed(() => {
+  const l = stats.value?.links || {};
+  const total = l.total ?? 0, confirmed = l.confirmed ?? 0, pending = l.pending ?? 0;
+  return { total, confirmed, pending, other: Math.max(0, total - confirmed - pending) };
+});
+const disasterRatio = computed(() => {
+  const d = stats.value?.disasters || {};
+  const total = d.total ?? 0, active = d.active ?? 0;
+  return { total, active, pct: total > 0 ? Math.round((active / total) * 100) : 0 };
+});
+
 const nowStr = ref('');
 let clockTimer = null;
 function tickClock() {
@@ -386,7 +436,6 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
   <div v-else class="shell">
     <header class="topbar">
       <div class="topbar-l">
-        <span class="topbar-crest">報</span>
         <span class="topbar-name">Report Safe</span>
         <span class="topbar-div">/</span>
         <span class="topbar-sub">Admin Console</span>
@@ -394,6 +443,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
       <div class="topbar-r">
         <span class="topbar-ts">{{ nowStr }}</span>
         <span class="topbar-user">{{ adminUser?.name || adminUser?.phone }}</span>
+        <button class="topbar-refresh" @click="refreshCurrent" :disabled="loading" title="Refresh" aria-label="Refresh current view"><AppIcon name="refresh" :size="16" /></button>
         <button class="topbar-logout" @click="logout">Sign out</button>
       </div>
     </header>
@@ -408,21 +458,68 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 
         <!-- OVERVIEW -->
         <section v-if="activeTab === 'overview'">
-          <h2 class="page-title">System Overview</h2>
+          <div class="toolbar"><h2 class="page-title">System Overview</h2></div>
           <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!stats" class="state-msg">No data available.</div>
-          <div v-else class="stat-grid">
-            <div class="stat-card" v-for="(val, key) in stats" :key="key">
-              <div class="stat-label">{{ key.replace(/_/g, ' ') }}</div>
-              <div class="stat-val" v-if="typeof val === 'object'">
-                <div v-for="(v2, k2) in val" :key="k2" class="stat-sub">
-                  <span>{{ k2.replace(/_/g, ' ') }}</span>
-                  <span class="stat-num">{{ v2 }}</span>
+          <template v-else>
+            <!-- KPI tiles -->
+            <div class="kpi-grid">
+              <div class="kpi-card" v-for="k in kpiCards" :key="k.key">
+                <div class="kpi-label">{{ k.label }}</div>
+                <div class="kpi-value">{{ k.value }}</div>
+                <div class="kpi-sub">{{ k.sub }}</div>
+              </div>
+            </div>
+
+            <!-- Bar charts: reports by status (status colours) + users by role (charcoal) -->
+            <div class="dash-grid">
+              <div class="dash-card">
+                <div class="dash-head"><h3>Reports by status</h3><span class="dash-total">{{ stats.reports.total }} total</span></div>
+                <div class="bars">
+                  <div class="bar-row" v-for="b in reportBars" :key="b.key" :title="`${b.label}: ${b.n}`">
+                    <span class="bar-cat">{{ b.label }}</span>
+                    <div class="bar-track"><div class="bar-fill" :style="{ width: b.pct + '%', background: b.color }"></div></div>
+                    <span class="bar-val">{{ b.n }}</span>
+                  </div>
                 </div>
               </div>
-              <div class="stat-val stat-num" v-else>{{ val }}</div>
+              <div class="dash-card">
+                <div class="dash-head"><h3>Users by role</h3><span class="dash-total">{{ stats.users.total }} total</span></div>
+                <div class="bars">
+                  <div class="bar-row" v-for="b in roleBars" :key="b.key" :title="`${b.label}: ${b.n}`">
+                    <span class="bar-cat">{{ b.label }}</span>
+                    <div class="bar-track"><div class="bar-fill charcoal" :style="{ width: b.pct + '%' }"></div></div>
+                    <span class="bar-val">{{ b.n }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+
+            <!-- Health strip: account links split + disasters ratio -->
+            <div class="dash-grid">
+              <div class="dash-card">
+                <div class="dash-head"><h3>Account links</h3><span class="dash-total">{{ linkSplit.total }} total</span></div>
+                <div v-if="linkSplit.total" class="split-bar">
+                  <div class="split-seg s-confirmed" :style="{ flexGrow: linkSplit.confirmed }" :title="`Confirmed: ${linkSplit.confirmed}`"></div>
+                  <div class="split-seg s-pending" :style="{ flexGrow: linkSplit.pending }" :title="`Pending: ${linkSplit.pending}`"></div>
+                  <div class="split-seg s-other" :style="{ flexGrow: linkSplit.other }" :title="`Other: ${linkSplit.other}`"></div>
+                </div>
+                <div v-else class="dash-empty">No account links yet.</div>
+                <div class="split-legend">
+                  <span><i class="lg s-confirmed"></i>Confirmed · {{ linkSplit.confirmed }}</span>
+                  <span><i class="lg s-pending"></i>Pending · {{ linkSplit.pending }}</span>
+                </div>
+              </div>
+              <div class="dash-card">
+                <div class="dash-head"><h3>Disasters</h3><span class="dash-total">{{ disasterRatio.total }} total</span></div>
+                <div class="ratio-wrap">
+                  <div class="ratio-num">{{ disasterRatio.active }}<span class="ratio-den"> / {{ disasterRatio.total }}</span></div>
+                  <div class="ratio-cap">active zones</div>
+                  <div class="bar-track ratio-track"><div class="bar-fill charcoal" :style="{ width: disasterRatio.pct + '%' }"></div></div>
+                </div>
+              </div>
+            </div>
+          </template>
         </section>
 
         <!-- USERS -->
@@ -464,7 +561,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
           <DataTable v-else :columns="TAB_CONFIG.reports.columns" :rows="currentRows">
             <template #cell-name="{ row }">{{ row.user_name || row.name }}<span v-if="row.user_name && row.name && row.user_name !== row.name" class="sub"> ({{ row.name }})</span></template>
-            <template #cell-status="{ row }"><span class="badge">{{ row.status }}</span></template>
+            <template #cell-status="{ row }"><StatusBadge :status="row.status" :bare="true" :icon="false" /></template>
             <template #cell-linked="{ row }">{{ row.user_name || '—' }}<br v-if="row.user_name" /><span class="sub">{{ row.user_phone || '' }}</span></template>
             <template #cell-actions="{ row }"><button class="btn btn-xs" @click="openEdit('reports', row)">Edit</button><button class="btn btn-xs" @click="confirmDelete('reports', row)">Del</button></template>
           </DataTable>
@@ -600,6 +697,9 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 .topbar-r { display:flex; align-items:center; gap:14px; }
 .topbar-ts { font-size:12px; color:#9a9ba3; font-family:var(--font-mono); }
 .topbar-user { font-size:13px; color:#5b5c63; font-weight:500; }
+.topbar-refresh { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; padding:0; background:#fff; border:1px solid #dedee2; color:#5b5c63; cursor:pointer; font-family:inherit; border-radius:8px; }
+.topbar-refresh:hover:not(:disabled) { border-color:#c4c4ca; color:#1e1e22; background:#f5f5f6; }
+.topbar-refresh:disabled { opacity:.5; cursor:not-allowed; }
 .topbar-logout { padding:6px 12px; background:#fff; border:1px solid #dedee2; color:#5b5c63; font-size:12.5px; font-weight:600; cursor:pointer; font-family:inherit; border-radius:8px; height:auto; }
 .topbar-logout:hover { border-color:#c4c4ca; color:#1e1e22; background:#f5f5f6; }
 
@@ -644,17 +744,48 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 
 /* ── Table cell content (rendered into DataTable slots) ── */
 .sub { color:#9a9ba3; font-size:12px; }
-.badge { display:inline-block; padding:3px 10px; border:1px solid #dedee2; background:#f7f7f8; font-size:12px; color:#3a3a41; font-weight:600; border-radius:999px; }
 
-/* ── Stat cards ────────────────────────────────────────── */
-.stat-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:14px; }
-.stat-card { border:1px solid #e9e9ec; background:#fff; padding:18px 20px; border-radius:14px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
-.stat-label { font-size:12px; font-weight:600; color:#9a9ba3; margin-bottom:10px; text-transform:capitalize; letter-spacing:0.02em; }
-.stat-sub { display:flex; justify-content:space-between; font-size:13px; color:#5b5c63; padding:5px 0; border-top:1px solid #f0f0f2; }
-.stat-sub:first-of-type { border-top:none; }
-.stat-val.stat-num { font-size:30px; line-height:1.1; }
-.stat-num { font-weight:700; color:#1e1e22; font-family:var(--font-mono); }
-.stat-sub .stat-num { font-size:14px; }
+/* ── Dashboard (Overview) ──────────────────────────────── */
+.kpi-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(178px, 1fr)); gap:14px; }
+.kpi-card { background:#fff; border:1px solid #e9e9ec; border-radius:14px; padding:16px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+.kpi-label { font-size:11.5px; font-weight:600; color:#9a9ba3; text-transform:uppercase; letter-spacing:0.03em; }
+.kpi-value { font-size:32px; font-weight:700; color:#1e1e22; font-family:var(--font-mono); line-height:1.1; margin-top:8px; }
+.kpi-sub { font-size:12px; color:#8a8b93; margin-top:4px; }
+
+.dash-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+@media (max-width:760px) { .dash-grid { grid-template-columns:1fr; } }
+.dash-card { background:#fff; border:1px solid #e9e9ec; border-radius:14px; padding:16px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+.dash-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:16px; }
+.dash-head h3 { margin:0; font-size:14px; font-weight:700; color:#1e1e22; }
+.dash-total { font-size:12px; color:#9a9ba3; font-family:var(--font-mono); white-space:nowrap; }
+.dash-empty { font-size:13px; color:#9a9ba3; padding:8px 0; }
+
+/* Horizontal bars — category | recessive track+fill | mono value */
+.bars { display:flex; flex-direction:column; gap:12px; }
+.bar-row { display:grid; grid-template-columns:90px 1fr 32px; align-items:center; gap:10px; }
+.bar-cat { font-size:12.5px; color:#5b5c63; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bar-track { height:10px; background:#f0f0f2; border-radius:999px; overflow:hidden; }
+.bar-fill { height:100%; border-radius:999px; min-width:0; background:#26262b; }
+.bar-fill.charcoal { background:#26262b; }
+.bar-row:hover .bar-fill { filter:brightness(0.9); }
+.bar-val { font-size:13px; font-weight:700; color:#1e1e22; font-family:var(--font-mono); text-align:right; }
+
+/* Account-links split bar */
+.split-bar { display:flex; height:14px; border-radius:999px; overflow:hidden; background:#f0f0f2; gap:2px; }
+.split-seg { height:100%; min-width:2px; }
+.split-seg.s-confirmed { background:#26262b; }
+.split-seg.s-pending { background:#9a9ba3; }
+.split-seg.s-other { background:#d8d8dd; }
+.split-legend { display:flex; flex-wrap:wrap; gap:16px; margin-top:14px; font-size:12px; color:#5b5c63; }
+.split-legend .lg { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:5px; vertical-align:middle; }
+.lg.s-confirmed { background:#26262b; } .lg.s-pending { background:#9a9ba3; }
+
+/* Disasters ratio tile */
+.ratio-wrap { display:flex; flex-direction:column; gap:5px; }
+.ratio-num { font-size:34px; font-weight:700; color:#1e1e22; font-family:var(--font-mono); line-height:1; }
+.ratio-den { font-size:18px; color:#9a9ba3; }
+.ratio-cap { font-size:12px; color:#8a8b93; }
+.ratio-track { margin-top:10px; }
 
 /* ── Pagination ────────────────────────────────────────── */
 .pager { display:flex; align-items:center; gap:8px; padding-top:2px; }

@@ -74,7 +74,9 @@ Both share the same centered layout:
 - Footer note
 
 **AdminView (`/admin`):**
-- Fully monochrome — **no status colours** (charcoal accent only). Status badges are grey pills (`border-radius:999px`). Active sidebar nav = filled charcoal `#26262b` pill.
+- **Mostly monochrome** (charcoal `#26262b` accent; active sidebar nav = filled charcoal pill). Two *deliberate* status-colour exceptions: the **Reports** tab status is **bare vivid-coloured text** (`StatusBadge :bare` + `STATUS_COLOR_VIVID`, no pill/box), and the Overview's *Reports by status* bars use the same hues. Everything else stays charcoal/grey.
+- **Overview dashboard** (`.kpi-grid` + `.dash-grid`, from `GET /api/admin/stats`): 6 KPI tiles + horizontal bar charts (*Reports by status* = status colours; *Users by role* = single charcoal hue) + an Account-links split bar + a Disasters active/total ratio. (Replaced the old raw `stat-card` key/value dump.)
+- **Topbar** (the tools bar): no `報` crest; the right cluster has a **refresh** icon button (`refreshCurrent` → reloads the active tab) beside Sign out.
 - **Data tables** (`DataTable.vue`): rounded `14px` white card, sticky **UPPERCASE muted** header on `#fafafb`, airy `13×16px` cells, row hover `#f7f7f9`, right-aligned row actions (`.btn-xs` ghost buttons).
 - **Toolbar / filter / search / add** (NERIS pattern): page title + a charcoal **`+ New …`** button (`.btn-dark`, `add` icon); a **Search** field grouped with a `.btn` (`search` icon); filters live in a white rounded **filter card** (`.filter-row`) with inline `120px` selects (`.flt`, `width:auto`) + an outline **Clear**. Buttons use `AppIcon` (`add`/`search`/`refresh`) and explicit heights (global `button{height:40px}` is overridden — `.btn`=38px, `.btn-xs`=30px).
 - Scoped CSS in `AdminView.vue`'s `<style scoped>`.
