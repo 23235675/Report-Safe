@@ -53,17 +53,17 @@ az appservice plan update --name report-safe-plan-sea --resource-group 23235675 
 
 ## 4. Web UI design system (AdminView + GovView)
 
-Both dashboards use a **Word-document aesthetic** — grey toolbars, white content, no vivid colors in the chrome.
+Both dashboards use a **modern grey/white "SaaS console" aesthetic** (modelled on the NERIS fire-data dashboards) — white cards on a light `#f5f5f6` canvas, **hairline** borders, airy spacing, soft shadows, rounded corners (cards `12–16px`, controls/list-items `8px`, badges/pills `999px`). The single accent is a **charcoal `#26262b`** (hover `#131316`): it fills the primary button, the active tab / sidebar nav / map-scope toggle / filter chip (segmented-control style + white text). Multi-line content rows (triage, disasters) use a **soft grey** selection instead (light `#f5f5f6` fill + a `#26262b` left rail via `inset` box-shadow) so status colours stay readable. *(This evolved the earlier flat-grey `#555` look into the lighter, more spacious NERIS style, per an explicit design decision — do not revert to `#555`/`#d0d0d0`/`#e8e8e8`.)*
 
 **Fonts:** `var(--font-ui)` = Plus Jakarta Sans; `var(--font-mono)` = IBM Plex Mono (defined in `web/src/assets/main.css`).
 
-**Colour palette (admin + gov chrome):**
-- Topbar / table headers: `#e8e8e8`
-- Sidebar / navigation tabs: `#f0f0f0`
-- Content background: `#fff`
-- Borders: `#d0d0d0`
-- Text: `#222` (primary), `#555` (secondary), `#888` (muted)
-- Login background: `#f0f0f0`
+**Colour palette (admin + gov chrome) — neutral grey/white:**
+- App canvas: `#f5f5f6` · Cards: `#fff` · Chrome bars (admin topbar + sidebar, gov panes): grey `#ebecef`, hairline `#d9dbe0`
+- Table header / subtle fills: `#fafafb` · Row hover: `#f7f7f9`
+- Hairline borders: `#e9e9ec` (separators) · `#dedee2` (inputs/cards)
+- Charcoal accent (primary btn / active nav / toggle / chip): `#26262b`, hover `#131316`
+- Text: `#1e1e22` (primary), `#5b5c63` (secondary), `#8a8b93` / `#9a9ba3` (muted)
+- Login / canvas background: `#f5f5f6`
 
 **Login screens (both views):**
 Both share the same centered layout:
@@ -74,14 +74,18 @@ Both share the same centered layout:
 - Footer note
 
 **AdminView (`/admin`):**
-- Fully monochrome — **no status colours**. Status badges are rectangular with `border-radius:0` (sharp corners), `border:1px solid #d0d0d0`.
-- Scoped CSS in `AdminView.vue` lines ~462–575.
+- Fully monochrome — **no status colours** (charcoal accent only). Status badges are grey pills (`border-radius:999px`). Active sidebar nav = filled charcoal `#26262b` pill.
+- **Data tables** (`DataTable.vue`): rounded `14px` white card, sticky **UPPERCASE muted** header on `#fafafb`, airy `13×16px` cells, row hover `#f7f7f9`, right-aligned row actions (`.btn-xs` ghost buttons).
+- **Toolbar / filter / search / add** (NERIS pattern): page title + a charcoal **`+ New …`** button (`.btn-dark`, `add` icon); a **Search** field grouped with a `.btn` (`search` icon); filters live in a white rounded **filter card** (`.filter-row`) with inline `120px` selects (`.flt`, `width:auto`) + an outline **Clear**. Buttons use `AppIcon` (`add`/`search`/`refresh`) and explicit heights (global `button{height:40px}` is overridden — `.btn`=38px, `.btn-xs`=30px).
+- Scoped CSS in `AdminView.vue`'s `<style scoped>`.
 
 **GovView (`/gov`):**
-- Same grey/white chrome but **keeps vivid status colours** from `STATUS_COLOR_VIVID` in `iconography.js`.
-- Proportion ring colours: `.clear-green { background:#16a34a }`, `.clear-red { background:#dc2626 }`.
-- Status overview shows REPLIED / UNACCOUNTED colours.
-- Scoped CSS in `GovView.vue` lines ~752–914.
+- All three tool panels (left routing, right inspector, bottom dock) share a **uniform light grey `#ebecef`** surface (panes, header strips, nav tabs, scroller, action dock, analytics dock — all `#ebecef`) with `#d9dbe0` hairline borders; white content **cards** (triage rows, disaster rows) pop on the grey. Charcoal `#26262b` is the active/accent.
+- **Keeps vivid status colours** from `STATUS_COLOR_VIVID` — triage rows, P1/P2/P3 dividers (`text-red/orange/yellow`), medical alert, critical/warn activity-log lines. Proportion ring: `.clear-green #16a34a` / `.clear-red #dc2626`.
+- **READY badge** (`.pane-badge-status`) is green (`#e6f6ec`/`#1a7a3f`) with a pulsing dot (`@keyframes readyPulse`, disabled under `prefers-reduced-motion`); the loading `.scanning` state is amber, no pulse.
+- **Disaster cards** mirror the **triage row** layout: mono rank number + a disaster-type icon medallion (`DISASTER_ICON` via `AppIcon`) + type / `SEV n` badge / radius·description.
+- **Analytics dock** (`CommandStats.vue`): **monochrome-grey** status-distribution **bar chart** showing **PER DISASTER (top) + ALL DATA (under)** as two stacked mini charts with a shared status-label row (bars `#7a7d85`, never status hues) + the risk radar (charcoal `#26262b`); each has a `+` **maximize** overlay (**white** modal; grouped current-vs-all-data grey bars for the distribution) and the dock has a top **collapse rail**.
+- Scoped CSS in `GovView.vue`'s `<style scoped>`; shared gov widgets in `components/gov/*` + `.triage-row` in `main.css`.
 
 **Other views** (Home, Status, Account, Shelters, Report, Family) use the app's standard Pine design tokens from `main.css` — don't apply the grey/white overrides to them.
 
@@ -178,5 +182,5 @@ All enforced in `lib/authGuard.js`.
 - This codebase already went through a remediation pass and is intentionally lean. **Prefer surgical, verified edits over rewrites.** Don't "tidy" the destructure-to-omit helpers, the two-phase PDPO erasure, the box+haversine double filter, the separate ingest limiter, or the always-false mesh stub — they exist on purpose.
 - After any server change, run `npm test` (green = 20 files / 159 tests) before considering it done.
 - It is deployed (Azure). Treat behaviour changes as production changes: keep schemas, routes, and the guardrails above intact unless explicitly asked to change them.
-- **For UI changes to AdminView/GovView:** follow the grey/white Word-document design. AdminView is monochrome; GovView keeps vivid status colours. Both use `var(--font-ui)` and `var(--font-mono)`. All elements use `border-radius:0` or `border-radius:2px` max — no rounded corners.
+- **For UI changes to AdminView/GovView:** follow the grey/white soft-console design (§4). AdminView is monochrome; GovView keeps vivid status colours. Both use `var(--font-ui)` and `var(--font-mono)`. Rounded corners: cards `12–16px`, controls/list-items `8px`, small badges `6px`/pill. Active tab / nav / toggle / chip = filled `#555` + white text; selected content rows = soft grey (light fill + left rail).
 - **To deploy after changes:** build web (`cd web && npx vite build`), create zip with 7-Zip (exclude node_modules, **include `shared/`**), `az webapp deploy --type zip`. Don't use PowerShell `Compress-Archive`.

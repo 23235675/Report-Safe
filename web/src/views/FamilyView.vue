@@ -313,6 +313,10 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* Section headers ("Loved Ones", "Search by name or phone", …) read heavier
+   and darker on this page than the app-wide muted label. */
+.section-label { font-weight: 800; font-size: 13px; color: var(--text-hi); letter-spacing: 0.02em; }
+
 .search-form { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-4); }
 .search-field {
   flex: 1; display: flex; align-items: center; gap: var(--sp-2);

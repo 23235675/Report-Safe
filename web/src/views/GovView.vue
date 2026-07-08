@@ -4,13 +4,13 @@ import { getRescueView, getDisasters, getShelters, createIncident, getActiveInci
 import { GOV_TOKEN_KEY } from '../router/index.js';
 import { useSocket } from '../socket.js';
 import LeafletMap from '../components/LeafletMap.vue';
-import StatusIcon from '../components/StatusIcon.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 import GovLogin from '../components/gov/GovLogin.vue';
 import TriagePanel from '../components/gov/TriagePanel.vue';
 import CommandStats from '../components/gov/CommandStats.vue';
 import DispatchPanel from '../components/gov/DispatchPanel.vue';
-import { STATUS_SHORT } from '../iconography.js';
+import AppIcon from '../components/AppIcon.vue';
+import { STATUS_SHORT, DISASTER_ICON, severityInfo, genderIcon } from '../iconography.js';
 
 // ── Auth ──────────────────────────────────────────────────────────
 const token     = ref(sessionStorage.getItem(GOV_TOKEN_KEY) || '');
@@ -334,6 +334,21 @@ onUnmounted(() => {
 // ── Display helpers ───────────────────────────────────────────────
 const STATUS_LABEL = STATUS_SHORT;
 
+// Disaster cards mirror the triage style — the rail + medallion + SEV text are
+// coloured by severity (the disaster analog of a triage priority/status colour).
+function disasterColor(d) {
+  return d?.severity ? severityInfo(d.severity).colorVar : '#8a8b93';
+}
+
+// DISASTERS-tab search — matches a disaster's type or description.
+const disasterSearch = ref('');
+const filteredDisasters = computed(() => {
+  const q = disasterSearch.value.trim().toLowerCase();
+  if (!q) return disasters.value;
+  return disasters.value.filter((d) =>
+    (d.type || '').toLowerCase().includes(q) || (d.description || '').toLowerCase().includes(q));
+});
+
 function relativeTime(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
   if (m < 1)  return 'just now';
@@ -356,6 +371,12 @@ function relativeTime(ts) {
           <div class="pane-header-strip">
             <span class="pane-title">ROUTING CONTROL</span>
             <div class="pane-badge-status" :class="{ scanning: loading }">{{ loading ? 'FETCHING' : 'READY' }}</div>
+          </div>
+
+          <div class="routing-summary">
+            <div class="rsum-item"><span class="rsum-lbl">Incidents</span><span class="rsum-num">{{ incidents.length }}</span></div>
+            <div class="rsum-item"><span class="rsum-lbl">Disasters</span><span class="rsum-num">{{ disasters.length }}</span></div>
+            <div class="rsum-item"><span class="rsum-lbl">Affected</span><span class="rsum-num">{{ cmdStatsGlobal.total }}</span></div>
           </div>
 
           <div class="pane-navigation-tabs">
@@ -383,18 +404,30 @@ function relativeTime(ts) {
 
             <!-- DISASTERS -->
             <div v-if="activeSection === 'incidents'" class="sub-wrapper">
+              <div class="gov-search">
+                <AppIcon name="search" :size="14" />
+                <input v-model="disasterSearch" type="search" placeholder="Search disaster name…" aria-label="Search disasters by name" />
+              </div>
               <div
-                v-for="d in disasters" :key="d.id"
+                v-for="(d, i) in filteredDisasters" :key="d.id"
                 class="cyber-list-row" :class="{ active: activeDisaster?.id === d.id }"
+                :style="{ borderLeftColor: activeDisaster?.id === d.id ? '#26262b' : disasterColor(d) }"
                 role="button" tabindex="0"
                 @click="selectDisaster(d)"
                 @keydown.enter.prevent="selectDisaster(d)"
                 @keydown.space.prevent="selectDisaster(d)"
               >
-                <div class="row-flex-meta"><strong>{{ d.type }}</strong><span>{{ d.radius_km }} KM</span></div>
-                <div class="row-flex-desc">{{ d.description }}</div>
+                <div class="disaster-rank">{{ String(i + 1).padStart(2, '0') }}</div>
+                <span class="disaster-ico"><AppIcon :name="DISASTER_ICON[d.type] || 'warning'" :size="16" /></span>
+                <div class="disaster-body">
+                  <div class="disaster-title-row">
+                    <strong>{{ d.type }}</strong>
+                    <span v-if="d.severity" class="disaster-sev" :style="{ color: disasterColor(d) }">SEV {{ d.severity }}</span>
+                  </div>
+                  <div class="row-flex-desc">{{ d.radius_km }} KM<template v-if="d.description"> · {{ d.description }}</template></div>
+                </div>
               </div>
-              <div v-if="disasters.length === 0" class="cyber-empty-notice">No active disasters.</div>
+              <div v-if="filteredDisasters.length === 0" class="cyber-empty-notice">No active disasters.</div>
             </div>
 
             <!-- DISPATCH (CFR) — v-show so the form keeps its entries across tab switches -->
@@ -449,10 +482,10 @@ function relativeTime(ts) {
             </div>
             <div class="inspector-profile-card">
               <div class="profile-summary-row">
-                <StatusIcon :status="selectedPerson.status" :size="28" :vivid="true" />
+                <span class="person-ico"><AppIcon :name="genderIcon(selectedPerson.gender)" :size="18" /></span>
                 <div>
                   <div class="name-header-text">{{ selectedPerson.name }}</div>
-                  <StatusBadge :status="selectedPerson.status" :vivid="true" />
+                  <StatusBadge :status="selectedPerson.status" :bare="true" :icon="false" />
                 </div>
               </div>
               <div class="profile-technical-sheet">
@@ -533,44 +566,53 @@ function relativeTime(ts) {
 * { box-sizing:border-box; transition:none !important; }
 
 /* ── Shell ──────────────────────────────────────────────── */
-.dashboard-root-dark { display:flex; flex-direction:column; height:100%; background:#fff; color:#222; font-family:var(--font-ui); overflow:hidden; box-sizing:border-box; padding:0; gap:0; }
+.dashboard-root-dark { display:flex; flex-direction:column; height:100%; background:#f5f5f6; color:#1e1e22; font-family:var(--font-ui); overflow:hidden; box-sizing:border-box; padding:0; gap:0; }
 
 /* ── Grid ──────────────────────────────────────────────── */
 .dashboard-grid-workspace { display:grid; grid-template-columns:310px 1fr 320px; gap:0; flex:1; min-height:0; }
-.pane-column { background:#fff; border:none; border-right:1px solid #d0d0d0; display:flex; flex-direction:column; overflow:hidden; border-radius:0; }
-.pane-column:last-child { border-right:none; border-left:1px solid #d0d0d0; }
-.pane-header-strip { padding:10px 12px; background:#e8e8e8; border-bottom:1px solid #d0d0d0; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
-.pane-title { font-size:12px; font-weight:700; color:#333; }
+.pane-column { background:#ebecef; border:none; border-right:1px solid #d9dbe0; display:flex; flex-direction:column; overflow:hidden; border-radius:0; }
+.pane-column:last-child { border-right:none; border-left:1px solid #d9dbe0; }
+.pane-header-strip { padding:12px 14px; background:#ebecef; border-bottom:1px solid #d9dbe0; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
+.pane-title { font-size:11px; font-weight:700; color:#8a8b93; letter-spacing:0.05em; text-transform:uppercase; }
+
+/* ── Routing-control totals row ─────────────────────────── */
+.routing-summary { display:flex; background:#ebecef; border-bottom:1px solid #d9dbe0; flex-shrink:0; }
+.rsum-item { flex:1; min-width:0; display:flex; flex-direction:column; padding:8px 12px 10px; border-right:1px solid #d9dbe0; }
+.rsum-item:last-child { border-right:none; }
+.rsum-lbl { font-size:11px; font-weight:600; color:#8a8b93; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rsum-num { font-size:30px; font-weight:700; color:#1e1e22; font-family:var(--font-mono); line-height:1; text-align:center; margin-top:6px; }
 
 /* ── Navigation ────────────────────────────────────────── */
-.pane-navigation-tabs { display:flex; background:#f0f0f0; border-bottom:1px solid #d0d0d0; flex-shrink:0; }
-.pane-navigation-tabs button { flex:1; padding:8px 2px; font-size:12px; font-weight:600; background:transparent; border:none; border-bottom:2px solid transparent; color:#666; cursor:pointer; font-family:inherit; }
-.pane-navigation-tabs button.active { color:#222; border-bottom-color:#555; background:#fff; }
+.pane-navigation-tabs { display:flex; gap:4px; background:#ebecef; border-bottom:1px solid #d9dbe0; flex-shrink:0; padding:6px; }
+.pane-navigation-tabs button { flex:1; padding:7px 2px; font-size:12px; font-weight:600; background:transparent; border:none; color:#666; cursor:pointer; font-family:inherit; border-radius:8px; }
+.pane-navigation-tabs button:hover { background:#ececee; color:#1e1e22; }
+.pane-navigation-tabs button.active { color:#fff; background:#26262b; }
 
-.pane-inner-scroller { flex:1; overflow-y:auto; padding:10px; }
+.pane-inner-scroller { flex:1; overflow-y:auto; padding:12px; background:#ebecef; }
 .sub-wrapper { display:flex; flex-direction:column; gap:8px; }
 .cyber-empty-notice { padding:16px; text-align:center; color:#666; font-size:13px; }
 
 /* ── Map ───────────────────────────────────────────────── */
 .center-workspace-pane { display:flex; flex-direction:column; }
-.gis-map-viewport { flex:1; min-height:0; position:relative; background:#e8e8e8; }
-.map-scope-toggle { position:absolute; top:10px; right:10px; z-index:1000; display:flex; background:#fff; border:1px solid #d0d0d0; overflow:hidden; border-radius:2px; }
+.gis-map-viewport { flex:1; min-height:0; position:relative; background:#ececed; }
+.map-scope-toggle { position:absolute; top:10px; right:10px; z-index:1000; display:flex; background:#fff; border:1px solid #d9dbe0; overflow:hidden; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.12); }
 .map-scope-toggle button { font-size:12px; font-weight:600; padding:6px 10px; background:#fff; border:none; color:#555; cursor:pointer; font-family:inherit; }
-.map-scope-toggle button.active { background:#555; color:#fff; }
+.map-scope-toggle button.active { background:#26262b; color:#fff; }
 
 /* ── Inspector ─────────────────────────────────────────── */
 .pane-sub-segment { display:flex; flex-direction:column; flex-shrink:0; }
 .variable-growth-fill { flex:1; min-height:0; }
-.separation-border { border-bottom:1px solid #d0d0d0; }
+.separation-border { border-bottom:1px solid #d9dbe0; }
 .default-pad { padding-bottom:10px; }
 .inspector-profile-card { padding:12px; display:flex; flex-direction:column; gap:8px; }
-.profile-summary-row { display:flex; gap:8px; align-items:center; }
+.profile-summary-row { display:flex; gap:10px; align-items:center; }
+.person-ico { display:inline-grid; place-items:center; width:32px; height:32px; border-radius:8px; background:#f0f0f2; color:#5b5c63; flex-shrink:0; }
 .name-header-text { font-size:14px; font-weight:700; color:#222; }
 .profile-technical-sheet { display:flex; flex-direction:column; gap:5px; }
 .sheet-data-node { display:flex; justify-content:space-between; font-size:13px; gap:8px; }
 .sheet-data-node span { color:#666; }
 .sheet-data-node strong { color:#222; text-align:right; }
-.medical-directive-alert { background:#fff; border:1px solid #d0d0d0; padding:6px; margin-top:4px; border-radius:2px; }
+.medical-directive-alert { background:#fff; border:1px solid #d9dbe0; padding:8px; margin-top:4px; border-radius:8px; }
 .directive-lbl { font-size:12px; font-weight:700; color:#333; display:block; }
 .directive-body { font-size:13px; color:#222; margin:2px 0 0 0; }
 
@@ -584,18 +626,18 @@ function relativeTime(ts) {
 
 /* ── Facilities ────────────────────────────────────────── */
 .facility-list { max-height:110px; overflow-y:auto; }
-.facility-row { display:flex; align-items:center; gap:8px; padding:5px 12px; border-bottom:1px solid #eee; font-size:13px; cursor:pointer; }
-.facility-row:hover { background:#f9f9f9; }
+.facility-row { display:flex; align-items:center; gap:8px; padding:5px 12px; border-bottom:1px solid #d9dbe0; font-size:13px; cursor:pointer; }
+.facility-row:hover { background:#e2e3e7; }
 .facility-name { color:#222; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .facility-meta { color:#666; font-size:12px; flex-shrink:0; }
 
 /* ── Log ───────────────────────────────────────────────── */
-.live-stream-logger { flex:1; overflow-y:auto; padding:8px 12px; display:flex; flex-direction:column; gap:5px; background:#fff; }
-.stream-line-node { font-size:12px; line-height:1.3; display:flex; gap:6px; border-bottom:1px solid #eee; padding-bottom:2px; }
+.live-stream-logger { flex:1; overflow-y:auto; padding:8px 12px; display:flex; flex-direction:column; gap:5px; background:transparent; }
+.stream-line-node { font-size:12px; line-height:1.3; display:flex; gap:6px; border-bottom:1px solid #d9dbe0; padding-bottom:2px; }
 .line-timestamp { color:#666; flex-shrink:0; font-family:var(--font-mono); }
 .line-message-body { color:#222; }
-.stream-line-node.critical .line-message-body { color:#222; font-weight:700; }
-.stream-line-node.warn .line-message-body { color:#555; font-weight:600; }
+.stream-line-node.critical .line-message-body { color:#c0392b; font-weight:700; }
+.stream-line-node.warn .line-message-body { color:#9a5f00; font-weight:600; }
 .stream-empty-prompt { color:#666; font-size:12px; }
 
 /* ── Forms (LAYERS tab; the dispatch form lives in DispatchPanel) ── */
@@ -605,16 +647,27 @@ function relativeTime(ts) {
 .cyber-slider { width:100%; }
 .topology-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
 .topology-checkbox-item { display:flex; align-items:center; gap:5px; font-size:12px; color:#555; cursor:pointer; }
-.topology-checkbox-item input[type="checkbox"] { accent-color:#555; }
-.pane-bottom-action-dock { padding:8px; border-top:1px solid #d0d0d0; background:#f5f5f5; }
-.btn-system-abort { width:100%; padding:6px; color:#555; background:transparent; border:1px solid #d0d0d0; font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; border-radius:2px; }
+.topology-checkbox-item input[type="checkbox"] { accent-color:#26262b; }
+.pane-bottom-action-dock { padding:10px; border-top:1px solid #d9dbe0; background:#ebecef; }
+.btn-system-abort { width:100%; padding:8px; color:#555; background:transparent; border:1px solid #d9dbe0; font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; border-radius:8px; }
 .btn-system-abort:hover { color:#222; background:#e8e8e8; border-color:#999; }
-.pane-badge-status { background:#eee; color:#555; font-size:11px; padding:1px 6px; font-weight:600; border-radius:2px; }
-.pane-badge-status.scanning { color:#555; }
-.cyber-list-row { padding:6px; border-bottom:1px solid #d0d0d0; cursor:pointer; background:#fff; }
-.cyber-list-row.active { border-left:2px solid #555; background:#f9f9f9; }
+.pane-badge-status { display:inline-flex; align-items:center; gap:6px; background:#e6f6ec; color:#1a7a3f; font-size:11px; padding:3px 10px 3px 8px; font-weight:700; border-radius:999px; }
+.pane-badge-status::before { content:''; width:6px; height:6px; border-radius:50%; background:#1a7a3f; flex-shrink:0; animation:readyPulse 1.6s ease-in-out infinite; }
+.pane-badge-status.scanning { background:#fff4e0; color:#9a5f00; }
+.pane-badge-status.scanning::before { background:#9a5f00; animation:none; }
+@keyframes readyPulse { 0% { box-shadow:0 0 0 0 rgba(26,122,63,0.5); } 70% { box-shadow:0 0 0 5px rgba(26,122,63,0); } 100% { box-shadow:0 0 0 0 rgba(26,122,63,0); } }
+@media (prefers-reduced-motion: reduce) { .pane-badge-status::before { animation:none; } }
+.cyber-list-row { display:flex; align-items:flex-start; gap:8px; padding:8px 12px; border:1px solid #d9dbe0; border-left:3px solid transparent; border-radius:10px; cursor:pointer; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,0.03); }
+.cyber-list-row:hover { border-color:#c4c4ca; }
+.cyber-list-row.active { border-color:#26262b; background:#fafafb; }
+.disaster-rank { font-family:var(--font-mono); font-size:12px; font-weight:700; color:#9a9ba3; width:22px; text-align:right; padding-top:1px; flex-shrink:0; }
+.disaster-ico { display:inline-grid; place-items:center; width:28px; height:28px; border-radius:6px; background:#f0f0f2; color:#5b5c63; flex-shrink:0; margin-top:1px; }
+.disaster-body { flex:1; min-width:0; }
+.disaster-title-row { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.disaster-title-row strong { font-size:13px; font-weight:700; color:#1e1e22; text-transform:capitalize; }
+.disaster-sev { font-size:11px; font-weight:700; color:#c0392b; letter-spacing:0.02em; }
 .row-flex-meta { display:flex; justify-content:space-between; align-items:center; font-size:13px; color:#222; }
-.row-flex-desc { font-size:12px; color:#666; margin-top:2px; }
+.row-flex-desc { font-size:12px; color:#8a8b93; margin-top:3px; }
 .pane-coordinates { font-size:11px; color:#666; font-family:var(--font-mono); }
 .dismiss-btn { background:transparent; border:none; color:#666; font-size:16px; cursor:pointer; line-height:1; }
 .no-bg { background:transparent !important; }

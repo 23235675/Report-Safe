@@ -1,8 +1,8 @@
 <script setup>
 import { computed } from 'vue';
 import StatusBadge from './StatusBadge.vue';
-import StatusIcon from './StatusIcon.vue';
 import AppIcon from './AppIcon.vue';
+import { genderIcon } from '../iconography.js';
 
 const props = defineProps({
   report:    { type: Object,  required: true },
@@ -38,11 +38,11 @@ function relativeTime(ts) {
 <template>
   <div class="triage-row" :class="[priorityClass, { highlight }]">
     <div class="triage-rank">{{ String(index + 1).padStart(2, '0') }}</div>
-    <StatusIcon :status="report.status" :size="28" :icon="16" :vivid="true" style="margin-top: 1px;" />
+    <span class="triage-ico"><AppIcon :name="genderIcon(report.gender)" :size="16" /></span>
     <div style="flex: 1; min-width: 0;">
       <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; flex-wrap: wrap;">
         <span style="font-size: 13px; font-weight: 700; color: var(--text-hi);">{{ report.name }}</span>
-        <StatusBadge :status="report.status" :short="true" :vivid="true" />
+        <StatusBadge :status="report.status" :short="true" :bare="true" :icon="false" />
         <span
           v-if="report.reported_by === 'family'"
           class="proxy-tag"
@@ -75,4 +75,10 @@ function relativeTime(ts) {
   padding: 0 4px; text-transform: uppercase;
 }
 .inline-ico { display: inline-flex; align-items: center; gap: 3px; }
+/* Neutral (colourless) gender avatar tile — matches the disaster card icon. */
+.triage-ico {
+  display: inline-grid; place-items: center;
+  width: 28px; height: 28px; border-radius: 6px;
+  background: #f0f0f2; color: #5b5c63; flex-shrink: 0; margin-top: 1px;
+}
 </style>

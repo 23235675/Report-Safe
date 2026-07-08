@@ -337,6 +337,16 @@ input[type='checkbox'], input[type='radio'] {
 .badge-rescued          { color: var(--rescued);     background: var(--rescued-dim);     border-color: var(--rescued-border); }
 .badge-deceased         { color: var(--deceased);    background: var(--deceased-dim);    border-color: var(--deceased-border); }
 
+/* Bare status label — coloured text only, no pill/background/border (colour set inline). */
+.badge-bare { background: none; border: none; padding: 0; border-radius: 0; letter-spacing: 0; }
+
+/* Gov left-pane search box (triage / disasters / dispatch). */
+.gov-search { display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #dedee2; border-radius: 8px; padding: 0 9px; height: 32px; flex-shrink: 0; }
+.gov-search .app-icon { color: #9a9ba3; flex-shrink: 0; }
+.gov-search input { border: none; background: transparent; outline: none; box-shadow: none; font-family: inherit; font-size: 12.5px; color: #1e1e22; width: 100%; height: 100%; padding: 0; }
+.gov-search input:focus { border: none; box-shadow: none; }
+.gov-search input::placeholder { color: #9a9ba3; }
+
 /* ── Priority Badges ────────────────────────────────────────────── */
 .priority-badge {
   display: inline-flex;
@@ -596,21 +606,24 @@ input[type='checkbox'], input[type='radio'] {
 .report-card:hover { box-shadow: var(--shadow-sm); }
 .report-card.alert-card { border-left: 3px solid; }
 
-/* Triage row */
+/* Triage row — sits inside the rounded .cyber-queue-item card (gov EOC). */
 .triage-row {
   display: flex;
   align-items: flex-start;
   gap: var(--sp-2);
   background: var(--bg-panel);
-  border-bottom: 1px solid var(--border-line);
   padding: var(--sp-2) var(--sp-3);
   cursor: pointer;
   transition: background 80ms;
+  border-left: 3px solid transparent;
 }
 .triage-row:hover { background: var(--bg-raised); }
-.triage-row.highlight { background: var(--gov-blue-dim); border-left: 3px solid var(--gov-blue); }
-.triage-row.p1 { border-left: 3px solid var(--need-help); }
-.triage-row.p2 { border-left: 3px solid var(--injured); }
+/* Selected (map-marker click) — neutral grey selection, not a status colour. */
+.triage-row.highlight { background: #f0f0f2; border-left-color: #26262b; }
+/* Priority rail keeps its status colour even when selected (declared after
+   .highlight so the P1/P2 hue wins the left border). */
+.triage-row.p1 { border-left-color: var(--need-help); }
+.triage-row.p2 { border-left-color: var(--injured); }
 
 .triage-rank {
   font-family: var(--font-mono);

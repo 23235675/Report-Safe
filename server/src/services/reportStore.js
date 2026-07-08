@@ -294,10 +294,26 @@ async function getRescueView(lat, lng, radiusKm, { limit = 500, offset = 0 } = {
       return a.distance_km - b.distance_km;
     });
 
-    return within.slice(off, off + lim).map((r) => {
+    const page = within.slice(off, off + lim);
+
+    // Attach the affected person's gender (proxy → reported_for_user_id, else the
+    // reporter's own user_id) so the triage roster can show a gender avatar.
+    const uids = [...new Set(page.map((r) => r.reported_for_user_id || r.user_id).filter(Boolean))];
+    const genderById = new Map();
+    if (uids.length) {
+      const users = await collection('users')
+        .find({ _id: { $in: uids } })
+        .project({ _id: 1, gender: 1 })
+        .toArray();
+      for (const u of users) genderById.set(u._id, u.gender || null);
+    }
+
+    return page.map((r) => {
       const priority = STATUS_PRIORITY[r.status] ?? 3;
+      const uid = r.reported_for_user_id || r.user_id;
       return {
         ...r,
+        gender:         uid ? (genderById.get(uid) || null) : null,
         created_at:     Number(r.created_at),
         updated_at:     Number(r.updated_at),
         distance_km:    Number(r.distance_km),

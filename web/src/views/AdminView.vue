@@ -11,6 +11,7 @@ import {
 } from '../api.js';
 import LoginPanel from '../components/LoginPanel.vue';
 import DataTable from '../components/DataTable.vue';
+import AppIcon from '../components/AppIcon.vue';
 import { useFocusTrap } from '../composables/useFocusTrap.js';
 
 const adminToken = ref(getAdminToken() || '');
@@ -426,8 +427,8 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
         <section v-if="activeTab === 'users'">
           <div class="toolbar"><h2 class="page-title">Users</h2>
             <div class="toolbar-r">
-              <form @submit.prevent="doSearch" class="search-bar"><input v-model="searchQ" class="inp" placeholder="Search name / phone…" aria-label="Search users by name or phone" /><button class="btn" type="submit">Search</button></form>
-              <button class="btn btn-dark" @click="openCreate('users')">+ New</button>
+              <form @submit.prevent="doSearch" class="search-bar"><input v-model="searchQ" class="inp" placeholder="Search name / phone…" aria-label="Search users by name or phone" /><button class="btn" type="submit"><AppIcon name="search" :size="15" /> Search</button></form>
+              <button class="btn btn-dark" @click="openCreate('users')"><AppIcon name="add" :size="16" /> New user</button>
             </div></div>
           <div class="filter-row">
             <select v-model="filters.users.role" class="flt" @change="applyFilters('users')"><option value="">Role: all</option><option value="citizen">citizen</option><option value="volunteer">volunteer</option><option value="government">government</option><option value="super_admin">super_admin</option></select>
@@ -447,8 +448,8 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
         <section v-if="activeTab === 'reports'">
           <div class="toolbar"><h2 class="page-title">Status Reports</h2>
             <div class="toolbar-r">
-              <form @submit.prevent="doSearch" class="search-bar"><input v-model="searchQ" class="inp" placeholder="Search name / phone…" aria-label="Search reports by name or phone" /><button class="btn" type="submit">Search</button></form>
-              <button class="btn btn-dark" @click="openCreate('reports')">+ New</button>
+              <form @submit.prevent="doSearch" class="search-bar"><input v-model="searchQ" class="inp" placeholder="Search name / phone…" aria-label="Search reports by name or phone" /><button class="btn" type="submit"><AppIcon name="search" :size="15" /> Search</button></form>
+              <button class="btn btn-dark" @click="openCreate('reports')"><AppIcon name="add" :size="16" /> New report</button>
             </div></div>
           <div class="filter-row">
             <select v-model="filters.reports.status" class="flt" @change="applyFilters('reports')"><option value="">Status: all</option><option v-for="s in REPORT_STATUSES" :key="s" :value="s">{{ s.replace(/_/g, ' ') }}</option></select>
@@ -470,7 +471,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
         <!-- DISASTERS -->
         <section v-if="activeTab === 'disasters'">
           <div class="toolbar"><h2 class="page-title">Disasters</h2>
-            <div class="toolbar-r"><button class="btn btn-dark" @click="openCreate('disasters')">+ New</button></div></div>
+            <div class="toolbar-r"><button class="btn btn-dark" @click="openCreate('disasters')"><AppIcon name="add" :size="16" /> New disaster</button></div></div>
           <div class="filter-row">
             <select v-model="filters.disasters.active" class="flt" @change="applyFilters('disasters')"><option value="">Status: all</option><option value="true">active</option><option value="false">ended</option></select>
             <select v-model="filters.disasters.type" class="flt" @change="applyFilters('disasters')"><option value="">Type: all</option><option v-for="t in DISASTER_TYPES" :key="t" :value="t">{{ t }}</option></select>
@@ -486,7 +487,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
         <!-- LINKS -->
         <section v-if="activeTab === 'links'">
           <div class="toolbar"><h2 class="page-title">Account Links</h2>
-            <div class="toolbar-r"><form @submit.prevent="doSearch" class="search-bar"><input v-model="searchQ" class="inp" placeholder="Search name / phone…" aria-label="Search links by name or phone" /><button class="btn" type="submit">Search</button></form></div></div>
+            <div class="toolbar-r"><form @submit.prevent="doSearch" class="search-bar"><input v-model="searchQ" class="inp" placeholder="Search name / phone…" aria-label="Search links by name or phone" /><button class="btn" type="submit"><AppIcon name="search" :size="15" /> Search</button></form></div></div>
           <div class="filter-row">
             <select v-model="filters.links.status" class="flt" @change="applyFilters('links')"><option value="">Status: all</option><option value="confirmed">confirmed</option><option value="pending">pending</option><option value="blocked">blocked</option></select>
             <button v-if="hasFilters('links')" class="flt-clear" @click="clearFilters('links')">Clear</button>
@@ -517,7 +518,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 
         <!-- AUDIT -->
         <section v-if="activeTab === 'audit'">
-          <div class="toolbar"><h2 class="page-title">Audit Log</h2><button class="btn" @click="loadTab('audit', '', 0)">Refresh</button></div>
+          <div class="toolbar"><h2 class="page-title">Audit Log</h2><button class="btn" @click="loadTab('audit', '', 0)"><AppIcon name="refresh" :size="15" /> Refresh</button></div>
           <div class="filter-row">
             <select v-model="filters.audit.action" class="flt" @change="applyFilters('audit')"><option value="">Action: all</option><option value="create">create</option><option value="update">update</option><option value="delete">delete</option><option value="login">login</option></select>
             <select v-model="filters.audit.entity" class="flt" @change="applyFilters('audit')"><option value="">Entity: all</option><option value="users">users</option><option value="reports">reports</option><option value="disasters">disasters</option><option value="account_links">links</option><option value="device_push_tokens">devices</option></select>
@@ -574,95 +575,107 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 <style scoped>
 * { box-sizing:border-box; transition:none !important; }
 
+/* Neutral grey/white "modern console" — airy white cards on a light canvas,
+   hairline borders, one charcoal primary. All values are scoped-local so the
+   citizen design tokens stay untouched. */
+
 /* ── Login (fields slotted into the shared LoginPanel) ─── */
-.field-label { font-size:12px; font-weight:600; color:#555; margin-top:10px; margin-bottom:4px; }
-.login-input { padding:8px 10px; border:1px solid #d0d0d0; font-size:14px; color:#222; background:#fff; width:100%; box-sizing:border-box; font-family:inherit; border-radius:2px; }
-.login-input:focus { border-color:#999; }
+.field-label { font-size:12px; font-weight:600; color:#5b5c63; margin-top:10px; margin-bottom:5px; }
+.login-input { padding:10px 12px; border:1px solid #dedee2; font-size:14px; color:#1e1e22; background:#fff; width:100%; box-sizing:border-box; font-family:inherit; border-radius:9px; }
+.login-input:focus { border-color:#26262b; box-shadow:0 0 0 3px rgba(38,38,43,0.08); outline:none; }
 
 /* ── Shell ──────────────────────────────────────────────── */
-.shell { display:flex; flex-direction:column; height:100vh; background:#fff; font-family:var(--font-ui); font-size:14px; color:#222; overflow:hidden; }
+.shell { display:flex; flex-direction:column; height:100vh; background:#f5f5f6; font-family:var(--font-ui); font-size:14px; color:#1e1e22; overflow:hidden; }
 .body { display:flex; flex:1; min-height:0; }
 
 /* ── Top Bar ───────────────────────────────────────────── */
-.topbar { display:flex; align-items:center; justify-content:space-between; height:36px; padding:0 14px; background:#e8e8e8; color:#555; border-bottom:1px solid #d0d0d0; flex-shrink:0; }
-.topbar-l { display:flex; align-items:center; gap:8px; }
-.topbar-crest { width:22px; height:22px; background:#d0d0d0; border:1px solid #bbb; display:flex; align-items:center; justify-content:center; font-size:13px; color:#333; }
-.topbar-name { font-size:14px; font-weight:700; color:#222; }
-.topbar-div { color:#ccc; }
-.topbar-sub { font-size:12px; color:#666; font-weight:500; }
-.topbar-r { display:flex; align-items:center; gap:12px; }
-.topbar-ts { font-size:12px; color:#666; font-family:var(--font-mono); }
-.topbar-user { font-size:12px; color:#666; }
-.topbar-logout { padding:3px 10px; background:transparent; border:1px solid #ccc; color:#555; font-size:12px; cursor:pointer; font-family:inherit; }
-.topbar-logout:hover { border-color:#999; color:#222; }
+.topbar { display:flex; align-items:center; justify-content:space-between; height:52px; padding:0 18px; background:#ebecef; color:#5b5c63; border-bottom:1px solid #d9dbe0; flex-shrink:0; }
+.topbar-l { display:flex; align-items:center; gap:10px; }
+.topbar-crest { width:28px; height:28px; background:#26262b; display:flex; align-items:center; justify-content:center; font-size:15px; color:#fff; border-radius:8px; }
+.topbar-name { font-size:15px; font-weight:700; color:#1e1e22; letter-spacing:-0.01em; }
+.topbar-div { color:#d3d3d7; }
+.topbar-sub { font-size:12.5px; color:#8a8b93; font-weight:500; }
+.topbar-r { display:flex; align-items:center; gap:14px; }
+.topbar-ts { font-size:12px; color:#9a9ba3; font-family:var(--font-mono); }
+.topbar-user { font-size:13px; color:#5b5c63; font-weight:500; }
+.topbar-logout { padding:6px 12px; background:#fff; border:1px solid #dedee2; color:#5b5c63; font-size:12.5px; font-weight:600; cursor:pointer; font-family:inherit; border-radius:8px; height:auto; }
+.topbar-logout:hover { border-color:#c4c4ca; color:#1e1e22; background:#f5f5f6; }
 
 /* ── Sidebar ───────────────────────────────────────────── */
-.sidebar { width:140px; background:#f0f0f0; border-right:1px solid #d0d0d0; display:flex; flex-direction:column; padding:6px 0; gap:0; flex-shrink:0; overflow-y:auto; }
-.nav-btn { display:block; padding:7px 12px; background:transparent; border:none; border-left:2px solid transparent; color:#555; cursor:pointer; text-align:left; font-size:13px; font-weight:500; font-family:inherit; width:100%; }
-.nav-btn:hover { color:#222; background:#e0e0e0; }
-.nav-btn.on { color:#222; font-weight:700; border-left-color:#888; background:#e0e0e0; }
+.sidebar { width:176px; background:#ebecef; border-right:1px solid #d9dbe0; display:flex; flex-direction:column; padding:10px; gap:3px; flex-shrink:0; overflow-y:auto; }
+.nav-btn { display:block; padding:9px 12px; background:transparent; border:none; color:#5b5c63; cursor:pointer; text-align:left; font-size:13.5px; font-weight:500; font-family:inherit; width:100%; border-radius:9px; height:auto; }
+.nav-btn:hover { color:#1e1e22; background:#e2e3e7; }
+.nav-btn.on { color:#fff; font-weight:600; background:#26262b; }
 
 /* ── Content ───────────────────────────────────────────── */
-.content { flex:1; overflow:auto; padding:16px 20px; display:flex; flex-direction:column; gap:12px; background:#fff; }
+.content { flex:1; overflow:auto; padding:22px 26px; display:flex; flex-direction:column; gap:16px; background:#f5f5f6; }
 
-/* ── Typography ────────────────────────────────────────── */
-.page-title { font-size:16px; font-weight:700; color:#222; margin:0; }
-.toolbar { display:flex; align-items:center; justify-content:space-between; gap:10px; }
-.toolbar-r { display:flex; align-items:center; gap:8px; }
-.search-bar { display:flex; gap:4px; }
-.search-bar .inp { width:180px; }
+/* ── Typography / toolbar ──────────────────────────────── */
+.page-title { font-size:19px; font-weight:700; color:#1e1e22; margin:0; letter-spacing:-0.01em; }
+.toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.toolbar-r { display:flex; align-items:center; gap:10px; }
+.search-bar { display:flex; }
+.search-bar .inp { width:220px; height:38px; border-top-right-radius:0; border-bottom-right-radius:0; border-right:none; }
+.search-bar .btn { border-top-left-radius:0; border-bottom-left-radius:0; }
 
-/* ── Filters ───────────────────────────────────────────── */
-.filter-row { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-.flt { padding:4px 8px; border:1px solid #d0d0d0; background:#fff; font-size:12px; color:#333; font-family:inherit; cursor:pointer; border-radius:2px; }
-.flt:focus { border-color:#999; }
-.flt.inline { border-color:#d0d0d0; }
-.flt-clear { padding:4px 8px; font-size:12px; background:transparent; border:none; color:#666; cursor:pointer; text-decoration:underline; font-family:inherit; }
+/* ── Filter card ───────────────────────────────────────── */
+.filter-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; background:#fff; border:1px solid #e9e9ec; border-radius:12px; padding:12px 14px; box-shadow:0 1px 2px rgba(0,0,0,0.03); }
+.flt { width:auto; min-width:120px; padding:8px 12px; border:1px solid #dedee2; background:#fff; font-size:13px; color:#3a3a41; font-family:inherit; cursor:pointer; border-radius:8px; height:auto; }
+.flt:focus { border-color:#26262b; box-shadow:0 0 0 3px rgba(38,38,43,0.07); outline:none; }
+.flt.inline { padding:5px 8px; font-size:12px; }
+.flt-clear { padding:8px 14px; font-size:13px; font-weight:600; background:#fff; border:1px solid #dedee2; color:#5b5c63; cursor:pointer; font-family:inherit; border-radius:8px; margin-left:auto; }
+.flt-clear:hover { background:#f3f3f5; color:#1e1e22; border-color:#c4c4ca; }
 
 /* ── Inputs ────────────────────────────────────────────── */
-.inp { padding:6px 8px; border:1px solid #d0d0d0; font-size:14px; color:#222; background:#fff; width:100%; font-family:inherit; border-radius:2px; }
-.inp:focus { border-color:#999; }
+.inp { padding:9px 12px; border:1px solid #dedee2; font-size:14px; color:#1e1e22; background:#fff; width:100%; font-family:inherit; border-radius:8px; }
+.inp:focus { border-color:#26262b; box-shadow:0 0 0 3px rgba(38,38,43,0.07); outline:none; }
 
 /* ── Buttons ───────────────────────────────────────────── */
-.btn { padding:5px 12px; border:1px solid #d0d0d0; background:#f5f5f5; color:#333; font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; border-radius:2px; }
-.btn:hover:not(:disabled) { background:#e8e8e8; }
-.btn:disabled { opacity:.35; cursor:not-allowed; }
-.btn-dark { background:#555; color:#fff; border-color:#555; }
-.btn-dark:hover:not(:disabled) { background:#444; }
-.btn-xs { padding:2px 6px; font-size:11px; }
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; height:38px; padding:0 15px; border:1px solid #dedee2; background:#fff; color:#3a3a41; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; border-radius:8px; white-space:nowrap; }
+.btn:hover:not(:disabled) { background:#f3f3f5; border-color:#c4c4ca; color:#1e1e22; }
+.btn:active:not(:disabled) { background:#ebebee; }
+.btn:disabled { opacity:.4; cursor:not-allowed; }
+.btn-dark { background:#26262b; color:#fff; border-color:#26262b; }
+.btn-dark:hover:not(:disabled) { background:#131316; border-color:#131316; color:#fff; }
+.btn-dark:active:not(:disabled) { background:#000; }
+.btn-xs { height:30px; padding:0 11px; font-size:12px; border-radius:7px; }
 
 /* ── Table cell content (rendered into DataTable slots) ── */
-.sub { color:#666; font-size:12px; }
-.badge { display:inline-block; padding:3px 8px; border:1px solid #d0d0d0; background:#fff; font-size:12px; color:#333; font-weight:500; border-radius:0; }
+.sub { color:#9a9ba3; font-size:12px; }
+.badge { display:inline-block; padding:3px 10px; border:1px solid #dedee2; background:#f7f7f8; font-size:12px; color:#3a3a41; font-weight:600; border-radius:999px; }
 
-/* ── Stats Grid ────────────────────────────────────────── */
-.stat-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:8px; }
-.stat-card { border:1px solid #d0d0d0; background:#fff; padding:10px 12px; border-radius:2px; }
-.stat-label { font-size:12px; font-weight:700; color:#555; margin-bottom:6px; border-bottom:1px solid #eee; padding-bottom:4px; }
-.stat-sub { display:flex; justify-content:space-between; font-size:13px; color:#666; padding:2px 0; }
-.stat-num { font-weight:700; color:#222; font-family:var(--font-mono); }
+/* ── Stat cards ────────────────────────────────────────── */
+.stat-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:14px; }
+.stat-card { border:1px solid #e9e9ec; background:#fff; padding:18px 20px; border-radius:14px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+.stat-label { font-size:12px; font-weight:600; color:#9a9ba3; margin-bottom:10px; text-transform:capitalize; letter-spacing:0.02em; }
+.stat-sub { display:flex; justify-content:space-between; font-size:13px; color:#5b5c63; padding:5px 0; border-top:1px solid #f0f0f2; }
+.stat-sub:first-of-type { border-top:none; }
+.stat-val.stat-num { font-size:30px; line-height:1.1; }
+.stat-num { font-weight:700; color:#1e1e22; font-family:var(--font-mono); }
+.stat-sub .stat-num { font-size:14px; }
 
 /* ── Pagination ────────────────────────────────────────── */
-.pager { display:flex; align-items:center; gap:8px; }
-.pager-info { font-size:12px; color:#666; margin-right:auto; }
+.pager { display:flex; align-items:center; gap:8px; padding-top:2px; }
+.pager-info { font-size:13px; color:#9a9ba3; margin-right:auto; }
 
 /* ── States ────────────────────────────────────────────── */
-.err-bar { display:flex; align-items:center; gap:8px; padding:6px 10px; background:#fff; border:1px solid #d0d0d0; color:#222; font-size:13px; }
-.err-bar button { margin-left:auto; background:none; border:none; cursor:pointer; color:#666; font-size:14px; }
-.form-err { padding:6px 8px; background:#fff; border:1px solid #d0d0d0; font-size:13px; color:#222; }
-.state-msg { color:#666; padding:16px 0; font-size:13px; }
+.err-bar { display:flex; align-items:center; gap:8px; padding:11px 14px; background:#fff; border:1px solid #e9e9ec; border-left:3px solid #26262b; color:#1e1e22; font-size:13px; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+.err-bar button { margin-left:auto; background:none; border:none; cursor:pointer; color:#9a9ba3; font-size:14px; height:auto; padding:0; }
+.form-err { padding:9px 12px; background:#f7f7f8; border:1px solid #dedee2; border-left:3px solid #26262b; font-size:13px; color:#1e1e22; border-radius:8px; }
+.state-msg { color:#9a9ba3; padding:28px 4px; font-size:14px; text-align:center; background:#fff; border:1px solid #e9e9ec; border-radius:12px; }
 
 /* ── Modal ──────────────────────────────────────────────── */
-.overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; z-index:1000; }
-.modal { background:#fff; width:440px; max-width:96vw; max-height:90vh; overflow-y:auto; border:1px solid #d0d0d0; border-radius:2px; }
-.modal-sm { width:340px; }
-.modal-hd { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #e0e0e0; background:#f5f5f5; }
-.modal-hd h3 { margin:0; font-size:14px; font-weight:700; color:#222; }
-.modal-x { background:none; border:none; font-size:16px; cursor:pointer; color:#666; }
-.modal-body { display:flex; flex-direction:column; gap:5px; padding:14px 16px; }
-.modal-body label { font-size:12px; font-weight:600; color:#555; margin-top:4px; }
-.modal-acts { display:flex; gap:8px; justify-content:flex-end; margin-top:10px; padding-top:10px; border-top:1px solid #eee; }
-.modal-msg { padding:12px 16px; color:#555; line-height:1.5; margin:0; font-size:14px; }
-.req { color:#666; }
-.chk { display:flex; align-items:center; gap:6px; font-size:13px; color:#222; cursor:pointer; text-transform:none; }
+.overlay { position:fixed; inset:0; background:rgba(20,20,24,.42); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; z-index:1000; padding:16px; }
+.modal { background:#fff; width:460px; max-width:96vw; max-height:90vh; overflow-y:auto; border:1px solid #e3e3e7; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,0.22); }
+.modal-sm { width:360px; }
+.modal-hd { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #eeeef0; background:#fff; position:sticky; top:0; }
+.modal-hd h3 { margin:0; font-size:15px; font-weight:700; color:#1e1e22; text-transform:capitalize; }
+.modal-x { background:none; border:none; font-size:16px; cursor:pointer; color:#9a9ba3; height:auto; padding:0; }
+.modal-x:hover { color:#1e1e22; }
+.modal-body { display:flex; flex-direction:column; gap:6px; padding:18px 20px; }
+.modal-body label { font-size:12.5px; font-weight:600; color:#5b5c63; margin-top:6px; }
+.modal-acts { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; padding-top:16px; border-top:1px solid #eeeef0; }
+.modal-msg { padding:16px 20px; color:#5b5c63; line-height:1.6; margin:0; font-size:14px; }
+.req { color:#9a9ba3; }
+.chk { display:flex; align-items:center; gap:8px; font-size:13px; color:#1e1e22; cursor:pointer; text-transform:none; }
 </style>
