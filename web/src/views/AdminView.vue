@@ -91,9 +91,9 @@ function filterParams(tab) {
   for (const [k, v] of Object.entries(f)) if (v !== '') p[k] = v;
   return p;
 }
-function hasFilters(tab) { return Object.values(filters.value[tab] || {}).some((v) => v !== ''); }
 function applyFilters(tab) { offset.value = 0; loadTab(tab, searchQ.value, 0); }
-function clearFilters(tab) { filters.value[tab] = { ...(FILTER_DEFAULTS[tab] || {}) }; applyFilters(tab); }
+// The filter-bar "Clear" resets BOTH the search box and the filters.
+function clearFilters(tab) { searchQ.value = ''; filters.value[tab] = { ...(FILTER_DEFAULTS[tab] || {}) }; offset.value = 0; loadTab(tab, '', 0); }
 
 async function ensureDisasterOptions() {
   if (disasterOptions.value.length) return;
@@ -502,9 +502,8 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 
         <!-- OVERVIEW — drill-down dashboard: card grid → one domain chart -->
         <section v-if="activeTab === 'overview'">
-          <div class="toolbar">
-            <h2 v-if="!activeChart" class="page-title">System Overview</h2>
-            <h2 v-else class="page-title crumb">
+          <div v-if="activeChart" class="toolbar">
+            <h2 class="page-title crumb">
               <button class="crumb-back" @click="closeChart"><AppIcon name="chevron-down" :size="15" class="crumb-ico" /> Dashboard</button>
               <span class="crumb-sep">/</span>{{ currentCard?.label }}
             </h2>
@@ -579,17 +578,17 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 
         <!-- USERS -->
         <section v-if="activeTab === 'users'">
-          <div class="toolbar"><h2 class="page-title">Users</h2>
-            <div class="toolbar-r">
-              <form @submit.prevent="doSearch" class="search-bar"><input v-model="searchQ" class="inp" placeholder="Search name / phone…" aria-label="Search users by name or phone" /><button class="btn" type="submit"><AppIcon name="search" :size="15" /> Search</button></form>
-              <button class="btn btn-dark" @click="openCreate('users')"><AppIcon name="add" :size="16" /> New user</button>
-            </div></div>
           <div class="filter-row">
+            <input v-model="searchQ" class="inp flt-search" placeholder="Search name / phone…" aria-label="Search users by name or phone" @keyup.enter="doSearch" />
             <select v-model="filters.users.role" class="flt" @change="applyFilters('users')"><option value="">Role: all</option><option value="citizen">citizen</option><option value="volunteer">volunteer</option><option value="government">government</option><option value="super_admin">super_admin</option></select>
             <select v-model="filters.users.user_type" class="flt" @change="applyFilters('users')"><option value="">Type: all</option><option value="mobile">mobile</option><option value="web">web</option></select>
             <select v-model="filters.users.consent" class="flt" @change="applyFilters('users')"><option value="">Consent: any</option><option value="true">given</option><option value="false">none</option></select>
             <select v-model="filters.users.has_email" class="flt" @change="applyFilters('users')"><option value="">Email: any</option><option value="true">has</option><option value="false">none</option></select>
-            <button v-if="hasFilters('users')" class="flt-clear" @click="clearFilters('users')">Clear</button>
+            <div class="filter-actions">
+              <button class="flt-clear" @click="clearFilters('users')">Clear</button>
+              <button class="btn btn-dark" @click="doSearch"><AppIcon name="search" :size="15" /> Search</button>
+              <button class="btn btn-dark" @click="openCreate('users')"><AppIcon name="add" :size="16" /> New user</button>
+            </div>
           </div>
           <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
@@ -600,17 +599,17 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 
         <!-- REPORTS -->
         <section v-if="activeTab === 'reports'">
-          <div class="toolbar"><h2 class="page-title">Status Reports</h2>
-            <div class="toolbar-r">
-              <form @submit.prevent="doSearch" class="search-bar"><input v-model="searchQ" class="inp" placeholder="Search name / phone…" aria-label="Search reports by name or phone" /><button class="btn" type="submit"><AppIcon name="search" :size="15" /> Search</button></form>
-              <button class="btn btn-dark" @click="openCreate('reports')"><AppIcon name="add" :size="16" /> New report</button>
-            </div></div>
           <div class="filter-row">
+            <input v-model="searchQ" class="inp flt-search" placeholder="Search name / phone…" aria-label="Search reports by name or phone" @keyup.enter="doSearch" />
             <select v-model="filters.reports.status" class="flt" @change="applyFilters('reports')"><option value="">Status: all</option><option v-for="s in REPORT_STATUSES" :key="s" :value="s">{{ s.replace(/_/g, ' ') }}</option></select>
             <select v-model="filters.reports.reported_by" class="flt" @change="applyFilters('reports')"><option value="">Source: all</option><option value="self">self</option><option value="family">family</option></select>
             <select v-model="filters.reports.user_type" class="flt" @change="applyFilters('reports')"><option value="">Origin: all</option><option value="mobile">mobile</option><option value="web">web</option></select>
             <select v-model="filters.reports.disaster_id" class="flt" @change="applyFilters('reports')"><option value="">Disaster: all</option><option value="__any__">in zone</option><option value="__none__">no zone</option><option v-for="d in disasterOptions" :key="d.id" :value="d.id">{{ d.type }} — {{ shortId(d.id) }}</option></select>
-            <button v-if="hasFilters('reports')" class="flt-clear" @click="clearFilters('reports')">Clear</button>
+            <div class="filter-actions">
+              <button class="flt-clear" @click="clearFilters('reports')">Clear</button>
+              <button class="btn btn-dark" @click="doSearch"><AppIcon name="search" :size="15" /> Search</button>
+              <button class="btn btn-dark" @click="openCreate('reports')"><AppIcon name="add" :size="16" /> New report</button>
+            </div>
           </div>
           <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
@@ -624,12 +623,13 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 
         <!-- DISASTERS -->
         <section v-if="activeTab === 'disasters'">
-          <div class="toolbar"><h2 class="page-title">Disasters</h2>
-            <div class="toolbar-r"><button class="btn btn-dark" @click="openCreate('disasters')"><AppIcon name="add" :size="16" /> New disaster</button></div></div>
           <div class="filter-row">
             <select v-model="filters.disasters.active" class="flt" @change="applyFilters('disasters')"><option value="">Status: all</option><option value="true">active</option><option value="false">ended</option></select>
             <select v-model="filters.disasters.type" class="flt" @change="applyFilters('disasters')"><option value="">Type: all</option><option v-for="t in DISASTER_TYPES" :key="t" :value="t">{{ t }}</option></select>
-            <button v-if="hasFilters('disasters')" class="flt-clear" @click="clearFilters('disasters')">Clear</button>
+            <div class="filter-actions">
+              <button class="flt-clear" @click="clearFilters('disasters')">Clear</button>
+              <button class="btn btn-dark" @click="openCreate('disasters')"><AppIcon name="add" :size="16" /> New disaster</button>
+            </div>
           </div>
           <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
@@ -640,11 +640,13 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 
         <!-- LINKS -->
         <section v-if="activeTab === 'links'">
-          <div class="toolbar"><h2 class="page-title">Account Links</h2>
-            <div class="toolbar-r"><form @submit.prevent="doSearch" class="search-bar"><input v-model="searchQ" class="inp" placeholder="Search name / phone…" aria-label="Search links by name or phone" /><button class="btn" type="submit"><AppIcon name="search" :size="15" /> Search</button></form></div></div>
           <div class="filter-row">
+            <input v-model="searchQ" class="inp flt-search" placeholder="Search name / phone…" aria-label="Search links by name or phone" @keyup.enter="doSearch" />
             <select v-model="filters.links.status" class="flt" @change="applyFilters('links')"><option value="">Status: all</option><option value="confirmed">confirmed</option><option value="pending">pending</option><option value="blocked">blocked</option></select>
-            <button v-if="hasFilters('links')" class="flt-clear" @click="clearFilters('links')">Clear</button>
+            <div class="filter-actions">
+              <button class="flt-clear" @click="clearFilters('links')">Clear</button>
+              <button class="btn btn-dark" @click="doSearch"><AppIcon name="search" :size="15" /> Search</button>
+            </div>
           </div>
           <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
@@ -656,12 +658,13 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 
         <!-- DEVICES -->
         <section v-if="activeTab === 'devices'">
-          <div class="toolbar"><h2 class="page-title">Device Push Tokens</h2></div>
           <div class="filter-row">
             <select v-model="filters.devices.platform" class="flt" @change="applyFilters('devices')"><option value="">Platform: all</option><option value="ios">iOS</option><option value="android">Android</option></select>
             <select v-model="filters.devices.located" class="flt" @change="applyFilters('devices')"><option value="">GPS: any</option><option value="true">has</option><option value="false">none</option></select>
             <select v-model="filters.devices.linked" class="flt" @change="applyFilters('devices')"><option value="">Account: any</option><option value="true">linked</option><option value="false">unlinked</option></select>
-            <button v-if="hasFilters('devices')" class="flt-clear" @click="clearFilters('devices')">Clear</button>
+            <div class="filter-actions">
+              <button class="flt-clear" @click="clearFilters('devices')">Clear</button>
+            </div>
           </div>
           <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
@@ -672,11 +675,13 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 
         <!-- AUDIT -->
         <section v-if="activeTab === 'audit'">
-          <div class="toolbar"><h2 class="page-title">Audit Log</h2><button class="btn" @click="loadTab('audit', '', 0)"><AppIcon name="refresh" :size="15" /> Refresh</button></div>
           <div class="filter-row">
             <select v-model="filters.audit.action" class="flt" @change="applyFilters('audit')"><option value="">Action: all</option><option value="create">create</option><option value="update">update</option><option value="delete">delete</option><option value="login">login</option></select>
             <select v-model="filters.audit.entity" class="flt" @change="applyFilters('audit')"><option value="">Entity: all</option><option value="users">users</option><option value="reports">reports</option><option value="disasters">disasters</option><option value="account_links">links</option><option value="device_push_tokens">devices</option></select>
-            <button v-if="hasFilters('audit')" class="flt-clear" @click="clearFilters('audit')">Clear</button>
+            <div class="filter-actions">
+              <button class="flt-clear" @click="clearFilters('audit')">Clear</button>
+              <button class="btn" @click="loadTab('audit', '', 0)"><AppIcon name="refresh" :size="15" /> Refresh</button>
+            </div>
           </div>
           <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
@@ -775,12 +780,15 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 .search-bar .inp { width:220px; height:38px; border-top-right-radius:0; border-bottom-right-radius:0; border-right:none; }
 .search-bar .btn { border-top-left-radius:0; border-bottom-left-radius:0; }
 
-/* ── Filter card ───────────────────────────────────────── */
-.filter-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; background:#fff; border:1px solid #e9e9ec; border-radius:12px; padding:12px 14px; box-shadow:0 1px 2px rgba(0,0,0,0.03); }
+/* ── Filter bar (grey box; white inputs + the data table pop on it) ─── */
+.filter-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; background:#ebecef; border:1px solid #d9dbe0; border-radius:12px; padding:12px 14px; }
+.filter-row .flt-search { width:220px; max-width:100%; flex-shrink:0; }
 .flt { width:auto; min-width:120px; padding:8px 12px; border:1px solid #dedee2; background:#fff; font-size:13px; color:#3a3a41; font-family:inherit; cursor:pointer; border-radius:8px; height:auto; }
 .flt:focus { border-color:#26262b; box-shadow:0 0 0 3px rgba(38,38,43,0.07); outline:none; }
 .flt.inline { padding:5px 8px; font-size:12px; }
-.flt-clear { padding:8px 14px; font-size:13px; font-weight:600; background:#fff; border:1px solid #dedee2; color:#5b5c63; cursor:pointer; font-family:inherit; border-radius:8px; margin-left:auto; }
+/* Right-aligned action group: Clear (outline) + Search/New (charcoal). */
+.filter-actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
+.flt-clear { height:38px; padding:0 15px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; background:#fff; border:1px solid #dedee2; color:#5b5c63; cursor:pointer; font-family:inherit; border-radius:8px; }
 .flt-clear:hover { background:#f3f3f5; color:#1e1e22; border-color:#c4c4ca; }
 
 /* ── Inputs ────────────────────────────────────────────── */
