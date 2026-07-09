@@ -341,7 +341,7 @@ input[type='checkbox'], input[type='radio'] {
 .badge-bare { background: none; border: none; padding: 0; border-radius: 0; letter-spacing: 0; }
 
 /* Gov left-pane search box (triage / disasters / dispatch). */
-.gov-search { display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #dedee2; border-radius: 8px; padding: 0 9px; height: 32px; flex-shrink: 0; }
+.gov-search { display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #dedee2; border-radius: 3px; padding: 0 9px; height: 32px; flex-shrink: 0; }
 .gov-search .app-icon { color: #9a9ba3; flex-shrink: 0; }
 .gov-search input { border: none; background: transparent; outline: none; box-shadow: none; font-family: inherit; font-size: 12.5px; color: #1e1e22; width: 100%; height: 100%; padding: 0; }
 .gov-search input:focus { border: none; box-shadow: none; }

@@ -197,7 +197,7 @@ useFocusTrap(distModalEl, isDistMax, () => { isDistMax.value = false; });
 .card-caption { font-size:10px; font-weight:700; color:#8a8b93; letter-spacing:0.05em; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
 /* Small square "+" / "×" icon button (maximize / close) — gov secondary style. */
-.max-btn { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; padding:0; flex-shrink:0; background:#fff; border:1px solid #dedee2; border-radius:7px; color:#5b5c63; cursor:pointer; font-family:inherit; }
+.max-btn { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; padding:0; flex-shrink:0; background:#fff; border:1px solid #dedee2; border-radius:3px; color:#5b5c63; cursor:pointer; font-family:inherit; }
 .max-btn:hover { background:#f3f3f5; border-color:#c4c4ca; color:#1e1e22; }
 
 /* ── Distribution — PER DISASTER (left, light grey) │ ALL DATA (right, dark grey) ──
@@ -238,7 +238,7 @@ useFocusTrap(distModalEl, isDistMax, () => { isDistMax.value = false; });
 
 /* ── Maximize overlays — white modals like the rest of the app ─────── */
 .max-overlay { position:fixed; inset:0; background:rgba(20,20,24,.42); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; z-index:1000; padding:16px; }
-.max-modal { background:#fff; padding:18px; width:min(620px, 92vw); border:1px solid #e9e9ec; display:flex; flex-direction:column; gap:14px; border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,0.22); }
+.max-modal { background:#fff; padding:18px; width:min(620px, 92vw); border:1px solid #e9e9ec; display:flex; flex-direction:column; gap:14px; border-radius:4px; box-shadow:0 20px 60px rgba(0,0,0,0.22); }
 .max-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .max-head .card-caption { font-size:12px; color:#5b5c63; letter-spacing:0.04em; }
 .radar-svg-lg { flex:0 0 auto; width:100%; height:270px; }
@@ -252,7 +252,7 @@ useFocusTrap(distModalEl, isDistMax, () => { isDistMax.value = false; });
 .bar-chart-lg { display:flex; align-items:flex-end; justify-content:space-around; gap:14px; height:270px; padding:20px 4px 0; border-bottom:1px solid #e9e9ec; }
 .bar-group { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:8px; height:100%; justify-content:flex-end; }
 .bar-pair { display:flex; align-items:flex-end; justify-content:center; gap:5px; flex:1; min-height:0; width:100%; }
-.bar-fill-lg { width:26px; max-width:40%; border-radius:4px 4px 0 0; display:flex; align-items:flex-start; justify-content:center; position:relative; }
+.bar-fill-lg { width:26px; max-width:40%; border-radius:2px 2px 0 0; display:flex; align-items:flex-start; justify-content:center; position:relative; }
 .bar-fill-lg.cur { background:#8a8b93; }
 .bar-fill-lg.all { background:#5b5c63; }
 .bar-val-lg { position:absolute; top:-16px; font-size:11px; font-weight:700; color:#1e1e22; font-family:var(--font-mono); }

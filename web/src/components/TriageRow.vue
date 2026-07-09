@@ -78,7 +78,7 @@ function relativeTime(ts) {
 /* Neutral (colourless) gender avatar tile — matches the disaster card icon. */
 .triage-ico {
   display: inline-grid; place-items: center;
-  width: 28px; height: 28px; border-radius: 6px;
+  width: 28px; height: 28px; border-radius: 2px;
   background: #f0f0f2; color: #5b5c63; flex-shrink: 0; margin-top: 1px;
 }
 </style>

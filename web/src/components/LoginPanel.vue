@@ -35,14 +35,14 @@ defineEmits(['submit']);
 
 <style scoped>
 .login-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; background:#f5f5f6; }
-.login-card { width:360px; background:#fff; border:1px solid #e6e6ea; padding:32px 28px; border-radius:16px; box-shadow:0 6px 24px rgba(0,0,0,0.07); }
+.login-card { width:360px; background:#fff; border:1px solid #e6e6ea; padding:32px 28px; border-radius:4px; box-shadow:0 6px 24px rgba(0,0,0,0.07); }
 .login-logo { text-align:center; margin-bottom:24px; border-bottom:1px solid #e6e6ea; padding-bottom:16px; }
-.login-crest { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; background:#26262b; color:#fff; font-size:21px; font-weight:700; margin-bottom:14px; border-radius:12px; }
+.login-crest { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; background:#26262b; color:#fff; font-size:21px; font-weight:700; margin-bottom:14px; border-radius:4px; }
 .login-logo h1 { font-size:16px; font-weight:700; color:#222; margin:0; }
 .login-sub { font-size:12px; color:#666; margin:2px 0 0; }
 .login-form { display:flex; flex-direction:column; }
-.login-error { margin:10px 0 0; padding:6px 8px; background:#fff; border:1px solid #e6e6ea; font-size:13px; color:#222; border-radius:8px; }
-.login-btn { margin-top:18px; padding:11px; background:#26262b; color:#fff; border:1px solid #26262b; font-size:13.5px; font-weight:700; cursor:pointer; font-family:inherit; border-radius:10px; }
+.login-error { margin:10px 0 0; padding:6px 8px; background:#fff; border:1px solid #e6e6ea; font-size:13px; color:#222; border-radius:3px; }
+.login-btn { margin-top:18px; padding:11px; background:#26262b; color:#fff; border:1px solid #26262b; font-size:13.5px; font-weight:700; cursor:pointer; font-family:inherit; border-radius:3px; }
 .login-btn:hover:not(:disabled) { background:#131316; }
 .login-btn:disabled { opacity:.4; cursor:not-allowed; }
 .login-note { text-align:center; font-size:12px; color:#666; margin-top:16px; }
