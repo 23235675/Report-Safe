@@ -280,48 +280,40 @@ onMounted(async () => { try { await retryAll(); } catch {} });
 
 <style scoped>
 .report-form-wrap {
-  background: #ffffff;
+  background: var(--bg-panel);
   padding: 40px;
   border-radius: 4px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border-strong);
   max-width: 820px;
   margin: var(--sp-5) auto;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
 }
 
-/* Master Color System */
-.resp-shell {
-  --resp-teal-header:   #2a706d;
-  --resp-teal-accent:   #0f766e;
-  --resp-teal-action:   #034e4b;
-  --resp-accent-dim:    #f2f8f7;
-  --resp-accent-border: #99cbc8;
-  --resp-accent-text:   #044e4b;
-}
+/* Colours reference the global tokens in main.css: gov-blue, text, border-strong. */
 
 /* Typography Headings Layout */
-.form-title-block h1 { font-size: 26px; font-weight: 700; color: #0f172a; margin: 0 0 var(--sp-2) 0; }
-.form-title-block p { font-size: 13.5px; color: #334155; line-height: 1.5; margin: 0 0 var(--sp-5) 0; }
-.divider { border: 0; border-top: 1px solid #cbd5e1; margin-bottom: var(--sp-5); }
-.section-label { font-size: 12px; font-weight: 700; color: var(--resp-teal-accent); text-transform: uppercase; margin-bottom: var(--sp-3); letter-spacing: 0.05em; }
+.form-title-block h1 { font-size: 26px; font-weight: 700; color: var(--text-hi); margin: 0 0 var(--sp-2) 0; }
+.form-title-block p { font-size: 13.5px; color: var(--text-md); line-height: 1.5; margin: 0 0 var(--sp-5) 0; }
+.divider { border: 0; border-top: 1px solid var(--border-strong); margin-bottom: var(--sp-5); }
+.section-label { font-size: 12px; font-weight: 700; color: var(--gov-blue); text-transform: uppercase; margin-bottom: var(--sp-3); letter-spacing: 0.05em; }
 
 /* Structural Form Blocks */
 .field-block { margin-bottom: var(--sp-4); }
-.resp-question { font-size: 13px; font-weight: 700; color: #0f172a; display: block; margin-bottom: var(--sp-1); }
-.resp-question-hint { font-size: 12px; color: #64748b; font-weight: 400; }
+.resp-question { font-size: 13px; font-weight: 700; color: var(--text-hi); display: block; margin-bottom: var(--sp-1); }
+.resp-question-hint { font-size: 12px; color: var(--text-lo); font-weight: 400; }
 
 /* 100% Strict Input Fields Style Layout */
 .input-field-wrapper { position: relative; display: flex; align-items: center; width: 100%; }
 .input-text-clinical {
   /* 44px tall / 16px text: comfortable touch target, no iOS auto-zoom. */
-  width: 100%; height: 44px; border: 1px solid #cbd5e1;
+  width: 100%; height: 44px; border: 1px solid var(--border-strong);
   border-radius: 4px; padding: 0 var(--sp-3);
-  font-size: 16px; color: #0f172a; box-sizing: border-box;
-  background: #ffffff;
+  font-size: 16px; color: var(--text-hi); box-sizing: border-box;
+  background: var(--bg-panel);
 }
 .input-text-clinical:focus {
-  border-color: var(--resp-teal-accent);
-  box-shadow: 0 0 0 2px var(--resp-accent-dim);
+  border-color: var(--gov-blue);
+  box-shadow: 0 0 0 2px var(--gov-blue-dim);
 }
 .input-text-clinical[aria-invalid='true'] { border-color: var(--need-help); }
 .textarea-clinical { height: auto; padding: var(--sp-2) var(--sp-3); resize: vertical; }
@@ -339,9 +331,9 @@ onMounted(async () => { try { await retryAll(); } catch {} });
 .resp-option-vertical-group { display: flex; flex-direction: column; gap: var(--sp-2); width: 100%; }
 .resp-shell .resp-option {
   display: flex; align-items: center; gap: var(--sp-3);
-  padding: var(--sp-3); background: #ffffff;
-  border: 1px solid #cbd5e1; border-radius: 4px;
-  cursor: pointer; font-size: 13px; color: #0f172a; user-select: none;
+  padding: var(--sp-3); background: var(--bg-panel);
+  border: 1px solid var(--border-strong); border-radius: 4px;
+  cursor: pointer; font-size: 13px; color: var(--text-hi); user-select: none;
 }
 /* Keyboard focus lands on the visually-hidden radio — surface it on the card. */
 .resp-shell .resp-option:focus-within {
@@ -349,41 +341,41 @@ onMounted(async () => { try { await retryAll(); } catch {} });
   outline-offset: 2px;
 }
 .resp-shell .resp-option.is-selected {
-  background: var(--resp-accent-dim); border-color: var(--resp-accent-border);
-  color: var(--resp-accent-text); font-weight: 600;
+  background: var(--gov-blue-dim); border-color: var(--gov-blue-border);
+  color: var(--gov-blue-text); font-weight: 600;
 }
 .resp-shell .resp-glyph {
-  width: 14px; height: 14px; border: 1.5px solid #64748b;
+  width: 14px; height: 14px; border: 1.5px solid var(--text-lo);
   border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; flex-shrink: 0;
 }
-.resp-shell .resp-option.is-selected .resp-glyph { border-color: var(--resp-teal-accent); background: var(--resp-teal-accent); }
-.resp-shell .resp-option.is-selected .resp-glyph::after { content: ""; width: 4px; height: 4px; background: #ffffff; border-radius: 50%; }
+.resp-shell .resp-option.is-selected .resp-glyph { border-color: var(--gov-blue); background: var(--gov-blue); }
+.resp-shell .resp-option.is-selected .resp-glyph::after { content: ""; width: 4px; height: 4px; background: var(--bg-panel); border-radius: 50%; }
 .hidden-radio { position: absolute; opacity: 0; pointer-events: none; }
 
 .option-label-group { display: flex; flex-direction: column; }
 .option-title { font-size: 16px; font-weight: 700; }
-.option-desc { font-size: 13px; color: #64748b; font-weight: 400; }
-.resp-option.is-selected .option-desc { color: var(--resp-teal-accent); }
+.option-desc { font-size: 13px; color: var(--text-lo); font-weight: 400; }
+.resp-option.is-selected .option-desc { color: var(--gov-blue); }
 
 /* Actions Bar Trigger Group Layout */
 .action-slot-bar { display: flex; gap: var(--sp-3); }
 .btn-teal-action {
-  background: var(--resp-teal-action); color: #ffffff; border: none;
+  background: var(--accent-hover); color: var(--text-inv); border: none;
   padding: var(--sp-2) var(--sp-4); font-size: 13px; font-weight: 600;
   border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: var(--sp-2);
 }
-.btn-teal-action:hover { background: var(--resp-teal-accent); }
+.btn-teal-action:hover { background: var(--gov-blue); }
 .complete-action { width: 100%; justify-content: center; height: 48px; font-size: 16px; }
 
 /* Informational Banners and Context Cards */
-.proxy-banner { display: flex; gap: var(--sp-3); padding: var(--sp-3); background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; margin-bottom: var(--sp-4); }
-.proxy-ico { color: var(--resp-teal-accent); display: flex; align-items: center; }
-.proxy-text h3 { margin: 0; font-size: 14px; font-weight: 700; color: #0f172a; }
-.proxy-text p { margin: 2px 0 0 0; font-size: 12.5px; color: #64748b; }
+.proxy-banner { display: flex; gap: var(--sp-3); padding: var(--sp-3); background: var(--bg-canvas); border: 1px solid var(--border-strong); border-radius: 4px; margin-bottom: var(--sp-4); }
+.proxy-ico { color: var(--gov-blue); display: flex; align-items: center; }
+.proxy-text h3 { margin: 0; font-size: 14px; font-weight: 700; color: var(--text-hi); }
+.proxy-text p { margin: 2px 0 0 0; font-size: 12.5px; color: var(--text-lo); }
 
-.report-privacy { margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: 1px solid #cbd5e1; }
-.rp-head { font-size: 13px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 6px; margin-bottom: var(--sp-2); }
+.report-privacy { margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: 1px solid var(--border-strong); }
+.rp-head { font-size: 13px; font-weight: 700; color: var(--text-hi); display: flex; align-items: center; gap: 6px; margin-bottom: var(--sp-2); }
 .rp-tiers { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-2); }
-.rp-note { font-size: 12px; color: #64748b; margin: 0; line-height: 1.4; }
-.ref-pill { display: inline-flex; align-items: center; gap: var(--sp-1); background: #f1f5f9; padding: var(--sp-1) var(--sp-2); border-radius: 4px; font-size: 12px; font-weight: 600; }
+.rp-note { font-size: 12px; color: var(--text-lo); margin: 0; line-height: 1.4; }
+.ref-pill { display: inline-flex; align-items: center; gap: var(--sp-1); background: var(--bg-raised); padding: var(--sp-1) var(--sp-2); border-radius: 4px; font-size: 12px; font-weight: 600; }
 </style>

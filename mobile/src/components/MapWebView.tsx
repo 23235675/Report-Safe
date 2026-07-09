@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { C } from '../theme';
+import { C, R } from '../theme';
 
 // react-native-webview 13.x ships class-component types that React 19's JSX
 // checker rejects; re-type the component for JSX use (runtime is unchanged).
@@ -86,6 +86,6 @@ if(pts.length) try{ map.fitBounds(bounds,{padding:[40,40],maxZoom:16}); }catch(e
 }
 
 const S = StyleSheet.create({
-  wrap: { borderRadius: 8, overflow: 'hidden', backgroundColor: C.bgRaised },
+  wrap: { borderRadius: R.lg, overflow: 'hidden', backgroundColor: C.bgRaised },
   web:  { flex: 1, backgroundColor: C.bgRaised },
 });

@@ -5,7 +5,7 @@ import {
   adminListUsers, adminCreateUser, adminUpdateUser, adminDeleteUser,
   adminListReports, adminCreateReport, adminUpdateReport, adminDeleteReport,
   adminListDisasters, adminCreateDisaster, adminUpdateDisaster, adminDeleteDisaster,
-  adminListLinks, adminUpdateLink, adminDeleteLink,
+  adminListLinks, adminDeleteLink,
   adminListDevices, adminDeleteDevice,
   getAdminToken, getAdminUser, setAdminSession, clearAdminSession,
 } from '../api.js';
@@ -358,11 +358,6 @@ async function doDelete() {
   finally { deleteBusy.value = false; }
 }
 
-async function setLinkStatus(row, status) {
-  try { await adminUpdateLink(row.id, { status }); await loadTab('links', searchQ.value, offset.value); }
-  catch (e) { error.value = e.message; }
-}
-
 const currentRows = computed(() => rows.value[activeTab.value] ?? []);
 const canPage     = computed(() => !!TAB_CONFIG[activeTab.value]?.paged);
 const total       = computed(() => totals.value[activeTab.value] ?? currentRows.value.length);
@@ -580,7 +575,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
             <div class="filter-left">
             <input v-model="searchQ" class="inp flt-search" placeholder="Search name / phone…" aria-label="Search reports by name or phone" @keyup.enter="doSearch" />
             <select v-model="filters.reports.status" class="flt" @change="applyFilters('reports')"><option value="">Status: all</option><option v-for="s in REPORT_STATUSES" :key="s" :value="s">{{ s.replace(/_/g, ' ') }}</option></select>
-            <select v-model="filters.reports.reported_by" class="flt" @change="applyFilters('reports')"><option value="">Source: all</option><option value="self">self</option><option value="family">family</option></select>
+            <select v-model="filters.reports.reported_by" class="flt" @change="applyFilters('reports')"><option value="">Source: all</option><option value="self">self</option><option value="family">proxy</option></select>
             <select v-model="filters.reports.user_type" class="flt" @change="applyFilters('reports')"><option value="">Origin: all</option><option value="mobile">mobile</option><option value="web">web</option></select>
             <select v-model="filters.reports.disaster_id" class="flt" @change="applyFilters('reports')"><option value="">Disaster: all</option><option value="__any__">in zone</option><option value="__none__">no zone</option><option v-for="d in disasterOptions" :key="d.id" :value="d.id">{{ d.type }} — {{ shortId(d.id) }}</option></select>
             </div>
@@ -637,7 +632,6 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
           <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!currentRows.length" class="state-msg">No records.</div>
           <DataTable v-else :columns="TAB_CONFIG.links.columns" :rows="currentRows">
-            <template #cell-status="{ row }"><select class="flt inline" :value="row.status" aria-label="Link status" @change="setLinkStatus(row, $event.target.value)"><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="blocked">blocked</option></select></template>
             <template #cell-actions="{ row }"><button class="btn btn-xs" @click="confirmDelete('links', row)">Del</button></template>
           </DataTable>
         </section>
@@ -792,7 +786,7 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 .flt.inline { padding:5px 8px; font-size:12px; }
 /* Right-aligned action group: Clear (outline) + Search/New (charcoal). */
 .filter-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
-.flt-clear { height:38px; padding:0 15px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; background:transparent; border:1px solid #cbccd2; color:#5b5c63; cursor:pointer; font-family:inherit; border-radius:3px; }
+.flt-clear { height:38px; padding:0 15px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; background:transparent; border:1px solid #dedee2; color:#5b5c63; cursor:pointer; font-family:inherit; border-radius:3px; }
 .flt-clear:hover { background:#e4e5e9; color:#1e1e22; border-color:#b7b8bf; }
 .flt-icon { width:38px; padding:0; justify-content:center; }
 

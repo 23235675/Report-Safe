@@ -95,23 +95,23 @@ const filteredIncidents = computed(() => {
 <style scoped>
 .sub-wrapper { display:flex; flex-direction:column; gap:8px; }
 .cyber-form-layout { display:flex; flex-direction:column; gap:8px; }
-.form-title { font-size:12px; font-weight:700; color:#555; }
+.form-title { font-size:12px; font-weight:700; color:#5b5c63; }
 .dispatch-intro { font-size:11.5px; line-height:1.5; color:#6f727a; margin:0 0 2px; }
 .field-wrap { display:flex; flex-direction:column; gap:3px; min-width:0; }
-.field-wrap label { font-size:12px; color:#555; font-weight:600; }
-.cyber-select, .cyber-field { width:100%; min-width:0; box-sizing:border-box; background:#fff; border:1px solid #dedee2; padding:7px 9px; color:#222; font-family:inherit; font-size:13px; border-radius:3px; }
+.field-wrap label { font-size:12px; color:#5b5c63; font-weight:600; }
+.cyber-select, .cyber-field { width:100%; min-width:0; box-sizing:border-box; background:#fff; border:1px solid #dedee2; padding:7px 9px; color:#1e1e22; font-family:inherit; font-size:13px; border-radius:3px; }
 .cyber-select:focus, .cyber-field:focus { border-color:#999; }
 .field-row-split { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
 .cyber-btn-bright { background:#26262b; color:#fff; border:none; padding:9px; font-weight:700; cursor:pointer; font-family:inherit; font-size:12px; border-radius:3px; }
 .cyber-btn-bright:hover { background:#131316; }
-.cyber-btn-dim { background:#f5f5f5; color:#333; border:1px solid #dedee2; padding:7px; font-size:12px; cursor:pointer; font-family:inherit; border-radius:3px; }
+.cyber-btn-dim { background:#f5f5f5; color:#3a3a41; border:1px solid #dedee2; padding:7px; font-size:12px; cursor:pointer; font-family:inherit; border-radius:3px; }
 .form-feedback-banner { font-size:13px; padding:7px 9px; background:#fff; border:1px solid #dedee2; border-radius:3px; }
 .form-feedback-banner.error { color:#c0392b; }
 .form-feedback-banner.warn { color:#9a5f00; }
-.topology-checkbox-item { display:flex; align-items:center; gap:5px; font-size:12px; color:#555; cursor:pointer; }
+.topology-checkbox-item { display:flex; align-items:center; gap:5px; font-size:12px; color:#5b5c63; cursor:pointer; }
 .topology-checkbox-item input[type="checkbox"] { accent-color:#26262b; }
 .cyber-list-row { padding:8px 10px; border:1px solid #dedee2; border-radius:3px; margin-bottom:6px; cursor:pointer; background:#fff; }
-.row-flex-meta { display:flex; justify-content:space-between; align-items:center; font-size:13px; color:#222; }
-.row-flex-desc { font-size:12px; color:#666; margin-top:2px; }
-.cyber-empty-notice { padding:16px; text-align:center; color:#666; font-size:13px; }
+.row-flex-meta { display:flex; justify-content:space-between; align-items:center; font-size:13px; color:#1e1e22; }
+.row-flex-desc { font-size:12px; color:#5b5c63; margin-top:2px; }
+.cyber-empty-notice { padding:16px; text-align:center; color:#5b5c63; font-size:13px; }
 </style>

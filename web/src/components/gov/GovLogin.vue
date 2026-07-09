@@ -30,7 +30,7 @@ function submit() { emit('submit', passwordInput.value); }
 </template>
 
 <style scoped>
-.field-label { font-size:12px; font-weight:600; color:#555; margin-bottom:4px; }
-.login-input { padding:8px 10px; border:1px solid #d0d0d0; font-size:14px; color:#222; background:#fff; width:100%; box-sizing:border-box; font-family:inherit; border-radius:3px; }
+.field-label { font-size:12px; font-weight:600; color:#5b5c63; margin-bottom:4px; }
+.login-input { padding:8px 10px; border:1px solid #dedee2; font-size:14px; color:#1e1e22; background:#fff; width:100%; box-sizing:border-box; font-family:inherit; border-radius:3px; }
 .login-input:focus { border-color:#999; }
 </style>

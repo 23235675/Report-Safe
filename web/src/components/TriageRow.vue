@@ -67,12 +67,13 @@ function relativeTime(ts) {
 </template>
 
 <style scoped>
+/* Proxy marker — text + colour only, no container (matches the bare status
+   badge). Uses the app's dedicated proxy colour (var(--gov-blue), as in
+   .hub-btn-proxy), distinct from every status colour. */
 .proxy-tag {
   display: inline-flex; align-items: center; gap: 3px;
   font-size: 10px; font-weight: 700; letter-spacing: 0.02em;
-  color: var(--awaiting); background: var(--awaiting-dim);
-  border: 1px solid var(--awaiting-border); border-radius: 4px;
-  padding: 0 4px; text-transform: uppercase;
+  color: var(--gov-blue); text-transform: uppercase;
 }
 .inline-ico { display: inline-flex; align-items: center; gap: 3px; }
 /* Neutral (colourless) gender avatar tile — matches the disaster card icon. */

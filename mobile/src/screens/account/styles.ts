@@ -32,7 +32,7 @@ export const S = StyleSheet.create({
   field: { gap: 4 },
   fieldLbl: { fontSize: 12, fontWeight: '600', color: C.textMd, textTransform: 'uppercase', letterSpacing: 0.3 },
   fieldHint: { fontSize: 11, color: C.textLo, marginTop: 3 },
-  input: { borderWidth: 1, borderColor: C.border, borderRadius: 6, padding: 10, fontSize: 14, color: C.textHi, backgroundColor: C.bgCanvas },
+  input: { borderWidth: 1, borderColor: C.border, borderRadius: R.md, padding: 10, fontSize: 14, color: C.textHi, backgroundColor: C.bgCanvas },
   phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   phonePrefix: { fontSize: 14, fontWeight: '700', color: C.textHi, marginLeft: 10 },
   phoneInput: { flex: 1 },

@@ -568,7 +568,7 @@ const S = StyleSheet.create({
   errInlineText: { flex: 1, fontSize: 12, color: C.critical, fontWeight: '600' },
   field: { gap: 4 },
   fieldLbl: { fontSize: 12, fontWeight: '600', color: C.textMd },
-  input: { borderWidth: 1, borderColor: C.border, borderRadius: 6, padding: 10, fontSize: 14, color: C.textHi, backgroundColor: C.bgCanvas },
+  input: { borderWidth: 1, borderColor: C.border, borderRadius: R.md, padding: 10, fontSize: 14, color: C.textHi, backgroundColor: C.bgCanvas },
   locBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 8, borderRadius: R.pill, backgroundColor: C.govBlueDim, borderWidth: 1, borderColor: C.govBlue },
   locBtnText: { fontSize: 13, fontWeight: '600', color: C.govBlue },
   submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: R.sm, backgroundColor: C.govBlue, marginTop: 4 },

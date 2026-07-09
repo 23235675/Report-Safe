@@ -284,7 +284,7 @@ onUnmounted(() => {
                   <span class="inline-ico"><AppIcon name="time" :size="13" /> {{ relativeTime(r.updated_at) }}</span>
                   <span v-if="r.coarse_lat != null">·</span>
                   <span v-if="r.coarse_lat != null" class="inline-ico"><AppIcon name="globe" :size="13" /> ~{{ r.coarse_lat }}, {{ r.coarse_lng }}</span>
-                  <span v-if="r.reported_by === 'family'" class="inline-ico" style="color: var(--awaiting);">
+                  <span v-if="r.reported_by === 'family'" class="inline-ico" style="color: var(--gov-blue);">
                     · <AppIcon name="people" :size="13" /> {{ $t('family.via', { name: r.reporter_name || $t('family.familyMember') }) }}
                   </span>
                 </template>

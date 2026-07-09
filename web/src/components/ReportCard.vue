@@ -27,7 +27,7 @@ const coords = computed(() => `~${props.report.coarse_lat}, ${props.report.coars
         {{ report.name }}
         <span
           v-if="report.reported_by === 'family'"
-          style="font-size: 11px; font-weight: 600; color: var(--awaiting); margin-left: 6px;"
+          style="font-size: 11px; font-weight: 600; color: var(--gov-blue); margin-left: 6px;"
         >via {{ report.reporter_name || 'family' }}</span>
       </div>
       <div class="muted" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">

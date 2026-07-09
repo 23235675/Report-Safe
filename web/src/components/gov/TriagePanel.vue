@@ -88,12 +88,12 @@ defineExpose({ scrollToReport });
 .sub-wrapper { display:flex; flex-direction:column; gap:8px; }
 .text-red { color:#c0392b; } .text-orange { color:#c2410c; } .text-yellow { color:#9a5f00; }
 .filter-chip-row { display:flex; flex-wrap:wrap; gap:4px; }
-.filter-chip { font-size:12px; font-weight:500; padding:4px 10px; background:#fff; border:1px solid #e9e9ec; color:#555; cursor:pointer; font-family:inherit; border-radius:2px; }
+.filter-chip { font-size:12px; font-weight:500; padding:4px 10px; background:#fff; border:1px solid #e9e9ec; color:#5b5c63; cursor:pointer; font-family:inherit; border-radius:2px; }
 .filter-chip.on { background:#26262b; color:#fff; border-color:#26262b; }
 .cyber-queue-stack { display:flex; flex-direction:column; gap:10px; }
 .queue-category { display:flex; flex-direction:column; gap:6px; }
 .category-divider { font-size:11px; font-weight:700; letter-spacing:0.03em; padding-bottom:4px; border-bottom:1px solid #e9e9ec; margin-bottom:2px; }
 .cyber-queue-item { background:#fff; border:1px solid #d9dbe0; padding:0; overflow:hidden; cursor:pointer; border-radius:3px; box-shadow:0 1px 2px rgba(0,0,0,0.03); }
 .cyber-queue-item:hover { border-color:#c4c4ca; }
-.cyber-empty-notice { padding:16px; text-align:center; color:#666; font-size:13px; }
+.cyber-empty-notice { padding:16px; text-align:center; color:#5b5c63; font-size:13px; }
 </style>

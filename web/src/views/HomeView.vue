@@ -323,7 +323,7 @@ onUnmounted(() => { offStats?.(); offAlert?.(); });
 
 /* Severity Scale System badges */
 /* Severity = monochrome system tag; the SEV label carries the meaning, not colour. */
-.dc-sev { padding: 2px 8px; border-radius: 2px; font-size: 11px; font-weight: 700; text-transform: uppercase; font-family: var(--font-mono); letter-spacing: 0.02em; border: 1px solid #cbd5e1; }
+.dc-sev { padding: 2px 8px; border-radius: 2px; font-size: 11px; font-weight: 700; text-transform: uppercase; font-family: var(--font-mono); letter-spacing: 0.02em; border: 1px solid var(--disaster-border); }
 .sev-extreme,
 .sev-severe,
 .sev-moderate,

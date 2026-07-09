@@ -4,16 +4,13 @@
    Brand: Pine Green (#0F766E) for the citizen web app; status indicators are
    the only coloured exceptions. The government/admin consoles use Federal Navy.
 
-   Status Color Semantics — WCAG-AA verified (>=4.5:1) as small text on
-   white AND on each -dim tint. Semantic meanings preserved:
-     Emerald #047857 = Safe
-     Amber   #B45309 = Injured
-     Orange  #C2410C = Awaiting Response
-     Crimson #C81E1E = Need Help / Critical Rescue
-     Rose    #9D174D = Potentially Missing
-     Slate   #4B5563 = Missing / Unknown
-     Teal    #0F766E = Rescued
-     Pine    #0F766E = Brand / Government / Rescue authority (one green)
+   Status Colours — mirror the Admin console .st-* classes and mobile theme.ts C:
+     Green #1a7a3f = Safe
+     Amber #9a5f00 = Injured / Awaiting Response / Potentially Missing
+     Red   #c0392b = Need Help / Missing
+     Blue  #1a7abf = Rescued
+     Grey  #555555 = Deceased
+     Pine  #0F766E = Brand / Government / Rescue authority (--gov-blue, one green)
 =================================================================== */
 
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;700&display=swap');

@@ -538,7 +538,7 @@ watch([filterSource, filterDisaster], () => {
 
 .table-wrap { background: var(--bg-panel); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
-.data-table th { padding: 8px 12px; text-align: left; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #ffffff; background: var(--accent-hover); border-bottom: 1px solid var(--accent-active); white-space: nowrap; font-family: var(--font-mono); }
+.data-table th { padding: 8px 12px; text-align: left; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-inv); background: var(--accent-hover); border-bottom: 1px solid var(--accent-active); white-space: nowrap; font-family: var(--font-mono); }
 .data-table td { padding: 14px 14px; border-bottom: 1px solid var(--border-line); vertical-align: middle; }
 .data-table tr:last-child td { border-bottom: none; }
 .data-table tr:hover td { background: var(--bg-raised); }
