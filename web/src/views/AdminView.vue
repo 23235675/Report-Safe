@@ -13,6 +13,7 @@ import LoginPanel from '../components/LoginPanel.vue';
 import DataTable from '../components/DataTable.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 import AppIcon from '../components/AppIcon.vue';
+import AdminChart from '../components/AdminChart.vue';
 import { STATUS_COLOR_VIVID } from '../iconography.js';
 import { useFocusTrap } from '../composables/useFocusTrap.js';
 
@@ -115,9 +116,8 @@ const dash = (v) => v || '—';
  *  - remove(id):     delete call for the confirm dialog
  */
 const TAB_CONFIG = {
-  overview: {
-    load: async () => { stats.value = await adminGetStats(); },
-  },
+  overview: {}, // dashboard — no rows to fetch; loadTab() pulls the summary stats
+
   users: {
     fetch: adminListUsers,
     searchable: true,
@@ -274,24 +274,29 @@ async function switchTab(tab) {
   await loadTab(tab);
 }
 
-// One generic loader for every tab, driven by TAB_CONFIG.
+async function loadStats() {
+  try { stats.value = await adminGetStats(); } catch { /* keep prior stats on a transient failure */ }
+}
+// One generic loader for every tab: always refreshes the top-of-tab summary
+// counters (loadStats) alongside the tab's own rows (when the tab has a fetch).
 async function loadTab(tab, q = '', off = 0) {
   loading.value = true;
   error.value   = null;
   try {
     const cfg = TAB_CONFIG[tab];
-    if (cfg.load) {
-      await cfg.load();
-    } else {
+    const jobs = [loadStats()];
+    if (cfg.fetch) {
       const params = {
         ...(cfg.searchable ? { q } : {}),
         ...(cfg.paged ? { limit: PAGE, offset: off } : {}),
         ...filterParams(tab),
       };
-      const res = await cfg.fetch(params);
-      rows.value = { ...rows.value, [tab]: res.rows };
-      if (cfg.paged) totals.value = { ...totals.value, [tab]: res.total };
+      jobs.push(cfg.fetch(params).then((res) => {
+        rows.value = { ...rows.value, [tab]: res.rows };
+        if (cfg.paged) totals.value = { ...totals.value, [tab]: res.total };
+      }));
     }
+    await Promise.all(jobs);
   } catch (e) {
     error.value = e.message || 'Failed to load data';
   } finally {
@@ -362,29 +367,12 @@ const currentRows = computed(() => rows.value[activeTab.value] ?? []);
 const canPage     = computed(() => !!TAB_CONFIG[activeTab.value]?.paged);
 const total       = computed(() => totals.value[activeTab.value] ?? currentRows.value.length);
 
-// ── Dashboard view-models (Overview tab) — derived from the /stats payload ──
-// The overview is a drill-down: a grid of clickable cards (activeChart === null),
-// then ONE domain chart at a time. Each domain uses a different chart form.
+// ── Dashboard view-models (Overview) — every chart is shown at once; clicking a
+// card "pops" that chart into a modal. activeChart holds the popped domain key. ──
 const activeChart = ref(null);
 function openChart(key) { activeChart.value = key; }
 function closeChart()   { activeChart.value = null; }
-
-const DASH_META = [
-  { key: 'users',     label: 'Users',     chart: 'donut', kpi: (s) => s.users?.total,      sub: (s) => `${s.users?.citizen ?? 0} citizens` },
-  { key: 'reports',   label: 'Reports',   chart: 'hbar',  kpi: (s) => s.reports?.total,    sub: (s) => `${s.reports?.safe ?? 0} marked safe` },
-  { key: 'disasters', label: 'Disasters', chart: 'gauge', kpi: (s) => s.disasters?.active, sub: (s) => `of ${s.disasters?.total ?? 0} total` },
-  { key: 'links',     label: 'Links',     chart: 'donut', kpi: (s) => s.links?.total,      sub: (s) => `${s.links?.confirmed ?? 0} confirmed` },
-  { key: 'devices',   label: 'Devices',   chart: 'hbar',  kpi: (s) => s.devices?.total,    sub: () => 'push tokens' },
-  { key: 'audits',    label: 'Audit',     chart: 'vbar',  kpi: (s) => s.audits?.total,     sub: () => 'logged actions' },
-];
-const dashCards = computed(() => {
-  const s = stats.value;
-  if (!s) return [];
-  return DASH_META.map((m) => ({ key: m.key, label: m.label, chart: m.chart, value: m.kpi(s) ?? 0, sub: m.sub(s) }));
-});
-const currentCard = computed(() => dashCards.value.find((c) => c.key === activeChart.value) || null);
-const CHART_SUBTITLE = { users: 'by role', reports: 'by status', disasters: 'active vs ended', links: 'by status', devices: 'by platform', audits: 'by action' };
-const chartTitle = computed(() => CHART_SUBTITLE[activeChart.value] || '');
+const CHART_SUB = { users: 'by role', reports: 'by status', disasters: 'active vs ended', links: 'by status', devices: 'by platform', audits: 'by action' };
 
 // Horizontal-bar scaling: tallest = 100%, a non-zero count always gets a sliver.
 function toBars(list) {
@@ -449,6 +437,40 @@ const disasterRatio = computed(() => {
   return { total, active, ended: Math.max(0, total - active), pct: total > 0 ? Math.round((active / total) * 100) : 0 };
 });
 
+// Assemble the six chart specs (one per domain) consumed by <AdminChart>.
+const legendFromSegments = (segs) => segs.map((s) => ({ label: s.label, val: `${s.n} · ${Math.round(s.pct)}%`, color: s.color }));
+const dashCharts = computed(() => {
+  const s = stats.value;
+  if (!s) return [];
+  const d = disasterRatio.value;
+  return [
+    { key: 'users',     label: 'Users',     value: s.users?.total ?? 0,   type: 'donut', centerN: s.users?.total ?? 0, centerL: 'total',  segments: roleDonut.value, legend: legendFromSegments(roleDonut.value) },
+    { key: 'reports',   label: 'Reports',   value: s.reports?.total ?? 0, type: 'hbar',  bars: reportBars.value },
+    { key: 'disasters', label: 'Disasters', value: d.active,              type: 'gauge', centerN: d.active, centerL: 'active', pct: d.pct, legend: [{ label: 'Active', val: `${d.active} · ${d.pct}%`, color: '#26262b' }, { label: 'Ended', val: d.ended, color: '#e4e4e8' }] },
+    { key: 'links',     label: 'Links',     value: s.links?.total ?? 0,   type: 'donut', centerN: s.links?.total ?? 0, centerL: 'total',  segments: linkDonut.value, legend: legendFromSegments(linkDonut.value) },
+    { key: 'devices',   label: 'Devices',   value: s.devices?.total ?? 0, type: 'hbar',  bars: deviceBars.value },
+    { key: 'audits',    label: 'Audit',     value: s.audits?.total ?? 0,  type: 'vbar',  bars: auditBars.value },
+  ];
+});
+const currentChart = computed(() => dashCharts.value.find((c) => c.key === activeChart.value) || null);
+const chartModalEl = ref(null);
+useFocusTrap(chartModalEl, () => !!activeChart.value, closeChart);
+
+// Top-of-tab summary counters (a compact "dash" on every data tab), from /stats.
+const TAB_STAT_DEFS = {
+  users:     (s) => [{ label: 'Total Users', value: s.users?.total }, { label: 'Citizens', value: s.users?.citizen }, { label: 'Volunteers', value: s.users?.volunteer }, { label: 'Government', value: s.users?.government }],
+  reports:   (s) => [{ label: 'Total Reports', value: s.reports?.total }, { label: 'Safe', value: s.reports?.safe }, { label: 'Injured', value: s.reports?.injured }, { label: 'Missing', value: s.reports?.missing }],
+  disasters: (s) => [{ label: 'Total', value: s.disasters?.total }, { label: 'Active', value: s.disasters?.active }, { label: 'Ended', value: (s.disasters?.total ?? 0) - (s.disasters?.active ?? 0) }],
+  links:     (s) => [{ label: 'Total Links', value: s.links?.total }, { label: 'Confirmed', value: s.links?.confirmed }, { label: 'Pending', value: s.links?.pending }],
+  devices:   (s) => [{ label: 'Total Devices', value: s.devices?.total }, { label: 'iOS', value: s.devices?.ios }, { label: 'Android', value: s.devices?.android }, { label: 'Other', value: s.devices?.other }],
+  audit:     (s) => [{ label: 'Total Events', value: s.audits?.total }, { label: 'Create', value: s.audits?.create }, { label: 'Update', value: s.audits?.update }, { label: 'Delete', value: s.audits?.delete }, { label: 'Login', value: s.audits?.login }],
+};
+const statCards = computed(() => {
+  const s = stats.value, def = TAB_STAT_DEFS[activeTab.value];
+  if (!s || !def) return [];
+  return def(s).map((c) => ({ label: c.label, value: c.value ?? 0 }));
+});
+
 const nowStr = ref('');
 let clockTimer = null;
 function tickClock() {
@@ -461,6 +483,8 @@ onMounted(() => {
   if (!adminToken.value && location.hostname === 'localhost') {
     adminToken.value = 'dev-bypass';
     adminUser.value = { name: 'Admin (Dev)', phone: 'localhost' };
+    switchTab('overview');
+  } else if (adminToken.value) {
     switchTab('overview');
   }
 });
@@ -478,100 +502,50 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 
   <!-- DASHBOARD -->
   <div v-else class="shell">
-    <header class="topbar">
-      <div class="topbar-l">
-        <span class="topbar-name">Report Safe</span>
-        <span class="topbar-div">/</span>
-        <span class="topbar-sub">Admin Console</span>
-      </div>
-      <div class="topbar-r">
-        <span class="topbar-ts">{{ nowStr }}</span>
-        <span class="topbar-user">{{ adminUser?.name || adminUser?.phone }}</span>
-        <button class="topbar-refresh" @click="refreshCurrent" :disabled="loading" title="Refresh" aria-label="Refresh current view"><AppIcon name="refresh" :size="16" /></button>
-        <button class="topbar-logout" @click="logout">Sign out</button>
-      </div>
-    </header>
-
     <div class="body">
       <nav class="sidebar">
-        <button v-for="tab in TABS" :key="tab.id" class="nav-btn" :class="{ on: activeTab === tab.id }" @click="switchTab(tab.id)">{{ tab.label }}</button>
+        <div class="sb-top">
+          <div class="sb-brand"><span class="sb-name">Report Safe</span><span class="sb-sub">Admin Console</span></div>
+        </div>
+        <div class="sb-nav">
+          <button v-for="tab in TABS" :key="tab.id" class="nav-btn" :class="{ on: activeTab === tab.id }" @click="switchTab(tab.id)">{{ tab.label }}</button>
+        </div>
+        <div class="sb-foot">
+          <div class="sb-user"><span class="sb-uname">{{ adminUser?.name || adminUser?.phone }}</span><span class="sb-uts">{{ nowStr }}</span></div>
+          <button class="sb-logout" @click="logout">Sign out</button>
+        </div>
       </nav>
 
       <main class="content">
         <div v-if="error" class="err-bar" role="alert">{{ error }} <button aria-label="Dismiss error" @click="error = null">✕</button></div>
 
-        <!-- OVERVIEW — drill-down dashboard: card grid → one domain chart -->
-        <section v-if="activeTab === 'overview'">
-          <div v-if="activeChart" class="toolbar">
-            <h2 class="page-title crumb">
-              <button class="crumb-back" @click="closeChart"><AppIcon name="chevron-down" :size="15" class="crumb-ico" /> Dashboard</button>
-              <span class="crumb-sep">/</span>{{ currentCard?.label }}
-            </h2>
+        <!-- Top-of-tab summary counters (a compact dash) — every data tab -->
+        <div v-if="activeTab !== 'overview' && statCards.length" class="stat-row">
+          <div class="stat-c" v-for="sc in statCards" :key="sc.label">
+            <div class="stat-c-l">{{ sc.label }}</div>
+            <div class="stat-c-v">{{ sc.value }}</div>
           </div>
+        </div>
+
+        <!-- OVERVIEW — all domain charts shown together; click a card to enlarge -->
+        <section v-if="activeTab === 'overview'">
           <div v-if="loading" class="state-msg" role="status">Loading…</div>
           <div v-else-if="!stats" class="state-msg">No data available.</div>
-
-          <!-- GRID: clickable domain cards -->
-          <div v-else-if="!activeChart" class="kpi-grid">
-            <button v-for="c in dashCards" :key="c.key" class="kpi-card kpi-click" @click="openChart(c.key)">
-              <div class="kpi-label">{{ c.label }}</div>
-              <div class="kpi-value">{{ c.value }}</div>
-              <div class="kpi-sub">{{ c.sub }}</div>
-              <span class="kpi-cta">View chart <AppIcon name="chevron-down" :size="13" class="cta-ico" /></span>
-            </button>
-          </div>
-
-          <!-- DETAIL: the selected domain's chart -->
-          <div v-else class="dash-card chart-stage">
-            <div class="dash-head"><h3>{{ currentCard?.label }} <span class="dash-sub">· {{ chartTitle }}</span></h3><span class="dash-total">{{ currentCard?.value }} total</span></div>
-
-            <!-- Reports → horizontal bars in status colours -->
-            <div v-if="activeChart === 'reports'" class="bars bars-lg">
-              <div class="bar-row" v-for="b in reportBars" :key="b.key" :title="`${b.label}: ${b.n}`">
-                <span class="bar-cat">{{ b.label }}</span>
-                <div class="bar-track"><div class="bar-fill" :style="{ width: b.pct + '%', background: b.color }"></div></div>
-                <span class="bar-val">{{ b.n }}</span>
+          <div v-else class="dash-grid-charts">
+            <div
+              v-for="c in dashCharts" :key="c.key"
+              class="dash-card chart-card"
+              role="button" tabindex="0"
+              :aria-label="`Enlarge ${c.label} chart`"
+              @click="openChart(c.key)"
+              @keydown.enter.prevent="openChart(c.key)"
+              @keydown.space.prevent="openChart(c.key)"
+            >
+              <div class="dash-head">
+                <h3>{{ c.label }} <span class="dash-sub">· {{ CHART_SUB[c.key] }}</span></h3>
+                <div class="dash-head-r"><span class="dash-total">{{ c.value }}</span><AppIcon name="add" :size="15" class="max-ic" title="Enlarge" /></div>
               </div>
-            </div>
-
-            <!-- Devices → horizontal bars (charcoal) -->
-            <div v-else-if="activeChart === 'devices'" class="bars bars-lg">
-              <div class="bar-row" v-for="b in deviceBars" :key="b.key" :title="`${b.label}: ${b.n}`">
-                <span class="bar-cat">{{ b.label }}</span>
-                <div class="bar-track"><div class="bar-fill charcoal" :style="{ width: b.pct + '%' }"></div></div>
-                <span class="bar-val">{{ b.n }}</span>
-              </div>
-            </div>
-
-            <!-- Audit → vertical bars -->
-            <div v-else-if="activeChart === 'audits'" class="vbars">
-              <div class="vbar-col" v-for="b in auditBars" :key="b.key" :title="`${b.label}: ${b.n}`">
-                <span class="vbar-val">{{ b.n }}</span>
-                <div class="vbar-track"><div class="vbar-fill" :style="{ height: b.h + '%' }"></div></div>
-                <span class="vbar-cat">{{ b.label }}</span>
-              </div>
-            </div>
-
-            <!-- Users / Links → donut · Disasters → gauge -->
-            <div v-else class="donut-wrap">
-              <svg class="donut-svg" viewBox="0 0 42 42" role="img" :aria-label="`${currentCard?.label} ${chartTitle}`">
-                <circle class="donut-track" cx="21" cy="21" r="15.9155" fill="none" stroke="#f0f0f2" stroke-width="4.5" />
-                <circle v-if="activeChart === 'disasters'" class="donut-seg" cx="21" cy="21" r="15.9155" fill="none" stroke="#26262b" stroke-width="4.5" :stroke-dasharray="`${disasterRatio.pct} ${100 - disasterRatio.pct}`" stroke-dashoffset="25" />
-                <circle v-else v-for="s in (activeChart === 'users' ? roleDonut : linkDonut)" :key="s.key" class="donut-seg" cx="21" cy="21" r="15.9155" fill="none" :stroke="s.color" stroke-width="4.5" :stroke-dasharray="s.dash" :stroke-dashoffset="s.offset" />
-                <text x="21" y="20.5" class="donut-c-n">{{ activeChart === 'disasters' ? disasterRatio.active : currentCard?.value }}</text>
-                <text x="21" y="25.6" class="donut-c-l">{{ activeChart === 'disasters' ? 'active' : 'total' }}</text>
-              </svg>
-              <div class="donut-legend">
-                <template v-if="activeChart === 'disasters'">
-                  <div class="dleg-row"><span class="dleg-dot" style="background:#26262b"></span><span class="dleg-label">Active</span><span class="dleg-val">{{ disasterRatio.active }} · {{ disasterRatio.pct }}%</span></div>
-                  <div class="dleg-row"><span class="dleg-dot" style="background:#e4e4e8"></span><span class="dleg-label">Ended</span><span class="dleg-val">{{ disasterRatio.ended }}</span></div>
-                </template>
-                <div v-else v-for="s in (activeChart === 'users' ? roleDonut : linkDonut)" :key="s.key" class="dleg-row">
-                  <span class="dleg-dot" :style="{ background: s.color }"></span>
-                  <span class="dleg-label">{{ s.label }}</span>
-                  <span class="dleg-val">{{ s.n }} · {{ Math.round(s.pct) }}%</span>
-                </div>
-              </div>
+              <AdminChart :spec="c" size="sm" />
             </div>
           </div>
         </section>
@@ -579,12 +553,15 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
         <!-- USERS -->
         <section v-if="activeTab === 'users'">
           <div class="filter-row">
+            <div class="filter-left">
             <input v-model="searchQ" class="inp flt-search" placeholder="Search name / phone…" aria-label="Search users by name or phone" @keyup.enter="doSearch" />
             <select v-model="filters.users.role" class="flt" @change="applyFilters('users')"><option value="">Role: all</option><option value="citizen">citizen</option><option value="volunteer">volunteer</option><option value="government">government</option><option value="super_admin">super_admin</option></select>
             <select v-model="filters.users.user_type" class="flt" @change="applyFilters('users')"><option value="">Type: all</option><option value="mobile">mobile</option><option value="web">web</option></select>
             <select v-model="filters.users.consent" class="flt" @change="applyFilters('users')"><option value="">Consent: any</option><option value="true">given</option><option value="false">none</option></select>
             <select v-model="filters.users.has_email" class="flt" @change="applyFilters('users')"><option value="">Email: any</option><option value="true">has</option><option value="false">none</option></select>
+            </div>
             <div class="filter-actions">
+              <button class="flt-clear flt-icon" @click="refreshCurrent" :disabled="loading" title="Refresh" aria-label="Refresh"><AppIcon name="refresh" :size="15" /></button>
               <button class="flt-clear" @click="clearFilters('users')">Clear</button>
               <button class="btn btn-dark" @click="doSearch"><AppIcon name="search" :size="15" /> Search</button>
               <button class="btn btn-dark" @click="openCreate('users')"><AppIcon name="add" :size="16" /> New user</button>
@@ -600,12 +577,15 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
         <!-- REPORTS -->
         <section v-if="activeTab === 'reports'">
           <div class="filter-row">
+            <div class="filter-left">
             <input v-model="searchQ" class="inp flt-search" placeholder="Search name / phone…" aria-label="Search reports by name or phone" @keyup.enter="doSearch" />
             <select v-model="filters.reports.status" class="flt" @change="applyFilters('reports')"><option value="">Status: all</option><option v-for="s in REPORT_STATUSES" :key="s" :value="s">{{ s.replace(/_/g, ' ') }}</option></select>
             <select v-model="filters.reports.reported_by" class="flt" @change="applyFilters('reports')"><option value="">Source: all</option><option value="self">self</option><option value="family">family</option></select>
             <select v-model="filters.reports.user_type" class="flt" @change="applyFilters('reports')"><option value="">Origin: all</option><option value="mobile">mobile</option><option value="web">web</option></select>
             <select v-model="filters.reports.disaster_id" class="flt" @change="applyFilters('reports')"><option value="">Disaster: all</option><option value="__any__">in zone</option><option value="__none__">no zone</option><option v-for="d in disasterOptions" :key="d.id" :value="d.id">{{ d.type }} — {{ shortId(d.id) }}</option></select>
+            </div>
             <div class="filter-actions">
+              <button class="flt-clear flt-icon" @click="refreshCurrent" :disabled="loading" title="Refresh" aria-label="Refresh"><AppIcon name="refresh" :size="15" /></button>
               <button class="flt-clear" @click="clearFilters('reports')">Clear</button>
               <button class="btn btn-dark" @click="doSearch"><AppIcon name="search" :size="15" /> Search</button>
               <button class="btn btn-dark" @click="openCreate('reports')"><AppIcon name="add" :size="16" /> New report</button>
@@ -624,9 +604,12 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
         <!-- DISASTERS -->
         <section v-if="activeTab === 'disasters'">
           <div class="filter-row">
+            <div class="filter-left">
             <select v-model="filters.disasters.active" class="flt" @change="applyFilters('disasters')"><option value="">Status: all</option><option value="true">active</option><option value="false">ended</option></select>
             <select v-model="filters.disasters.type" class="flt" @change="applyFilters('disasters')"><option value="">Type: all</option><option v-for="t in DISASTER_TYPES" :key="t" :value="t">{{ t }}</option></select>
+            </div>
             <div class="filter-actions">
+              <button class="flt-clear flt-icon" @click="refreshCurrent" :disabled="loading" title="Refresh" aria-label="Refresh"><AppIcon name="refresh" :size="15" /></button>
               <button class="flt-clear" @click="clearFilters('disasters')">Clear</button>
               <button class="btn btn-dark" @click="openCreate('disasters')"><AppIcon name="add" :size="16" /> New disaster</button>
             </div>
@@ -641,9 +624,12 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
         <!-- LINKS -->
         <section v-if="activeTab === 'links'">
           <div class="filter-row">
+            <div class="filter-left">
             <input v-model="searchQ" class="inp flt-search" placeholder="Search name / phone…" aria-label="Search links by name or phone" @keyup.enter="doSearch" />
             <select v-model="filters.links.status" class="flt" @change="applyFilters('links')"><option value="">Status: all</option><option value="confirmed">confirmed</option><option value="pending">pending</option><option value="blocked">blocked</option></select>
+            </div>
             <div class="filter-actions">
+              <button class="flt-clear flt-icon" @click="refreshCurrent" :disabled="loading" title="Refresh" aria-label="Refresh"><AppIcon name="refresh" :size="15" /></button>
               <button class="flt-clear" @click="clearFilters('links')">Clear</button>
               <button class="btn btn-dark" @click="doSearch"><AppIcon name="search" :size="15" /> Search</button>
             </div>
@@ -659,10 +645,13 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
         <!-- DEVICES -->
         <section v-if="activeTab === 'devices'">
           <div class="filter-row">
+            <div class="filter-left">
             <select v-model="filters.devices.platform" class="flt" @change="applyFilters('devices')"><option value="">Platform: all</option><option value="ios">iOS</option><option value="android">Android</option></select>
             <select v-model="filters.devices.located" class="flt" @change="applyFilters('devices')"><option value="">GPS: any</option><option value="true">has</option><option value="false">none</option></select>
             <select v-model="filters.devices.linked" class="flt" @change="applyFilters('devices')"><option value="">Account: any</option><option value="true">linked</option><option value="false">unlinked</option></select>
+            </div>
             <div class="filter-actions">
+              <button class="flt-clear flt-icon" @click="refreshCurrent" :disabled="loading" title="Refresh" aria-label="Refresh"><AppIcon name="refresh" :size="15" /></button>
               <button class="flt-clear" @click="clearFilters('devices')">Clear</button>
             </div>
           </div>
@@ -676,11 +665,13 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
         <!-- AUDIT -->
         <section v-if="activeTab === 'audit'">
           <div class="filter-row">
+            <div class="filter-left">
             <select v-model="filters.audit.action" class="flt" @change="applyFilters('audit')"><option value="">Action: all</option><option value="create">create</option><option value="update">update</option><option value="delete">delete</option><option value="login">login</option></select>
             <select v-model="filters.audit.entity" class="flt" @change="applyFilters('audit')"><option value="">Entity: all</option><option value="users">users</option><option value="reports">reports</option><option value="disasters">disasters</option><option value="account_links">links</option><option value="device_push_tokens">devices</option></select>
+            </div>
             <div class="filter-actions">
+              <button class="flt-clear flt-icon" @click="refreshCurrent" :disabled="loading" title="Refresh" aria-label="Refresh"><AppIcon name="refresh" :size="15" /></button>
               <button class="flt-clear" @click="clearFilters('audit')">Clear</button>
-              <button class="btn" @click="loadTab('audit', '', 0)"><AppIcon name="refresh" :size="15" /> Refresh</button>
             </div>
           </div>
           <div v-if="loading" class="state-msg" role="status">Loading…</div>
@@ -694,6 +685,14 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
           <button class="btn" :disabled="offset + PAGE >= total" @click="nextPage">Next</button>
         </div>
       </main>
+    </div>
+
+    <!-- CHART POP-UP — click a dashboard card to enlarge that chart -->
+    <div v-if="activeChart" class="overlay" @click.self="closeChart">
+      <div ref="chartModalEl" class="modal pop-modal" role="dialog" aria-modal="true" aria-labelledby="pop-title" tabindex="-1">
+        <div class="modal-hd"><h3 id="pop-title">{{ currentChart?.label }} <span class="dash-sub">· {{ CHART_SUB[activeChart] }}</span></h3><button class="modal-x" aria-label="Close" @click="closeChart">✕</button></div>
+        <div class="pop-body"><AdminChart v-if="currentChart" :spec="currentChart" size="lg" /></div>
+      </div>
     </div>
 
     <!-- FORM MODAL -->
@@ -744,33 +743,35 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 .login-input:focus { border-color:#26262b; box-shadow:0 0 0 3px rgba(38,38,43,0.08); outline:none; }
 
 /* ── Shell ──────────────────────────────────────────────── */
-.shell { display:flex; flex-direction:column; height:100vh; background:#f5f5f6; font-family:var(--font-ui); font-size:14px; color:#1e1e22; overflow:hidden; }
-.body { display:flex; flex:1; min-height:0; }
+.shell { display:flex; height:100vh; background:#f1f2f5; font-family:var(--font-ui); font-size:14px; color:#1e1e22; overflow:hidden; }
+.body { display:flex; flex:1; min-height:0; width:100%; }
 
-/* ── Top Bar ───────────────────────────────────────────── */
-.topbar { display:flex; align-items:center; justify-content:space-between; height:52px; padding:0 18px; background:#ebecef; color:#5b5c63; border-bottom:1px solid #d9dbe0; flex-shrink:0; }
-.topbar-l { display:flex; align-items:center; gap:10px; }
-.topbar-crest { width:28px; height:28px; background:#26262b; display:flex; align-items:center; justify-content:center; font-size:15px; color:#fff; border-radius:8px; }
-.topbar-name { font-size:15px; font-weight:700; color:#1e1e22; letter-spacing:-0.01em; }
-.topbar-div { color:#d3d3d7; }
-.topbar-sub { font-size:12.5px; color:#8a8b93; font-weight:500; }
-.topbar-r { display:flex; align-items:center; gap:14px; }
-.topbar-ts { font-size:12px; color:#9a9ba3; font-family:var(--font-mono); }
-.topbar-user { font-size:13px; color:#5b5c63; font-weight:500; }
-.topbar-refresh { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; padding:0; background:#fff; border:1px solid #dedee2; color:#5b5c63; cursor:pointer; font-family:inherit; border-radius:8px; }
-.topbar-refresh:hover:not(:disabled) { border-color:#c4c4ca; color:#1e1e22; background:#f5f5f6; }
-.topbar-refresh:disabled { opacity:.5; cursor:not-allowed; }
-.topbar-logout { padding:6px 12px; background:#fff; border:1px solid #dedee2; color:#5b5c63; font-size:12.5px; font-weight:600; cursor:pointer; font-family:inherit; border-radius:8px; height:auto; }
-.topbar-logout:hover { border-color:#c4c4ca; color:#1e1e22; background:#f5f5f6; }
-
-/* ── Sidebar ───────────────────────────────────────────── */
-.sidebar { width:176px; background:#ebecef; border-right:1px solid #d9dbe0; display:flex; flex-direction:column; padding:10px; gap:3px; flex-shrink:0; overflow-y:auto; }
+/* ── Sidebar — the sole chrome: brand (top) · nav · user/sign-out (bottom).
+   Grey; the content area is a shade lighter so the sidebar reads as the rail. */
+.sidebar { width:200px; background:#e6e7eb; border-right:1px solid #d7d8dd; display:flex; flex-direction:column; flex-shrink:0; }
+.sb-top { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:15px 14px; border-bottom:1px solid #dbdce1; }
+.sb-brand { display:flex; flex-direction:column; line-height:1.2; min-width:0; }
+.sb-name { font-size:15px; font-weight:700; color:#1e1e22; letter-spacing:-0.01em; }
+.sb-sub { font-size:11.5px; color:#8a8b93; font-weight:500; }
+.sb-nav { flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:3px; }
 .nav-btn { display:block; padding:9px 12px; background:transparent; border:none; color:#5b5c63; cursor:pointer; text-align:left; font-size:13.5px; font-weight:500; font-family:inherit; width:100%; border-radius:9px; height:auto; }
-.nav-btn:hover { color:#1e1e22; background:#e2e3e7; }
+.nav-btn:hover { color:#1e1e22; background:#dcdde2; }
 .nav-btn.on { color:#fff; font-weight:600; background:#26262b; }
+.sb-foot { padding:12px 14px; border-top:1px solid #dbdce1; display:flex; flex-direction:column; gap:8px; }
+.sb-user { display:flex; flex-direction:column; line-height:1.3; min-width:0; }
+.sb-uname { font-size:13px; font-weight:600; color:#1e1e22; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sb-uts { font-size:11px; color:#9a9ba3; font-family:var(--font-mono); }
+.sb-logout { padding:7px 12px; background:#fff; border:1px solid #d7d8dd; color:#5b5c63; font-size:12.5px; font-weight:600; cursor:pointer; font-family:inherit; border-radius:8px; }
+.sb-logout:hover { border-color:#c4c4ca; color:#1e1e22; }
 
-/* ── Content ───────────────────────────────────────────── */
-.content { flex:1; overflow:auto; padding:22px 26px; display:flex; flex-direction:column; gap:16px; background:#f5f5f6; }
+/* ── Content (grey — a shade lighter than the sidebar) ───── */
+.content { flex:1; min-width:0; overflow:auto; padding:22px 26px; display:flex; flex-direction:column; gap:16px; background:#f1f2f5; }
+
+/* ── Stat row (top-of-tab summary counters — the per-tab "dash") ── */
+.stat-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; }
+.stat-c { background:#fff; border:1px solid #e6e7ea; border-radius:12px; padding:14px 16px; box-shadow:0 1px 2px rgba(0,0,0,0.03); }
+.stat-c-l { font-size:11px; font-weight:600; color:#8a8b93; text-transform:uppercase; letter-spacing:0.03em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.stat-c-v { font-size:26px; font-weight:700; color:#1e1e22; font-family:var(--font-mono); line-height:1; margin-top:7px; }
 
 /* ── Typography / toolbar ──────────────────────────────── */
 .page-title { font-size:19px; font-weight:700; color:#1e1e22; margin:0; letter-spacing:-0.01em; }
@@ -780,16 +781,20 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 .search-bar .inp { width:220px; height:38px; border-top-right-radius:0; border-bottom-right-radius:0; border-right:none; }
 .search-bar .btn { border-top-left-radius:0; border-bottom-left-radius:0; }
 
-/* ── Filter bar (grey box; white inputs + the data table pop on it) ─── */
-.filter-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; background:#ebecef; border:1px solid #d9dbe0; border-radius:12px; padding:12px 14px; }
+/* ── Filter bar — sits directly on the grey content (no card); only the
+   input/select boxes are white so they read as the fields. ─── */
+.filter-row { display:flex; align-items:flex-start; gap:14px; flex-wrap:nowrap; background:transparent; border:none; padding:0; margin-bottom:16px; }
+.filter-left { display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex:1 1 auto; min-width:0; }
+@media (max-width: 760px) { .filter-row { flex-wrap:wrap; } }
 .filter-row .flt-search { width:220px; max-width:100%; flex-shrink:0; }
 .flt { width:auto; min-width:120px; padding:8px 12px; border:1px solid #dedee2; background:#fff; font-size:13px; color:#3a3a41; font-family:inherit; cursor:pointer; border-radius:8px; height:auto; }
 .flt:focus { border-color:#26262b; box-shadow:0 0 0 3px rgba(38,38,43,0.07); outline:none; }
 .flt.inline { padding:5px 8px; font-size:12px; }
 /* Right-aligned action group: Clear (outline) + Search/New (charcoal). */
-.filter-actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
-.flt-clear { height:38px; padding:0 15px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; background:#fff; border:1px solid #dedee2; color:#5b5c63; cursor:pointer; font-family:inherit; border-radius:8px; }
-.flt-clear:hover { background:#f3f3f5; color:#1e1e22; border-color:#c4c4ca; }
+.filter-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.flt-clear { height:38px; padding:0 15px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; background:transparent; border:1px solid #cbccd2; color:#5b5c63; cursor:pointer; font-family:inherit; border-radius:8px; }
+.flt-clear:hover { background:#e4e5e9; color:#1e1e22; border-color:#b7b8bf; }
+.flt-icon { width:38px; padding:0; justify-content:center; }
 
 /* ── Inputs ────────────────────────────────────────────── */
 .inp { padding:9px 12px; border:1px solid #dedee2; font-size:14px; color:#1e1e22; background:#fff; width:100%; font-family:inherit; border-radius:8px; }
@@ -808,66 +813,25 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
 /* ── Table cell content (rendered into DataTable slots) ── */
 .sub { color:#9a9ba3; font-size:12px; }
 
-/* ── Dashboard (Overview) — drill-down: clickable cards → one domain chart ── */
-.kpi-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:14px; }
-.kpi-card { background:#fff; border:1px solid #e9e9ec; border-radius:14px; padding:16px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
-.kpi-label { font-size:11.5px; font-weight:600; color:#9a9ba3; text-transform:uppercase; letter-spacing:0.03em; }
-.kpi-value { font-size:32px; font-weight:700; color:#1e1e22; font-family:var(--font-mono); line-height:1.1; margin-top:8px; }
-.kpi-sub { font-size:12px; color:#8a8b93; margin-top:4px; }
-/* Clickable card (button reset) — the drill-down entry point */
-.kpi-click { display:block; width:100%; height:auto; text-align:left; cursor:pointer; font-family:inherit; }
-.kpi-click:hover { border-color:#c4c4ca; box-shadow:0 3px 10px rgba(0,0,0,0.07); }
-.kpi-click:focus-visible { outline:2px solid #26262b; outline-offset:2px; }
-.kpi-cta { display:inline-flex; align-items:center; gap:3px; margin-top:12px; font-size:11.5px; font-weight:700; color:#26262b; opacity:0; }
-.kpi-click:hover .kpi-cta, .kpi-click:focus-visible .kpi-cta { opacity:1; }
-.cta-ico { transform:rotate(-90deg); }
-
-/* Breadcrumb header while a chart is open */
-.crumb { display:flex; align-items:center; gap:8px; }
-.crumb-back { display:inline-flex; align-items:center; gap:3px; height:auto; padding:0; background:none; border:none; cursor:pointer; font-family:inherit; font-size:19px; font-weight:700; color:#9a9ba3; letter-spacing:-0.01em; }
-.crumb-back:hover { color:#1e1e22; }
-.crumb-ico { transform:rotate(90deg); }
-.crumb-sep { color:#c4c4ca; }
-
-/* Detail card holding one chart */
-.dash-card { background:#fff; border:1px solid #e9e9ec; border-radius:14px; padding:18px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
-.chart-stage { max-width:640px; }
-.dash-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:20px; }
+/* ── Dashboard (Overview) — all charts shown at once; click a card to enlarge ── */
+.dash-grid-charts { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap:14px; }
+.dash-card { background:#fff; border:1px solid #e9e9ec; border-radius:14px; padding:16px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+.dash-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:16px; }
 .dash-head h3 { margin:0; font-size:14px; font-weight:700; color:#1e1e22; }
 .dash-sub { color:#9a9ba3; font-weight:500; }
-.dash-total { font-size:12px; color:#9a9ba3; font-family:var(--font-mono); white-space:nowrap; }
+.dash-head-r { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.dash-total { font-size:22px; font-weight:700; color:#1e1e22; font-family:var(--font-mono); line-height:1; }
+.max-ic { color:#c4c4ca; }
 
-/* Horizontal bars — category | recessive track+fill | mono value */
-.bars { display:flex; flex-direction:column; gap:12px; }
-.bars-lg { gap:16px; }
-.bar-row { display:grid; grid-template-columns:96px 1fr 34px; align-items:center; gap:10px; }
-.bars-lg .bar-track { height:14px; }
-.bar-cat { font-size:12.5px; color:#5b5c63; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.bar-track { height:10px; background:#f0f0f2; border-radius:999px; overflow:hidden; }
-.bar-fill { height:100%; border-radius:999px; min-width:0; background:#26262b; }
-.bar-fill.charcoal { background:#26262b; }
-.bar-row:hover .bar-fill { filter:brightness(0.9); }
-.bar-val { font-size:13px; font-weight:700; color:#1e1e22; font-family:var(--font-mono); text-align:right; }
+/* Each card is a clickable "pop" target that enlarges its chart in a modal. */
+.chart-card { cursor:pointer; }
+.chart-card:hover { border-color:#c4c4ca; box-shadow:0 3px 10px rgba(0,0,0,0.07); }
+.chart-card:hover .max-ic { color:#26262b; }
+.chart-card:focus-visible { outline:2px solid #26262b; outline-offset:2px; }
 
-/* Vertical bars (Audit by action) */
-.vbars { display:flex; align-items:flex-end; gap:22px; height:220px; padding:8px 4px 0; }
-.vbar-col { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:8px; height:100%; justify-content:flex-end; }
-.vbar-val { font-size:13px; font-weight:700; color:#1e1e22; font-family:var(--font-mono); }
-.vbar-track { width:46px; max-width:70%; flex:1; min-height:0; display:flex; align-items:flex-end; background:#f0f0f2; border-radius:8px 8px 0 0; overflow:hidden; }
-.vbar-fill { width:100%; background:#26262b; border-radius:8px 8px 0 0; min-height:0; }
-.vbar-col:hover .vbar-fill { filter:brightness(0.9); }
-.vbar-cat { font-size:12px; color:#5b5c63; font-weight:500; }
-
-/* Donut / gauge (Users, Links, Disasters) */
-.donut-wrap { display:flex; align-items:center; gap:30px; flex-wrap:wrap; }
-.donut-svg { width:170px; height:170px; flex-shrink:0; }
-.donut-c-n { fill:#1e1e22; font-family:var(--font-mono); font-weight:700; font-size:7.5px; text-anchor:middle; dominant-baseline:central; }
-.donut-c-l { fill:#9a9ba3; font-size:2.6px; text-anchor:middle; dominant-baseline:central; text-transform:uppercase; letter-spacing:0.08em; }
-.donut-legend { display:flex; flex-direction:column; gap:10px; min-width:180px; }
-.dleg-row { display:grid; grid-template-columns:14px 1fr auto; align-items:center; gap:9px; font-size:13px; }
-.dleg-dot { width:11px; height:11px; border-radius:3px; }
-.dleg-label { color:#5b5c63; font-weight:500; }
-.dleg-val { color:#1e1e22; font-weight:700; font-family:var(--font-mono); font-size:12.5px; }
+/* Enlarge modal (chart shown at size="lg") */
+.pop-modal { width:min(640px, 94vw); }
+.pop-body { padding:22px 24px 26px; }
 
 /* ── Pagination ────────────────────────────────────────── */
 .pager { display:flex; align-items:center; gap:8px; padding-top:2px; }

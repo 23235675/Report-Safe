@@ -32,8 +32,8 @@ defineProps({
 <style scoped>
 .tbl-wrap { overflow:auto; border:1px solid #e9e9ec; background:#fff; border-radius:14px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
 .tbl { width:100%; border-collapse:collapse; font-size:13px; }
-.tbl th { background:#fafafb; color:#8a8b93; font-weight:600; font-size:11.5px; letter-spacing:0.03em; text-transform:uppercase; padding:12px 16px; border-bottom:1px solid #e9e9ec; text-align:left; white-space:nowrap; position:sticky; top:0; z-index:1; }
-.tbl td { padding:13px 16px; border-bottom:1px solid #f0f0f2; vertical-align:middle; color:#3a3a41; }
+.tbl th { background:#fafafb; color:#8a8b93; font-weight:600; font-size:11.5px; letter-spacing:0.03em; text-transform:uppercase; padding:14px 24px; border-bottom:1px solid #e9e9ec; text-align:left; white-space:nowrap; position:sticky; top:0; z-index:1; }
+.tbl td { padding:18px 24px; border-bottom:1px solid #f0f0f2; vertical-align:middle; color:#3a3a41; }
 .tbl tbody tr:last-child td { border-bottom:none; }
 .tbl tbody tr:hover td { background:#f7f7f9; }
 .mono { font-family:var(--font-mono); color:#8a8b93; font-size:12px; }

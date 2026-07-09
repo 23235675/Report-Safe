@@ -58,7 +58,7 @@ Both dashboards use a **modern grey/white "SaaS console" aesthetic** (modelled o
 **Fonts:** `var(--font-ui)` = Plus Jakarta Sans; `var(--font-mono)` = IBM Plex Mono (defined in `web/src/assets/main.css`).
 
 **Colour palette (admin + gov chrome) — neutral grey/white:**
-- App canvas: `#f5f5f6` · Cards: `#fff` · Chrome bars (admin topbar + sidebar, gov panes): grey `#ebecef`, hairline `#d9dbe0`
+- App canvas: grey (admin content `#f1f2f5`, gov `#f5f5f6`) · Cards + data table: `#fff` · Chrome: admin **sidebar** `#e6e7eb` (no topbar), gov panes `#ebecef`; hairlines `#d7d8dd` / `#d9dbe0`
 - Table header / subtle fills: `#fafafb` · Row hover: `#f7f7f9`
 - Hairline borders: `#e9e9ec` (separators) · `#dedee2` (inputs/cards)
 - Charcoal accent (primary btn / active nav / toggle / chip): `#26262b`, hover `#131316`
@@ -74,12 +74,12 @@ Both share the same centered layout:
 - Footer note
 
 **AdminView (`/admin`):**
-- **Mostly monochrome** (charcoal `#26262b` accent; active sidebar nav = filled charcoal pill). Two *deliberate* status-colour exceptions: the **Reports** tab status is **bare vivid-coloured text** (`StatusBadge :bare` + `STATUS_COLOR_VIVID`, no pill/box), and the Overview's *Reports by status* bars use the same hues. Everything else stays charcoal/grey.
-- **Overview dashboard** — a **drill-down** (from `GET /api/admin/stats`): a grid of **clickable domain cards** (Users/Reports/Disasters/Links/Devices/Audit), each opening **one chart** with a "Dashboard /" breadcrumb back (`activeChart` state, `openChart`/`closeChart`). A different chart form per domain: Reports → status-coloured h-bars; Devices → charcoal h-bars; Audit → vertical bars; Users & Links → donut (`donutSegments`, r=15.9155 trick); Disasters → gauge ring. `/stats` returns per-platform (devices) + per-action (audit) breakdowns to feed those charts.
-- **Topbar** (the tools bar): no `報` crest; the right cluster has a **refresh** icon button (`refreshCurrent` → reloads the active tab) beside Sign out.
-- **Data tables** (`DataTable.vue`): rounded `14px` white card, sticky **UPPERCASE muted** header on `#fafafb`, airy `13×16px` cells, row hover `#f7f7f9`, right-aligned row actions (`.btn-xs` ghost buttons).
-- **Filter bar** (NERIS pattern, one row per data tab): **no page title** (the sidebar already shows the active tab). A single **grey `#ebecef` filter bar** (`.filter-row`, `#d9dbe0` hairline) holds — left→right — the free-text **search** input (`.flt-search`, searchable tabs only), the `120px` filter selects (`.flt`, white), then a right-aligned **`.filter-actions`** group: an outline **Clear** (`.flt-clear`, resets search + filters) + charcoal **Search** / **New …** / **Refresh** as the tab needs. White inputs + the white data table pop on the grey bar. Buttons use `AppIcon` and explicit heights (`.btn`=38px, `.btn-xs`=30px).
-- Scoped CSS in `AdminView.vue`'s `<style scoped>`.
+- **Chrome = the left sidebar only** (no topbar): brand (top) · nav tabs · user + live clock + Sign out (footer). Sidebar grey `#e6e7eb`; the content area is a shade lighter grey `#f1f2f5` so the white cards + table pop. Active nav = filled charcoal `#26262b` pill.
+- **Mostly monochrome** (charcoal accent). Deliberate status-colour exceptions: the **Reports** status cell is bare vivid-coloured text (`StatusBadge :bare` + `STATUS_COLOR_VIVID`), and the Overview's *Reports by status* bars use the same hues.
+- **Overview dashboard** — **all six domain charts shown at once** (from `GET /api/admin/stats`), one per card; clicking a card **pops that chart into an enlarge modal** (`activeChart` + `openChart`/`closeChart`, focus-trapped). Chart forms live in the reusable **`AdminChart.vue`** (`size` sm/lg): Users & Links → donut (`donutSegments`, r=15.9155 trick); Disasters → gauge ring; Reports → status-coloured h-bars; Devices → charcoal h-bars; Audit → vertical bars. `/stats` also returns per-platform (devices) + per-action (audit) breakdowns.
+- **Every data tab** shows a **stat-counter row** on top (`statCards`, per-tab totals from `/stats`), then a **transparent filter bar** (`.filter-row`, no card — sits on the grey): a left group (`.filter-left`) of **white** search/filter inputs, and a right-pinned `.filter-actions` group — a **refresh** icon (`refreshCurrent`) · **Clear** (`.flt-clear`, resets search + filters) · **Search** / **New …** as the tab needs — top-aligned above the table with a gap before it.
+- **Data tables** (`DataTable.vue`): rounded `14px` white card, sticky UPPERCASE muted header on `#fafafb`, airy `18×24px` cells, row hover `#f7f7f9`, right-aligned row actions (`.btn-xs`).
+- Scoped CSS in `AdminView.vue`; the dashboard charts in `AdminChart.vue`.
 
 **GovView (`/gov`):**
 - All three tool panels (left routing, right inspector, bottom dock) share a **uniform light grey `#ebecef`** surface (panes, header strips, nav tabs, scroller, action dock, analytics dock — all `#ebecef`) with `#d9dbe0` hairline borders; white content **cards** (triage rows, disaster rows) pop on the grey. Charcoal `#26262b` is the active/accent.
